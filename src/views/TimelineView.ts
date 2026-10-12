@@ -189,20 +189,31 @@ export class TimelineView extends ItemView {
         this.toolbarEl.empty();
         this.lastBranchSignature = this.branchSignature();
 
-        // What am I looking at
-        const scope = this.toolbarEl.createDiv('storyteller-toolbar-group');
-        this.controlsBuilder.createViewModeSegment(scope);
-        this.buildGroupingField(scope);
-        this.buildTrackField(scope);
-        this.buildBranchField(scope);
+        // Two fixed rows rather than one wrapping strip, so controls never land
+        // in a different place depending on the pane width. Row one: what you
+        // are viewing, with search and conflicts. Row two: what is in it and how
+        // it is drawn, with zoom.
+        const viewRow = this.toolbarEl.createDiv('storyteller-toolbar-row');
+        const dataRow = this.toolbarEl.createDiv('storyteller-toolbar-row');
 
-        // How much of it is on screen
-        const frame = this.toolbarEl.createDiv('storyteller-toolbar-group');
-        this.controlsBuilder.createZoomControl(frame);
+        // What am I looking at
+        const scope = viewRow.createDiv('storyteller-toolbar-group');
+        this.controlsBuilder.createViewModeSegment(scope);
+
+        // Pushed right: conflicts, search, overflow
+        const trailing = viewRow.createDiv('storyteller-toolbar-group storyteller-toolbar-trailing');
+        this.buildConflictBadge(trailing);
+        this.buildSearchField(trailing);
+        this.buildOverflowButton(trailing);
+
+        // Which events
+        const data = dataRow.createDiv('storyteller-toolbar-group');
+        this.buildGroupingField(data);
+        this.buildTrackField(data);
+        this.buildBranchField(data);
 
         // How is it drawn
-        const display = this.toolbarEl.createDiv('storyteller-toolbar-group');
-        this.controlsBuilder.createEditModeToggle(display);
+        const display = dataRow.createDiv('storyteller-toolbar-group');
         this.buildIconsField(display);
         this.controlsBuilder.createDisplayMenu(display, {
             getShowScenes: () => this.showScenes,
@@ -211,12 +222,11 @@ export class TimelineView extends ItemView {
             setShowWatchedNotes: value => { this.showWatchedNotes = value; this.renderer?.setShowWatchedNotes(value); },
             onManageEras: () => this.openEraManager()
         });
+        this.controlsBuilder.createEditModeToggle(display);
 
-        // Pushed right: conflicts, search, overflow
-        const trailing = this.toolbarEl.createDiv('storyteller-toolbar-group storyteller-toolbar-trailing');
-        this.buildConflictBadge(trailing);
-        this.buildSearchField(trailing);
-        this.buildOverflowButton(trailing);
+        // How much of it is on screen
+        const frame = dataRow.createDiv('storyteller-toolbar-group storyteller-toolbar-trailing');
+        this.controlsBuilder.createZoomControl(frame);
     }
 
     /** A labelled control, so the toolbar reads as words rather than glyphs. */

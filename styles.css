@@ -14803,3 +14803,109 @@ body.mod-rtl .storyteller-group-members {
         justify-content: flex-end;
     }
 }
+
+/* ===== Timeline toolbar: two fixed rows, one control height, one surface ===== */
+.storyteller-timeline-view .storyteller-timeline-toolbar {
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 8px 10px;
+  container-type: inline-size;
+}
+
+.storyteller-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 22px;
+  min-width: 0;
+}
+
+/* Groups are set apart by space, not hairlines: a hairline ends up at the
+   start of a line whenever a narrow pane wraps the row. */
+.storyteller-toolbar-row > .storyteller-toolbar-group::before {
+  display: none;
+}
+
+.storyteller-toolbar-row > .storyteller-toolbar-group {
+  gap: 6px;
+}
+
+/* The right-hand group stays together, so the overflow button never drops to a line of its own. */
+.storyteller-toolbar-row > .storyteller-toolbar-trailing {
+  margin-inline-start: auto;
+  flex-wrap: nowrap;
+}
+
+/* One height for every control. */
+.storyteller-timeline-view .storyteller-timeline-toolbar button,
+.storyteller-timeline-view .storyteller-timeline-toolbar select,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-segment,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-control,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-timeline-search-wrap {
+  height: 30px;
+  min-height: 30px;
+  box-sizing: border-box;
+}
+
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-segment-btn,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-control button,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-readout {
+  height: 100%;
+  min-height: 0;
+}
+
+/* One surface: joined controls match Obsidian's buttons and dropdowns
+   instead of the darker page colour. */
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-segment,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-control {
+  background: var(--interactive-normal);
+  box-shadow: var(--input-shadow);
+  border-color: transparent;
+}
+
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-segment-btn,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-control .storyteller-toolbar-btn,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-readout {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-segment-btn.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-segment-btn + .storyteller-segment-btn,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-readout {
+  border-color: var(--background-modifier-border);
+}
+
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-timeline-search-wrap {
+  background: var(--background-modifier-form-field);
+  border-color: var(--background-modifier-border);
+  margin-left: 0;
+}
+
+/* Dropdowns as wide as their longest option, not a fixed slab. */
+.storyteller-timeline-view .storyteller-toolbar-field select,
+.storyteller-timeline-view .storyteller-toolbar-field .dropdown {
+  width: auto;
+  max-width: 12rem;
+  padding-inline-end: 1.9rem;
+}
+
+.storyteller-timeline-view .storyteller-toolbar-field-label {
+  margin-inline-start: 2px;
+}
+
+/* Narrow panes: the right-hand groups take their own line, full width. */
+@container (max-width: 640px) {
+  .storyteller-toolbar-row > .storyteller-toolbar-trailing {
+    margin-inline-start: 0;
+    flex: 1 1 100%;
+  }
+
+}
