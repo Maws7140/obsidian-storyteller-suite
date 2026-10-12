@@ -105,9 +105,21 @@ const SHOT = process.env.INK_EDITOR_SHOT || '';
 	const areaId = saved.id;
 
 	step('select');
+	// Path tool: two points show the Finish button, and Finish completes the path.
+	await page.click('button[data-tool="path"]');
+	await clickMap(120, 500);
+	await clickMap(260, 560);
+	assert.ok(await page.isVisible('.ink-finish'), 'Finish shows while a path is unfinished');
+	await page.click('.ink-finish');
+	await page.evaluate(() => editor.store.flush());
+	assert.equal(await page.isVisible('.ink-finish'), false, 'Finish hides once the path is saved');
+	const pathCount = await page.evaluate(() => store.doc.items.filter(i => i.kind === 'path').length);
+	assert.equal(pathCount, 1, 'Finish saves the path');
+
 	// Select it with the Select tool and change its fill in the inspector.
 	await page.click('button[data-tool="select"]');
-	await clickMap(410, 260);
+	// The default fill is transparent, so click the edge of the area.
+	await clickMap(410, 200);
 	const selected = await page.evaluate(() => [...store.selection]);
 	assert.deepEqual(selected, [areaId], 'the area is selected');
 

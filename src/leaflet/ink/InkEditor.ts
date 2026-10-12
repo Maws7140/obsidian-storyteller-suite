@@ -59,9 +59,6 @@ export interface InkEditorOptions {
 /** Keys that open a tool from the toolbar, by shortcut letter. */
 const TOOL_BY_KEY = new Map(INK_TOOLS.map(tool => [tool.shortcut.toLowerCase(), tool.id] as const));
 
-/** How long after a pointer or key event the Finish button re-checks the draft. */
-const FINISH_CHECK_MS = 0;
-
 export class InkEditor {
 	readonly store: InkStore;
 	private readonly L: InkEditorLeaflet;
@@ -78,6 +75,8 @@ export class InkEditor {
 
 	private opened = false;
 	private destroyed = false;
+	/** Whether the last pointer press was on the map or its panels. Keys with no focus target follow it. */
+	private pointerInMap = false;
 	/** True while a tool is being swapped. Store changes made then must not re-arm a tool. */
 	private switching = false;
 	private activeId: InkToolId | undefined;
@@ -154,14 +153,13 @@ export class InkEditor {
 			onEditText: id => {
 				if (this.context) editTextItem(this.context, id);
 			},
+			onDraftChange: () => this.syncFinish(),
 		};
 
 		this.mountDocks();
 		this.layer.setReadOnly(false);
 		this.listen(doc, 'keydown', this.onKey as EventListener);
-		for (const type of ['pointerdown', 'pointerup', 'keyup', 'dblclick']) {
-			this.listen(doc, type, this.scheduleFinishCheck as EventListener, true);
-		}
+		this.listen(doc, 'pointerdown', this.trackPointer as EventListener, true);
 		this.activate('select');
 		this.syncFinish();
 	}
@@ -285,13 +283,20 @@ export class InkEditor {
 		}
 	};
 
-	/** Keys count when they come from the map, the editor's panels, or nowhere in particular. */
+	/**
+	 * Keys count when they come from the map or its panels. Keys with no focused element (the page
+	 * itself) count only when the last press was on the map, so Delete in a sidebar cannot remove an item.
+	 */
 	private keyTargetAllowed(target: EventTarget | null): boolean {
 		const node = target as Node | null;
-		if (!node) return true;
-		if (node === this.doc.body || node === this.doc.documentElement) return true;
+		if (!node || node === this.doc.body || node === this.doc.documentElement) return this.pointerInMap;
 		return this.container.contains(node);
 	}
+
+	private readonly trackPointer = (event: PointerEvent): void => {
+		const node = event.target as Node | null;
+		this.pointerInMap = !!node && this.container.contains(node);
+	};
 
 	private keyOptions(): EditorKeyOptions {
 		return {
@@ -400,10 +405,6 @@ export class InkEditor {
 		const hasDraft = this.opened && !!this.activeTool()?.hasDraft?.();
 		this.finishButton.hidden = !hasDraft;
 	}
-
-	private readonly scheduleFinishCheck = (): void => {
-		setTimeout(() => this.syncFinish(), FINISH_CHECK_MS);
-	};
 
 	private listen(target: EventTarget, type: string, fn: EventListener, capture = false): void {
 		target.addEventListener(type, fn, capture);

@@ -128,12 +128,14 @@ abstract class PolyTool implements InkTool {
 		this.points = [];
 		this.cursor = undefined;
 		this.session?.preview.clear();
+		this.ctx?.onDraftChange?.();
 	}
 
 	private redraw(): void {
 		const ctx = this.ctx;
 		const session = this.session;
 		if (!ctx || !session) return;
+		ctx.onDraftChange?.();
 		if (this.points.length === 0) {
 			session.preview.clear();
 			return;

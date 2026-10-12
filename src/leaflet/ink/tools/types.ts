@@ -96,6 +96,8 @@ export interface InkToolContext {
 	refZoom?: number;
 	/** Called with the id of a text item the user double-clicked. */
 	onEditText?: (id: string) => void;
+	/** Called whenever a tool's unfinished draft changes, so the editor can update its Finish button. */
+	onDraftChange?: () => void;
 }
 
 export interface InkTool {
