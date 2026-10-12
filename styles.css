@@ -12940,7 +12940,7 @@ body.mod-rtl .storyteller-group-members {
 .ink-inspector {
 	display: flex;
 	flex-direction: column;
-	width: 288px;
+	width: 240px;
 	max-height: 100%;
 	background: var(--ink-bg);
 	border: 1px solid var(--ink-border);
@@ -12953,15 +12953,15 @@ body.mod-rtl .storyteller-group-members {
 .ink-inspector-body {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
-	padding: 8px 10px 12px;
+	gap: 0;
+	padding: 6px 8px 8px;
 	overflow-y: auto;
 	min-height: 0;
 }
 
 .ink-summary {
-	margin: 2px 0 6px;
-	font-size: 12px;
+	margin: 0 0 2px;
+	font-size: 11px;
 	font-weight: 600;
 	color: var(--ink-text);
 }
@@ -12969,36 +12969,163 @@ body.mod-rtl .storyteller-group-members {
 .ink-section {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
-	padding: 10px 0;
+	gap: 3px;
+	padding: 4px 0;
 	border-top: 1px solid var(--ink-border);
+}
+
+.ink-section-head,
+.ink-group-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 4px;
+	min-height: 20px;
+	cursor: pointer;
+	user-select: none;
 }
 
 .ink-section-title {
 	margin: 0;
-	font-size: 11px;
+	font-size: 10px;
 	font-weight: 600;
 	letter-spacing: 0.05em;
 	text-transform: uppercase;
 	color: var(--ink-muted);
 }
 
+.ink-group-title {
+	margin: 0;
+	font-size: 10px;
+	font-weight: 500;
+	color: var(--ink-muted);
+}
+
+.ink-fold {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--ink-muted);
+	cursor: pointer;
+}
+
+.ink-fold:hover {
+	background: var(--ink-hover);
+	color: var(--ink-text);
+}
+
+.ink-fold .ink-icon {
+	width: 12px;
+	height: 12px;
+	transition: transform 0.12s ease;
+}
+
+.ink-folded > .ink-section-head .ink-fold .ink-icon,
+.ink-folded > .ink-group-head .ink-fold .ink-icon {
+	transform: rotate(-90deg);
+}
+
+.ink-fold-body {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.ink-group {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	margin-top: 2px;
+}
+
 .ink-row {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 6px;
 	min-height: var(--ink-control-h);
 }
 
 .ink-row > .ink-label {
-	flex: 0 0 74px;
+	flex: 0 0 56px;
 	color: var(--ink-muted);
+	font-size: 11px;
+	line-height: 1.2;
+}
+
+.ink-row > .ink-slider {
+	flex: 1 1 auto;
+}
+
+.ink-inspector .ink-row > .ink-number {
+	flex: 0 0 52px;
+	width: 52px;
+	padding: 0 4px;
+}
+
+.ink-unit {
+	flex: 0 0 auto;
+	font-size: 10px;
+	color: var(--ink-muted);
+}
+
+.ink-toggle-group {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-control);
+	background: var(--ink-bg-raised);
+}
+
+.ink-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 20px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--ink-muted);
+	cursor: pointer;
+}
+
+.ink-toggle:hover {
+	background: var(--ink-hover);
+	color: var(--ink-text);
+}
+
+.ink-toggle[aria-pressed="true"] {
+	background: var(--ink-accent);
+	color: var(--ink-on-accent);
+}
+
+.ink-toggle[aria-pressed="mixed"] {
+	box-shadow: inset 0 0 0 1px var(--ink-accent);
+	color: var(--ink-text);
+}
+
+.ink-toggle .ink-icon {
+	width: 13px;
+	height: 13px;
 }
 
 .ink-row > .ink-input,
 .ink-row > .ink-select {
 	flex: 1 1 auto;
 	min-width: 0;
+}
+
+.ink-row > .ink-select {
+	width: 100%;
 }
 
 .ink-row > .ink-textarea {
@@ -13049,6 +13176,71 @@ body.mod-rtl .storyteller-group-members {
 
 .ink-inspector .ink-row > .ink-color {
 	flex: 0 0 auto;
+}
+
+/* Inspector density: 24px controls, tight rows. The panel is 240px wide. */
+.ink-side .ink-inspector {
+	--ink-control-h: 24px;
+}
+
+.ink-inspector .ink-input,
+.ink-inspector .ink-select,
+.ink-inspector .ink-textarea {
+	font-size: 11px;
+	padding-top: 0;
+	padding-bottom: 0;
+}
+
+.ink-inspector .ink-select {
+	padding-left: 6px;
+}
+
+.ink-inspector .ink-range-value {
+	min-width: 28px;
+	font-size: 11px;
+}
+
+.ink-inspector .ink-slider {
+	gap: 6px;
+}
+
+.ink-inspector .ink-check {
+	min-height: 20px;
+	font-size: 11px;
+}
+
+.ink-inspector .ink-check input {
+	width: 13px;
+	height: 13px;
+}
+
+.ink-inspector .ink-hint {
+	margin: 0;
+	font-size: 10px;
+}
+
+.ink-inspector .ink-color-trigger {
+	width: 24px;
+	height: 24px;
+	padding: 3px;
+}
+
+.ink-inspector .ink-btn {
+	height: 24px;
+	padding: 0 6px;
+	font-size: 11px;
+	gap: 4px;
+}
+
+.ink-inspector .ink-preset {
+	height: 20px;
+	padding: 0 6px;
+	font-size: 10px;
+}
+
+.ink-inspector .ink-textarea {
+	min-height: 40px;
+	padding: 4px 6px;
 }
 
 @media (max-width: 600px) {
@@ -13173,8 +13365,13 @@ body.mod-rtl .storyteller-group-members {
 
 .ink-dock-right {
 	right: 10px;
-	width: 288px;
+	width: 240px;
 	min-height: 0;
+}
+
+/* Collapsed right panels: a slim strip with the tab icons only. */
+.ink-dock-right.ink-dock-collapsed {
+	width: auto;
 }
 
 .ink-side {
@@ -13193,6 +13390,60 @@ body.mod-rtl .storyteller-group-members {
 	display: flex;
 	flex: 0 0 auto;
 	border-bottom: 1px solid var(--ink-border);
+}
+
+.ink-side-collapse {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--ink-muted);
+	cursor: pointer;
+}
+
+.ink-side-collapse:hover {
+	background: var(--ink-hover);
+	color: var(--ink-text);
+}
+
+.ink-side-collapse:focus-visible {
+	outline: 2px solid var(--ink-focus);
+	outline-offset: -2px;
+}
+
+.ink-side-collapsed {
+	width: auto;
+}
+
+.ink-side-collapsed .ink-side-tabs {
+	flex-direction: column;
+	border-bottom: none;
+}
+
+.ink-side-collapsed .ink-side-collapse {
+	order: -1;
+	width: auto;
+	height: 26px;
+	border-bottom: 1px solid var(--ink-border);
+}
+
+.ink-side-collapsed .ink-side-tab {
+	flex: 0 0 auto;
+	width: 34px;
+	min-height: 30px;
+	padding: 0;
+}
+
+.ink-side-collapsed .ink-side-tab-label {
+	display: none;
+}
+
+.ink-side-collapsed .ink-side-tab-active {
+	box-shadow: inset 2px 0 0 var(--ink-accent);
 }
 
 .ink-side-tab {
@@ -13280,7 +13531,7 @@ body.mod-rtl .storyteller-group-members {
 /* Narrow screens (tablets, phones): the panels take less width so the map stays visible. */
 @media (max-width: 600px) {
 	.ink-dock-right {
-		width: min(288px, calc(100% - 70px));
+		width: min(240px, calc(100% - 70px));
 	}
 }
 

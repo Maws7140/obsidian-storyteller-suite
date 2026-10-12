@@ -30,8 +30,10 @@ export interface StrokeStylePickerOptions {
 	width: number | null;
 	/** Accessible prefix, such as "Stroke". Defaults to "Line". */
 	label?: string;
+	/** Shows the width slider under the dropdown. Defaults to true. */
+	showWidth?: boolean;
 	onDashChange(dash: DashStyle): void;
-	onWidthChange(width: number): void;
+	onWidthChange?(width: number): void;
 }
 
 type ShapeAttrs = Record<string, string>;
@@ -87,8 +89,8 @@ export class StrokeStylePicker {
 	private readonly triggerName: HTMLElement;
 	private readonly list: HTMLElement;
 	private readonly optionButtons: HTMLButtonElement[] = [];
-	private readonly width: HTMLInputElement;
-	private readonly widthOut: HTMLElement;
+	private readonly width: HTMLInputElement | undefined;
+	private readonly widthOut: HTMLElement | undefined;
 	private readonly label: string;
 	private readonly onDashChange: StrokeStylePickerOptions['onDashChange'];
 	private readonly onWidthChange: StrokeStylePickerOptions['onWidthChange'];
@@ -168,23 +170,27 @@ export class StrokeStylePicker {
 			else this.setOpen(true);
 		});
 
-		const widthRow = makeEl(doc, 'div', 'ink-slider');
-		this.width = makeEl(doc, 'input', 'ink-range', {
-			type: 'range',
-			min: String(WIDTH_RANGE.min),
-			max: String(WIDTH_RANGE.max),
-			step: String(WIDTH_RANGE.step),
-			'aria-label': `${this.label} width`,
-		});
-		this.widthOut = makeEl(doc, 'span', 'ink-range-value');
-		widthRow.appendChild(this.width);
-		widthRow.appendChild(this.widthOut);
-		this.el.appendChild(widthRow);
-		this.width.addEventListener('input', () => {
-			const value = Number(this.width.value);
-			this.widthOut.textContent = String(value);
-			this.onWidthChange(value);
-		});
+		if (options.showWidth !== false) {
+			const widthRow = makeEl(doc, 'div', 'ink-slider');
+			const width = makeEl(doc, 'input', 'ink-range', {
+				type: 'range',
+				min: String(WIDTH_RANGE.min),
+				max: String(WIDTH_RANGE.max),
+				step: String(WIDTH_RANGE.step),
+				'aria-label': `${this.label} width`,
+			});
+			const widthOut = makeEl(doc, 'span', 'ink-range-value');
+			widthRow.appendChild(width);
+			widthRow.appendChild(widthOut);
+			this.el.appendChild(widthRow);
+			width.addEventListener('input', () => {
+				const value = Number(width.value);
+				widthOut.textContent = String(value);
+				this.onWidthChange?.(value);
+			});
+			this.width = width;
+			this.widthOut = widthOut;
+		}
 
 		parent.appendChild(this.el);
 		this.update(options.dash, options.width);
@@ -201,9 +207,10 @@ export class StrokeStylePicker {
 			btn.setAttribute('aria-selected', String(selected));
 			btn.classList.toggle('ink-option-active', selected);
 		}
-		const value = width ?? 2;
-		this.width.value = String(value);
-		this.widthOut.textContent = width === null ? 'Mixed' : String(width);
+		if (this.width && this.widthOut) {
+			this.width.value = String(width ?? 2);
+			this.widthOut.textContent = width === null ? 'Mixed' : String(width);
+		}
 	}
 
 	/**
@@ -232,7 +239,8 @@ export class StrokeStylePicker {
 
 	private choose(dash: DashStyle): void {
 		this.setOpen(false);
-		this.update(dash, this.width.value === '' ? null : Number(this.width.value));
+		const width = this.width ? (this.width.value === '' ? null : Number(this.width.value)) : null;
+		this.update(dash, width);
 		this.trigger.focus();
 		this.onDashChange(dash);
 	}
