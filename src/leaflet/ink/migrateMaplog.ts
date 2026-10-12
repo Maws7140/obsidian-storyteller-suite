@@ -74,7 +74,7 @@ const LABEL_OFFSET_X = 14;
 const COORD_LIMIT = 1e7;
 const ID_LIMIT = 64;
 const TEXT_LIMIT = 200;
-const DOOR_ATTRIBUTES = ['locked', 'secret', 'barred', 'trapped', 'oneway'] as const;
+const DOOR_ATTRIBUTES = ['locked', 'secret', 'barred', 'trapped', 'oneway', 'illusory'] as const;
 const SETTLEMENTS_WITH_PORT = new Set(['village', 'town', 'city']);
 
 // ---- entry points --------------------------------------------------------
@@ -143,7 +143,7 @@ export function migrateMaplog(frontmatter: unknown): InkDoc {
     if (LINE_RULES.has(mark) || AREA_MARKS.has(mark)) return;
     const at = point(raw.latlng);
     if (!at) return;
-    const symbolId = symbolFor(mark, attributeSet(raw.attributes));
+    const symbolId = symbolFor(mark, attributeSet(raw.attributes), raw);
     const symbol = getSymbol(symbolId);
     if (!symbol) return;
     const id = ids.take(rawId(raw.id) ?? `${mark}-${index + 1}`);
@@ -207,7 +207,9 @@ class IdPool {
 }
 
 /** The symbol a mark draws with, including the door, pit, trapdoor and port variants. */
-function symbolFor(mark: string, attrs: ReadonlySet<string>): string {
+function symbolFor(mark: string, attrs: ReadonlySet<string>, raw: Record<string, unknown>): string {
+  if (mark === 'slope') return `slope-${slopeGrade(raw.grade)}`;
+  if (mark === 'passage' && attrs.has('secret')) return 'passage-secret';
   if (mark === 'door' || mark === 'double') {
     const hit = DOOR_ATTRIBUTES.find(attr => attrs.has(attr));
     return hit ? `door-${hit}` : mark;
@@ -220,6 +222,14 @@ function symbolFor(mark: string, attrs: ReadonlySet<string>): string {
   }
   if (SETTLEMENTS_WITH_PORT.has(mark) && attrs.has('port')) return `${mark}-port`;
   return mark;
+}
+
+/** Slope grade 1 to 3 from the mark's grade field. Missing or invalid grades give 3, the old three-chevron slope. */
+function slopeGrade(value: unknown): 1 | 2 | 3 {
+  const n = finite(value);
+  if (n === undefined) return 3;
+  const grade = Math.round(n);
+  return grade === 1 || grade === 2 ? grade : 3;
 }
 
 /** "R3 Prancing Pony (L1, to L3)": place ID and name, then level and destination in brackets. */

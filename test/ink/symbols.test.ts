@@ -40,7 +40,11 @@ const VARIANT_IDS = [
     'door-locked', 'door-secret', 'door-barred', 'door-trapped', 'door-oneway',
     'pit-covered', 'trapdoor-secret', 'trapdoor-ceiling',
     'city-port', 'town-port', 'village-port',
+    'door-illusory', 'passage-secret',
 ];
+
+/** Slope grades 1 to 3, which replace the single slope glyph. */
+const SLOPE_IDS = ['slope-1', 'slope-2', 'slope-3'];
 
 /** Nature and marker ids added for this library. */
 const NEW_IDS = [
@@ -195,6 +199,12 @@ describe('symbol library: coverage', () => {
         }
     });
 
+    it('has the three slope grades, and keeps slope as an alias of slope-3', () => {
+        for (const id of SLOPE_IDS) expect(getSymbol(id), id).toBeDefined();
+        expect(getSymbol('slope')?.id).toBe('slope-3');
+        expect(SYMBOLS.some(symbol => symbol.id === 'slope')).toBe(false);
+    });
+
     it('has the new nature and marker symbols', () => {
         for (const id of NEW_IDS) {
             expect(getSymbol(id), id).toBeDefined();
@@ -212,7 +222,7 @@ describe('symbol library: coverage', () => {
 
     it('gives the category counts the plan expects', () => {
         const counts = Object.fromEntries(symbolsByCategory().map(group => [group.category.id, group.symbols.length]));
-        expect(counts).toEqual({ dungeon: 27, overland: 5, settlements: 11, sites: 6, nature: 20, markers: 17 });
+        expect(counts).toEqual({ dungeon: 31, overland: 5, settlements: 11, sites: 6, nature: 20, markers: 17 });
     });
 });
 

@@ -246,7 +246,21 @@ describe('migrateMaplog: marks', () => {
     expect(stampFor('door', ['trapped', 'barred']).symbol).toBe('door-barred');
     expect(stampFor('double', ['secret']).symbol).toBe('door-secret');
     expect(stampFor('door', ['oneway']).symbol).toBe('door-oneway');
-    expect(stampFor('door', ['illusory']).symbol).toBe('door');
+    expect(stampFor('door', ['illusory']).symbol).toBe('door-illusory');
+    expect(stampFor('double', ['illusory']).symbol).toBe('door-illusory');
+  });
+
+  it('maps slope grade to slope-1, slope-2 or slope-3', () => {
+    expect(stampFor('slope', undefined, { grade: 1 }).symbol).toBe('slope-1');
+    expect(stampFor('slope', undefined, { grade: '2' }).symbol).toBe('slope-2');
+    expect(stampFor('slope', undefined, { grade: 3 }).symbol).toBe('slope-3');
+    expect(stampFor('slope', undefined, { grade: 9 }).symbol).toBe('slope-3');
+    expect(stampFor('slope').symbol).toBe('slope-3');
+  });
+
+  it('maps a secret passage to passage-secret and an open passage to passage', () => {
+    expect(stampFor('passage', ['secret']).symbol).toBe('passage-secret');
+    expect(stampFor('passage').symbol).toBe('passage');
   });
 
   it('maps pit, trapdoor, and settlement port variants', () => {

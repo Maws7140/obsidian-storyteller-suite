@@ -66,14 +66,22 @@ export const SYMBOLS: readonly InkSymbol[] = [
         '<path d="M2 12h5M17 12h5"/><rect x="7" y="8" width="10" height="8"/><path d="M12 18.5 9.2 21.5h5.6z" fill="currentColor"/>'),
     sym('door-oneway', 'One-way door', 'dungeon', 'one way, arrow, direction, only, push, exit',
         '<path d="M2 12h5M17 12h5M12 16.5V8M9.5 10.5 12 8l2.5 2.5"/>'),
-    sym('stairs-up', 'Stairs up', 'dungeon', 'stairs, steps, ascend, up, climb, upper level',
-        '<rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M7 7.5h10M7 12h10M7 16.5h10"/>'),
-    sym('stairs-down', 'Stairs down', 'dungeon', 'stairs, steps, descend, down, lower level',
-        '<rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M7 7.5h10M7 12h7M7 16.5h4"/>'),
+    sym('stairs-up', 'Stairs up', 'dungeon', 'stairs, staircase, steps, ascend, up, climb, upper level, rise',
+        '<path d="M3 21h5v-4h5v-4h5v-4h3"/><path d="M6.5 13V3M4 5.5l2.5-2.5L9 5.5"/>'),
+    sym('stairs-down', 'Stairs down', 'dungeon', 'stairs, staircase, steps, descend, down, lower level, drop',
+        '<path d="M3 9h5v4h5v4h5v4h3"/><path d="M17.5 3v8M15 8.5l2.5 2.5L20 8.5"/>'),
     sym('spiral', 'Spiral stairs', 'dungeon', 'spiral, winding, stairs, turn, tower, twist',
         '<circle cx="12" cy="12" r="9"/><path d="M12 3v6M12 15v6M3 12h6M15 12h6M12 9a3 3 0 1 0 3 3"/>'),
-    sym('slope', 'Slope', 'dungeon', 'slope, ramp, chute, incline, steep, slide, down',
-        '<path d="M6 6l6 4 6-4M6 11.5l6 4 6-4M6 17l6 4 6-4"/>'),
+    sym('slope-1', 'Slope, grade 1', 'dungeon', 'slope, grade, gentle, slight, ramp, incline, one, chevron, down',
+        '<path d="M6 9.5 12 14l6-4.5"/>'),
+    sym('slope-2', 'Slope, grade 2', 'dungeon', 'slope, grade, moderate, ramp, incline, two, chevron, down',
+        '<path d="M6 6.5 12 11l6-4.5M6 13.5 12 18l6-4.5"/>'),
+    sym('slope-3', 'Slope, grade 3', 'dungeon', 'slope, grade, steep, ramp, incline, chute, slide, three, chevron, down',
+        '<path d="M6 4 12 8.5 18 4M6 10.5 12 15l6-4.5M6 17 12 21.5 18 17"/>'),
+    sym('door-illusory', 'Illusory door', 'dungeon', 'illusory, illusion, false, fake, phantom, unreal, question, mystery, unknown, maybe, doubtful',
+        '<path d="M2 12h5M17 12h5"/><rect x="7" y="8" width="10" height="8"/><path d="M10.2 10.6a1.9 1.9 0 1 1 2.6 1.75c-.5.25-.8.6-.8 1.2"/><path d="M12 15.2h.01"/>'),
+    sym('passage-secret', 'Secret passage', 'dungeon', 'secret, hidden, passage, concealed, opening, dashed, gap, secret way, hidden way',
+        '<path d="M2 12h5M17 12h5"/><path d="M7 8.5h10M7 15.5h10" stroke-dasharray="2 1.6"/>'),
     sym('shaft', 'Shaft', 'dungeon', 'shaft, hole, vertical, drop, well, pit, plunge',
         '<circle cx="12" cy="12" r="9"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7"/>'),
     sym('shaft-up', 'Shaft overhead', 'dungeon', 'shaft, ceiling, up, hole, overhead, climb, rise',
@@ -158,14 +166,14 @@ export const SYMBOLS: readonly InkSymbol[] = [
         '<path d="M7 18l-1.5-3.5M7 18V14.5M7 18l1.5-3.5M17 20l-1.5-3.5M17 20v-3.5M17 20l1.5-3.5"/>'),
     sym('forest', 'Forest', 'nature', 'forest, woods, trees, woodland, grove, wood',
         '<circle cx="8" cy="8" r="3.5"/><path d="M8 11.5V18"/><circle cx="16" cy="14" r="3.5"/><path d="M16 17.5V21"/>'),
-    sym('jungle', 'Jungle', 'nature', 'jungle, palm trees, tropical, rainforest, palms',
-        '<path d="M6 21Q4.5 17 7 14M7 14Q4 11 2.5 13M7 14Q10 11 11 13M7 14Q6.5 10.5 8 9M17 21Q15.5 17 18 14M18 14Q15 11 13 13M18 14Q21 11 22 13M18 14Q17.5 10.5 16 9"/>'),
+    sym('jungle', 'Jungle', 'nature', 'jungle, palm trees, tropical, rainforest, palms, broadleaf, dense, canopy',
+        '<circle cx="6.5" cy="11" r="4"/><path d="M6.5 15v6M17 21q-1.5-6 .5-11M17.5 10q-3.5-4-5.5-.5M17.5 10q3.5-4 4.5.5M17.5 10q2.5 1.5 3 5"/>'),
     sym('hills', 'Hills', 'nature', 'hills, hillside, rolling hills, humps, downs, rise',
         '<path d="M2 19Q6.5 9 11 19M10 21Q15.5 11 21 21"/>'),
-    sym('mountains', 'Mountains', 'nature', 'mountains, peaks, range, alps, high ground, rock',
-        '<path d="M2 20 8 9l6 11M10 20l6-14 6 14"/>'),
-    sym('desert', 'Desert', 'nature', 'desert, sand, dunes, dust, arid, wasteland',
-        '<path d="M3 19Q8 13 13 19M11 21Q16 14 21 20"/><circle cx="8" cy="10" r="1" fill="currentColor"/><circle cx="16" cy="9" r="1" fill="currentColor"/><circle cx="12" cy="5.5" r="1" fill="currentColor"/>'),
+    sym('mountains', 'Mountains', 'nature', 'mountains, peaks, range, alps, high ground, rock, snow, snowcap, ridge',
+        '<path d="M2 20 9 7l7 13"/><path d="M12 20l5-9 5 9"/><path d="M6.5 11.5 9 9l2.5 2.5"/>'),
+    sym('desert', 'Desert', 'nature', 'desert, sand, dunes, dust, arid, wasteland, sun, heat, hot, cactus',
+        '<circle cx="17" cy="6.5" r="2.5"/><path d="M2 20Q7 13 12 20M9 21Q15 13 22 20"/>'),
     sym('swamp', 'Swamp', 'nature', 'swamp, marsh, bog, fen, wetland, reeds, mire',
         '<path d="M3 20h4M14 21h6M6 19v-8M9 19l-1-5M16 19v-7M19 19l-1.5-5"/>'),
     sym('ice', 'Ice', 'nature', 'ice, tundra, glacier, snowfield, frozen, frost',
@@ -176,18 +184,18 @@ export const SYMBOLS: readonly InkSymbol[] = [
         '<circle cx="12" cy="9" r="6"/><path d="M12 15v6"/>'),
     sym('pine', 'Pine', 'nature', 'pine, conifer, evergreen, fir, spruce, tree',
         '<path d="M12 3 17 9h-2.5L19 14H5l4.5-5H7z"/><path d="M12 14v7"/>'),
-    sym('palm', 'Palm', 'nature', 'palm, palm tree, tropical, coconut, beach, oasis',
-        '<path d="M11 21Q9 15 12.5 9M12.5 9Q8 6 3.5 8M12.5 9Q17 6 21.5 8M12.5 9Q12 5 12.5 2.5"/>'),
+    sym('palm', 'Palm', 'nature', 'palm, palm tree, tropical, coconut, beach, oasis, frond, drooping, fronds',
+        '<path d="M11.5 21Q10 15 13 8"/><path d="M13 8Q8 3 2.5 9M13 8Q18 3 21.5 9M13 8Q8.5 7.5 5 13.5M13 8Q17.5 7.5 20.5 13.5"/>'),
     sym('hill', 'Hill', 'nature', 'hill, rise, mound, knoll, slope, rounded',
         '<path d="M3 19Q12 5 21 19"/>'),
-    sym('mountain', 'Mountain', 'nature', 'mountain, peak, summit, alp, high, rocky',
-        '<path d="M3 19 9.5 7.5 13 13l2.5-3.5L21 19z"/>'),
+    sym('mountain', 'Mountain', 'nature', 'mountain, peak, summit, alp, high, rocky, snow, snowcap, single, cap',
+        '<path d="M2.5 20 10.5 5.5 21.5 20z"/><path d="M7.2 11.5 10.5 8.3 15 11.5"/>'),
     sym('reeds', 'Reeds', 'nature', 'reeds, rushes, cattails, marsh, grass, swamp, bulrush',
         '<path d="M7 21V8M11 21V4M15 21V7M7 21q0-6-2-8M15 21q0-7 2-9"/>'),
     sym('rock', 'Rock', 'nature', 'rock, boulder, stone, cliff, outcrop, crag',
         '<path d="M4.5 18 6.5 11 11 8l6.5 1.5L19.5 14 18 18z"/><path d="M9 18l1.5-4.5L17 14"/>'),
-    sym('dune', 'Dune', 'nature', 'dune, sand, desert, crescent, sand dune, drift',
-        '<path d="M3 18Q11 8 21 16Q12 12 3 18Z"/>'),
+    sym('dune', 'Dune', 'nature', 'dune, sand, desert, crescent, sand dune, drift, sand hill, ridge, shade',
+        '<path d="M2 19Q8 9 14 19"/><path d="M9.5 20Q15.5 11 22 19"/><path d="M11 15.5 9.8 17.5M13.5 17 12.5 18.8"/>'),
     sym('grass', 'Grass', 'nature', 'grass, tuft, meadow, lawn, field, green',
         '<path d="M12 20V8M12 20Q8 14 6 9M12 20Q16 14 18 9"/>'),
     sym('snowflake', 'Snowflake', 'nature', 'snow, snowflake, frost, winter, cold, ice, flake',
@@ -238,9 +246,18 @@ const CATEGORY_NAMES: ReadonlyMap<SymbolCategory, string> = new Map(
     SYMBOL_CATEGORIES.map((category): [SymbolCategory, string] => [category.id, category.name]),
 );
 
-/** The symbol with this id, or undefined when there is none. */
+/**
+ * Ids that older data still uses. They resolve to the symbol they now name, but are
+ * not listed or searched on their own. 'slope' was the three-chevron slope, which is slope-3.
+ */
+const SYMBOL_ALIASES: ReadonlyMap<string, string> = new Map([['slope', 'slope-3']]);
+
+/** The symbol with this id, or undefined when there is none. Includes retired ids through their alias. */
 export function getSymbol(id: string): InkSymbol | undefined {
-    return SYMBOLS_BY_ID.get(id);
+    const direct = SYMBOLS_BY_ID.get(id);
+    if (direct) return direct;
+    const target = SYMBOL_ALIASES.get(id);
+    return target === undefined ? undefined : SYMBOLS_BY_ID.get(target);
 }
 
 function searchTokens(symbol: InkSymbol): string[] {
