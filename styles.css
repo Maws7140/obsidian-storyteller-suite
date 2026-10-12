@@ -13382,6 +13382,60 @@ body.mod-rtl .storyteller-group-members {
     filter: none;
 }
 
+/* Zoom density (ink-tokens-z1..z4 on the map container). The container carries scale variables per
+   role; the values come from src/leaflet/ink/tokenLayout.ts. A token is laid out at its full size and
+   scaled down. Counts are counter-scaled so the pill keeps its size. */
+.storyteller-location-marker .ink-token,
+.storyteller-portal-marker .ink-token {
+    transform: scale(var(--ink-scale-location, 1));
+}
+
+.storyteller-entity-marker .ink-token {
+    transform: scale(var(--ink-scale-entity, 1));
+}
+
+.storyteller-entity-marker.has-image .ink-token {
+    transform: scale(var(--ink-scale-portrait, 1));
+}
+
+.storyteller-location-marker .ink-token-count,
+.storyteller-portal-marker .ink-token-count {
+    transform: scale(var(--ink-counter-location, 1));
+    transform-origin: top right;
+}
+
+.storyteller-entity-marker .ink-token-count {
+    transform: scale(var(--ink-counter-entity, 1));
+    transform-origin: top right;
+}
+
+.storyteller-entity-marker.has-image .ink-token-count {
+    transform: scale(var(--ink-counter-portrait, 1));
+}
+
+/* A location dot: a 10 px disc, no glyph, pill or portrait. The hit area stays at 24 px. */
+.storyteller-location-marker.ink-token-dot .ink-token {
+    transform: scale(var(--ink-scale-dot, 0.2778));
+}
+
+.storyteller-location-marker.ink-token-dot .ink-token-glyph,
+.storyteller-location-marker.ink-token-dot .ink-token-portrait,
+.storyteller-location-marker.ink-token-dot .ink-token-count {
+    display: none;
+}
+
+.storyteller-location-marker.ink-token-dot .ink-token-wrap::after {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    border-radius: 50%;
+}
+
+/* Entities folded into their location (collapsed zoom, or the location is a dot). */
+.storyteller-entity-marker.ink-token-collapsed {
+    display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .ink-token-disc {
         transition: none;
