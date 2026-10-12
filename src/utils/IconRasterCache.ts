@@ -89,18 +89,23 @@ export function iconCacheKey(req: IconRequest): string | null {
  * With addFill, a root svg that has no fill attribute gets fill set to the colour (for pack
  * icons that rely on the default black fill). Returns null when there is no <svg> root.
  */
-export function tintSvg(svg: string, colour: string, px: number, addFill: boolean): string | null {
+export function tintSvg(svg: string, colour: string, px: number, addFill: boolean, strokeWidth?: number): string | null {
     const match = svg.match(ROOT_SVG);
     if (!match || match.index === undefined) return null;
     let root = match[0]
         .replace(/\s(?:width|height)\s*=\s*(?:"[^"]*"|'[^']*')/gi, '')
         .replace(/^<svg/i, `<svg width="${px}" height="${px}"`);
     if (addFill && !/\sfill\s*=/i.test(root)) root = root.replace(/^<svg/i, `<svg fill="${colour}"`);
+    if (strokeWidth !== undefined && !/\sstroke-width\s*=/i.test(root)) root = root.replace(/^<svg/i, `<svg stroke-width="${strokeWidth}"`);
     const body = svg.slice(0, match.index) + root + svg.slice(match.index + match[0].length);
-    return body
+    const tinted = body
         .replace(/currentcolor/gi, colour)
         .replace(/(\s(?:fill|stroke)\s*=\s*)"(?!none")(?!url\()[^"]*"/gi, `$1"${colour}"`);
+    return strokeWidth === undefined ? tinted : tinted.replace(/(\sstroke-width\s*=\s*)"[^"]*"/gi, `$1"${strokeWidth}"`);
 }
+
+/** Stroke width (on the 24 unit grid) for line icons drawn at 16 px or smaller. */
+export const SMALL_ICON_STROKE = 2.5;
 
 function inkSvg(body: string): string {
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
@@ -208,17 +213,19 @@ export class IconRasterCache {
         }
         const icon = source.icon;
         const colour = sanitiseColour(source.color ?? req.fallbackColor);
+        // Line icons drawn at marker size (16 px and under) get a heavier stroke so they stay legible.
+        const strokeWidth = req.size <= 16 ? SMALL_ICON_STROKE : undefined;
         switch (icon.kind) {
             case 'lucide': {
                 const svg = this.host.lucideSvg(icon.ref);
-                const tinted = svg ? tintSvg(svg, colour, px, false) : null;
+                const tinted = svg ? tintSvg(svg, colour, px, false, strokeWidth) : null;
                 if (tinted) this.loadSvgText(key, entry, tinted, px);
                 else this.fail(key, entry);
                 return;
             }
             case 'ink': {
                 const body = this.host.inkSymbolBody(icon.ref);
-                const tinted = body ? tintSvg(inkSvg(body), colour, px, false) : null;
+                const tinted = body ? tintSvg(inkSvg(body), colour, px, false, strokeWidth) : null;
                 if (tinted) this.loadSvgText(key, entry, tinted, px);
                 else this.fail(key, entry);
                 return;

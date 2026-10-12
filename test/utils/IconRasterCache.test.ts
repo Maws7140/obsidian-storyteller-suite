@@ -451,3 +451,15 @@ describe('drawIconBitmap', () => {
         expect(ctx.names()).toEqual(['save', 'drawImage', 'restore']);
     });
 });
+
+import { tintSvg as tintSvgForStroke, SMALL_ICON_STROKE } from '../../src/utils/IconRasterCache';
+describe('small icon stroke', () => {
+    it('replaces stroke widths when a stroke width is given, and leaves them alone otherwise', () => {
+        const svg = '<svg viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path d="M0 0" stroke-width="1"/></svg>';
+        const heavy = tintSvgForStroke(svg, '#ffffff', 26, false, SMALL_ICON_STROKE) as string;
+        expect(heavy).not.toContain('stroke-width="2"');
+        expect(heavy).not.toContain('stroke-width="1"');
+        expect(heavy.match(/stroke-width="2.5"/g)?.length).toBe(2);
+        expect(tintSvgForStroke(svg, '#ffffff', 26, false) as string).toContain('stroke-width="2"');
+    });
+});
