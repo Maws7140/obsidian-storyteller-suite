@@ -36,7 +36,7 @@ import {
     CARD_TEXT_INSET_WITH_ICON, MARKER_DISC_SIZE, MARKER_GLYPH_SIZE, barIconLabelOffset,
     barShowsIcon, cardHeightWithImage, cardShowsImageStrip,
     defaultTimelineIconMode, markerIconRoom,
-    NODE_GAP, NODE_HOVER_SCALE, NODE_MAX_TIERS, NODE_SIZE, nodeGlyphSize, placeIconNodes
+    NODE_GAP, NODE_HOVER_SCALE, NODE_MAX_TIERS, NODE_SIZE, nodeCornerRadius, nodeGlyphSize, placeIconNodes
 } from './TimelineIconLayout';
 import type { TimelineIconMode } from './TimelineIconLayout';
 
@@ -2926,10 +2926,23 @@ export class NativeTimelineRenderer {
     }
 
     /**
-     * An icon disc of any size: the axis marker disc and the minimal timeline's
-     * event nodes. Returns false when nothing is ready.
+     * Path of a node centred on (x, y): a circle, or a rounded square when
+     * `corner` is given. `inset` shrinks it (negative grows it, for rings).
      */
-    private drawIconNode(ctx: CanvasRenderingContext2D, x: number, y: number, item: NativeItem, source: EntityIconSource, size: number, glyphSize: number): boolean {
+    private nodePath(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, corner: number | undefined, inset = 0): void {
+        const half = size / 2 - inset;
+        if (corner === undefined) {
+            ctx.beginPath(); ctx.arc(x, y, half, 0, Math.PI * 2);
+            return;
+        }
+        this.roundedRect(ctx, x - half, y - half, half * 2, half * 2, Math.max(0, corner - inset));
+    }
+
+    /**
+     * An icon tile of any size: the round axis marker disc, and the rounded-square
+     * nodes of the minimal timeline (`corner` set). Returns false when nothing is ready.
+     */
+    private drawIconNode(ctx: CanvasRenderingContext2D, x: number, y: number, item: NativeItem, source: EntityIconSource, size: number, glyphSize: number, corner?: number): boolean {
         if (!source) return false;
         const radius = size / 2;
         const colour = this.markerColor(item);
@@ -2943,24 +2956,24 @@ export class NativeTimelineRenderer {
 
         ctx.save();
         if (photo) {
-            // Round bitmap: drawIconBitmap clips it to the disc.
+            // drawIconBitmap clips the photo to the node's shape.
             const bitmap = this.icons().get({ source, size, dpr, fallbackColor: ICON_WHITE });
             if (!bitmap) { ctx.restore(); return false; }
-            drawIconBitmap(ctx, bitmap, x, y, size);
+            drawIconBitmap(ctx, bitmap, x, y, size, corner);
             ctx.strokeStyle = colour;
             ctx.lineWidth = ring;
-            ctx.beginPath(); ctx.arc(x, y, radius - ring / 2, 0, Math.PI * 2); ctx.stroke();
+            this.nodePath(ctx, x, y, size, corner, ring / 2); ctx.stroke();
         } else {
             const drawnGlyph = emoji ? glyphSize + 2 : glyphSize;
             const glyph = this.icons().get({ source, size: drawnGlyph, dpr, fallbackColor: ICON_WHITE });
             if (!glyph) { ctx.restore(); return false; }
-            // White disc for a chosen icon colour and for emoji; otherwise the event colour carries a white glyph.
+            // White tile for a chosen icon colour and for emoji; otherwise the event colour carries a white glyph.
             ctx.fillStyle = tinted && !ownColour ? colour : ICON_WHITE;
-            ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+            this.nodePath(ctx, x, y, size, corner); ctx.fill();
             if (ownColour || emoji) {
                 ctx.strokeStyle = colour;
                 ctx.lineWidth = ring;
-                ctx.beginPath(); ctx.arc(x, y, radius - ring / 2, 0, Math.PI * 2); ctx.stroke();
+                this.nodePath(ctx, x, y, size, corner, ring / 2); ctx.stroke();
             }
             drawIconBitmap(ctx, glyph, x, y, drawnGlyph);
         }
@@ -2971,14 +2984,15 @@ export class NativeTimelineRenderer {
     }
 
     /**
-     * One event in the minimal timeline: its icon or image, or, without one (or while
-     * it loads), a disc in the event colour with the name's first letter. Hovered
-     * and selected nodes get a ring.
+     * One event in the minimal timeline: a rounded square with its icon or image,
+     * or, without one (or while it loads), the event colour with the name's first
+     * letter. Hovered and selected nodes get a ring.
      */
     private drawEventNode(ctx: CanvasRenderingContext2D, x: number, y: number, item: NativeItem, diameter: number): void {
         const hovered = item === this.hovered;
         const size = hovered ? Math.round(diameter * NODE_HOVER_SCALE) : diameter;
         const radius = size / 2;
+        const corner = nodeCornerRadius(size);
         ctx.save();
         ctx.globalAlpha = item.inherited ? 0.45 : this.certaintyAlpha(item.event);
         // A soft shadow lifts the node off stems and era bands.
@@ -2986,13 +3000,13 @@ export class NativeTimelineRenderer {
         ctx.shadowBlur = hovered ? 8 : 4;
         ctx.shadowOffsetY = 1;
         ctx.fillStyle = this.css('--background-primary', '#111827');
-        ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+        this.nodePath(ctx, x, y, size, corner); ctx.fill();
         ctx.shadowColor = 'transparent';
         const source = this.iconSourceFor(item.event);
-        const drawn = this.drawIconNode(ctx, x, y, item, source, size, nodeGlyphSize(size));
+        const drawn = this.drawIconNode(ctx, x, y, item, source, size, nodeGlyphSize(size), corner);
         if (!drawn) {
             ctx.fillStyle = this.markerColor(item);
-            ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+            this.nodePath(ctx, x, y, size, corner); ctx.fill();
             const initial = (item.event.name || '?').trim().charAt(0).toUpperCase() || '?';
             ctx.fillStyle = ICON_WHITE;
             ctx.font = `600 ${Math.round(size * 0.45)}px ${this.css('--font-interface', 'sans-serif')}`;
@@ -3005,14 +3019,14 @@ export class NativeTimelineRenderer {
             ctx.globalAlpha = 1;
             ctx.strokeStyle = this.css('--interactive-accent', '#7c3aed');
             ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.arc(x, y, radius + 3, 0, Math.PI * 2); ctx.stroke();
+            this.nodePath(ctx, x, y, size, corner, -3); ctx.stroke();
         }
         if (item.approximate) {
             ctx.globalAlpha = 1;
             ctx.strokeStyle = this.css('--text-muted', '#9ca3af');
             ctx.lineWidth = 1;
             ctx.setLineDash([3, 3]);
-            ctx.beginPath(); ctx.arc(x, y, radius + 3, 0, Math.PI * 2); ctx.stroke();
+            this.nodePath(ctx, x, y, size, corner, -3); ctx.stroke();
             ctx.setLineDash([]);
         }
         ctx.restore();

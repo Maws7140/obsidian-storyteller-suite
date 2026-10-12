@@ -140,6 +140,11 @@ export function placeIconNodes(
     return result;
 }
 
+/** Corner radius of a minimal-timeline node: a rounded square, softer than a card, squarer than a disc. */
+export function nodeCornerRadius(size: number): number {
+    return Math.round(size * 0.3);
+}
+
 /** Glyph size inside a node of this diameter. */
 export function nodeGlyphSize(diameter: number): number {
     return Math.round(diameter * 0.6);

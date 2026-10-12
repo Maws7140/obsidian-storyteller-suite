@@ -142,7 +142,7 @@ describe('verticalCardWidth for photo card heights', () => {
     });
 });
 
-import { NODE_GAP, NODE_SIZE, nodeGlyphSize, placeIconNodes } from '../../src/utils/TimelineIconLayout';
+import { NODE_GAP, NODE_SIZE, nodeCornerRadius, nodeGlyphSize, placeIconNodes } from '../../src/utils/TimelineIconLayout';
 
 describe('minimal timeline nodes', () => {
     it('keeps spread out nodes on the axis', () => {
@@ -168,6 +168,10 @@ describe('minimal timeline nodes', () => {
 
     it('overlaps in the tier that frees up first when every tier is full', () => {
         expect(placeIconNodes([0, 1, 2, 3], 36, 1)).toEqual([0, -1, 1, 0]);
+    });
+
+    it('rounds node corners to about a third of the size', () => {
+        expect(nodeCornerRadius(30)).toBe(9);
     });
 
     it('sizes the glyph inside a node', () => {

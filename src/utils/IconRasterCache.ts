@@ -399,19 +399,27 @@ export class IconRasterCache {
     }
 }
 
-/** Draw a bitmap centred on x, y at size CSS pixels. Round bitmaps are clipped to a circle. */
+/**
+ * Draw a bitmap centred on x, y at size CSS pixels. Round bitmaps are clipped to a
+ * circle, or to a rounded square when `cornerRadius` is given.
+ */
 export function drawIconBitmap(
     ctx: CanvasRenderingContext2D,
     bmp: IconBitmap,
     x: number,
     y: number,
-    size: number
+    size: number,
+    cornerRadius?: number
 ): void {
     const height = bmp.width > 0 ? (size * bmp.height) / bmp.width : size;
     ctx.save();
     if (bmp.round) {
         ctx.beginPath();
-        ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+        if (cornerRadius !== undefined && typeof ctx.roundRect === 'function') {
+            ctx.roundRect(x - size / 2, y - size / 2, size, size, cornerRadius);
+        } else {
+            ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+        }
         ctx.clip();
     }
     ctx.drawImage(bmp.image, x - size / 2, y - height / 2, size, height);
