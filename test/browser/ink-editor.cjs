@@ -155,6 +155,28 @@ const SHOT = process.env.INK_EDITOR_SHOT || '';
 	const hidden = await page.evaluate(id => store.doc.layers.find(l => l.id === id).visible, layerId);
 	assert.equal(hidden, false, 'new layer is hidden');
 
+	step('focus');
+	// In Obsidian a click on the map leaves focus where it was (the Draw button). Shortcuts must
+	// follow the last press on the map, and stop after a press outside it.
+	await page.evaluate(() => {
+		const b = document.createElement('button');
+		b.id = 'outside';
+		b.textContent = 'Draw';
+		b.style.cssText = 'position:fixed;right:4px;bottom:4px;z-index:9999';
+		document.body.appendChild(b);
+		b.focus();
+	});
+	await clickMap(900, 650);
+	assert.equal(await page.evaluate(() => document.activeElement.id), 'outside', 'focus stays on the outside button');
+	await page.keyboard.press('r');
+	assert.equal(await page.evaluate(() => store.tool), 'rect', 'shortcut works after a map click');
+	await page.click('#outside');
+	await page.keyboard.press('e');
+	assert.equal(await page.evaluate(() => store.tool), 'rect', 'shortcut ignored after a press outside the map');
+	await clickMap(900, 650);
+	await page.keyboard.press('Escape');
+	assert.equal(await page.evaluate(() => store.tool), 'select', 'Escape returns to Select');
+
 	if (SHOT) await page.screenshot({ path: SHOT });
 
 	step('close');

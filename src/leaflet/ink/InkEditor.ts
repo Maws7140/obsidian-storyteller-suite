@@ -133,6 +133,8 @@ export class InkEditor {
 	open(): void {
 		if (this.opened || this.destroyed) return;
 		this.opened = true;
+		// Opening the editor counts as working on the map, so shortcuts work straight away.
+		this.pointerInMap = true;
 		const doc = this.doc;
 
 		this.previewPane = makeEl(doc, 'div', 'ink-preview-pane');
@@ -285,8 +287,10 @@ export class InkEditor {
 	 */
 	private keyTargetAllowed(target: EventTarget | null): boolean {
 		const node = target as Node | null;
-		if (!node || node === this.doc.body || node === this.doc.documentElement) return this.pointerInMap;
-		return this.container.contains(node);
+		if (node && this.container.contains(node)) return true;
+		// Clicking the map does not move focus in Obsidian: it stays on whatever had it, such as
+		// the Draw button. So the last press decides, not the focused element.
+		return this.pointerInMap;
 	}
 
 	private readonly trackPointer = (event: PointerEvent): void => {
