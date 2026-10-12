@@ -2430,9 +2430,8 @@ export class MapView extends ItemView {
                         });
 
                         tileLayers.forEach(tileLayer => {
-                            if (tileLayer.redraw) {
-                                tileLayer.redraw();
-                            }
+                            // No redraw(): removing every tile on each resize made the map
+                            // flicker when a sidebar opened. _update adds what the new size needs.
                             if (tileLayer._update) {
                                 tileLayer._update();
                             }

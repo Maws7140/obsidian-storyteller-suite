@@ -1912,10 +1912,9 @@ export class LeafletRenderer extends Component {
                         }
                     });
 
+                    // Add tiles for the new size only. Removing and reloading every tile here
+                    // made the map flicker whenever a sidebar opened or closed.
                     tileLayers.forEach(tl => {
-                        if (tl.redraw) {
-                            tl.redraw();
-                        }
                         if (tl._update) {
                             tl._update();
                         }
@@ -1954,9 +1953,8 @@ export class LeafletRenderer extends Component {
                     if (tl._update) {
                         tl._update();
                     }
-                    if (tl.redraw) {
-                        tl.redraw();
-                    }
+                    // No redraw(): a resize keeps the tiles it has and only adds the ones the new
+                    // size needs. Redrawing here removed every tile and made the map flicker.
 
                     // Force visibility on tile container
                     const container = tl.getContainer?.();
