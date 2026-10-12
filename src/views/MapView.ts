@@ -755,7 +755,7 @@ export class MapView extends ItemView {
      * map is updated first, so a second change builds on this one. In the same write the old
      * Maplog keys are removed, so they cannot come back over the new drawing.
      */
-    private saveInk(doc: InkDoc, filePath: string | undefined): Promise<void> {
+    private saveInk(doc: InkDoc, filePath: string | undefined = this.currentMap?.filePath): Promise<void> {
         const file = filePath ? this.app.vault.getAbstractFileByPath(filePath) : null;
         if (!filePath || !(file instanceof TFile)) return Promise.reject(new Error('Save the map note before drawing on the map.'));
         // Round-trip through the frontmatter shape, so the in-memory state equals what the note will hold.

@@ -140,3 +140,60 @@ describe('MapView.saveInk', () => {
         await expect(view.saveInk(drawingOf('d1'), 'maps/Gone.md')).rejects.toThrow('Save the map note');
     });
 });
+
+describe('MapView drawing editor arming', () => {
+    function editorStub(open = false) {
+        const calls: string[] = [];
+        const editor = {
+            isOpen: () => open,
+            open: vi.fn(() => { calls.push('open'); }),
+            close: vi.fn(async () => { calls.push('close'); }),
+            destroy: vi.fn(async () => { calls.push('destroy'); }),
+        };
+        return { editor, calls };
+    }
+
+    it('ends grid painting and disarms placement before opening the editor', async () => {
+        const { view } = harness(async () => undefined);
+        const calls: string[] = [];
+        const { editor } = editorStub();
+        view.inkEditor = editor;
+        view.gridController = { endEditing: vi.fn(async () => { calls.push('grid'); return true; }) };
+        view.disablePlacementMode = vi.fn(() => { calls.push('placement'); });
+        await view.toggleInk();
+        expect(calls).toEqual(['grid', 'placement']);
+        expect(editor.open).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not open the editor when the grid draft is kept', async () => {
+        const { view } = harness(async () => undefined);
+        const { editor } = editorStub();
+        view.inkEditor = editor;
+        view.gridController = { endEditing: vi.fn(async () => false) };
+        view.disablePlacementMode = vi.fn();
+        await view.toggleInk();
+        expect(editor.open).not.toHaveBeenCalled();
+    });
+
+    it('closes the editor when it is already open, and keeps its drawing', async () => {
+        const { view } = harness(async () => undefined);
+        const { editor } = editorStub(true);
+        view.inkEditor = editor;
+        view.gridController = null;
+        await view.toggleInk();
+        expect(editor.close).toHaveBeenCalledTimes(1);
+        expect(editor.open).not.toHaveBeenCalled();
+        expect(editor.destroy).not.toHaveBeenCalled();
+    });
+
+    it('destroys the editor, after its save, and forgets it', async () => {
+        const { view } = harness(async () => undefined);
+        const { editor, calls } = editorStub();
+        view.inkEditor = editor;
+        await view.destroyInkEditor();
+        expect(calls).toEqual(['destroy']);
+        expect(view.inkEditor).toBeNull();
+        await view.destroyInkEditor();
+        expect(editor.destroy).toHaveBeenCalledTimes(1);
+    });
+});
