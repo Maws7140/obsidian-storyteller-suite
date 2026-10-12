@@ -12,7 +12,7 @@ import { BRUSHES, brushPreviewSvg, brushesByCategory, getBrush } from './brushes
 import type { InkBrush } from './brushes';
 import type { InkStyle } from './model';
 import { DEFAULT_PATH_STYLE, DEFAULT_STYLE } from './styles';
-import { makeEl } from './ui/ColorPicker';
+import { ColorPicker, makeEl } from './ui/ColorPicker';
 
 export interface InkToolDef {
 	id: InkToolId;
@@ -38,6 +38,9 @@ export const INK_TOOLS: readonly InkToolDef[] = [
 
 /** Tools whose style takes a brush, and the item kind each one edits. */
 export type BrushKind = 'path' | 'freehand' | 'area';
+
+/** Quick colours in the brush and stamp flyouts: ink, brown, blue, green, red, gold, purple, grey. */
+export const QUICK_COLOURS: readonly string[] = ['#2b2118', '#8b5a2b', '#3b6fa8', '#3f7d3a', '#b03a2e', '#c9a227', '#7b4fa0', '#6b6258'];
 
 const BRUSH_KIND: Partial<Record<InkToolId, BrushKind>> = {
 	path: 'path',
@@ -104,6 +107,8 @@ export class InkToolbar {
 	private brushButtons: Array<{ id: string | null; button: HTMLButtonElement }> = [];
 	private symbolButtons: Array<{ id: string; button: HTMLButtonElement }> = [];
 	private query = '';
+	/** Colour rows at the top of the stamp and brush flyouts, refreshed with the store. */
+	private readonly colourRows: Array<{ picker: ColorPicker; swatches: Array<{ colour: string; button: HTMLButtonElement }> }> = [];
 	private brushQuery = '';
 	private readonly unsubscribe: () => void;
 
@@ -169,6 +174,7 @@ export class InkToolbar {
 			this.query = this.search.value.trim();
 			this.renderGrid();
 		});
+		this.flyout.appendChild(this.colourRow('Stamp colour'));
 		this.flyout.appendChild(this.search);
 		this.grid = makeEl(doc, 'div', 'ink-stamp-scroll');
 		this.flyout.appendChild(this.grid);
@@ -190,6 +196,7 @@ export class InkToolbar {
 			this.brushQuery = this.brushSearch.value.trim();
 			this.renderBrushes();
 		});
+		this.brushFlyout.appendChild(this.colourRow('Brush colour'));
 		this.brushFlyout.appendChild(this.brushSearch);
 		this.brushScroll = makeEl(doc, 'div', 'ink-brush-scroll');
 		this.brushFlyout.appendChild(this.brushScroll);
@@ -215,10 +222,79 @@ export class InkToolbar {
 		this.syncStamps();
 		this.brushFlyout.hidden = BRUSH_KIND[tool] === undefined;
 		this.syncBrushes();
+		this.syncColour();
+	}
+
+	/** The kind whose start style the flyout colour edits: stamp, or the active line tool's kind. */
+	private colourKind(): 'stamp' | BrushKind | undefined {
+		const tool = this.store.tool;
+		return tool === 'stamp' ? 'stamp' : BRUSH_KIND[tool];
+	}
+
+	/**
+	 * Colour row for a flyout: quick swatches plus the full picker with opacity. Edits the start
+	 * style of the active tool, so the next stamp or line is drawn in it. Previews in the flyout
+	 * take the same colour.
+	 */
+	private colourRow(label: string): HTMLElement {
+		const row = makeEl(this.doc, 'div', 'ink-flyout-colour');
+		const name = makeEl(this.doc, 'span', 'ink-flyout-colour-label');
+		name.textContent = 'Colour';
+		row.appendChild(name);
+		const quick = makeEl(this.doc, 'div', 'ink-flyout-swatches');
+		const swatches: Array<{ colour: string; button: HTMLButtonElement }> = [];
+		for (const colour of QUICK_COLOURS) {
+			const button = makeEl(this.doc, 'button', 'ink-flyout-swatch', {
+				type: 'button',
+				'aria-label': `${label} ${colour}`,
+				title: colour,
+			});
+			button.style.background = colour;
+			button.addEventListener('click', () => this.setColour(colour, null));
+			swatches.push({ colour, button });
+			quick.appendChild(button);
+		}
+		row.appendChild(quick);
+		const picker = new ColorPicker(row, {
+			label,
+			color: null,
+			opacity: null,
+			recent: this.store.recentColors(),
+			showOpacity: true,
+			onChange: (colour, opacity) => this.setColour(colour, opacity),
+		});
+		this.colourRows.push({ picker, swatches });
+		return row;
+	}
+
+	private setColour(colour: string | null, opacity: number | null): void {
+		if (!this.colourKind()) return;
+		const patch: Partial<InkStyle> = {};
+		if (colour !== null && colour !== 'none') patch.stroke = colour;
+		if (opacity !== null) patch.strokeOpacity = opacity;
+		if (Object.keys(patch).length) this.store.setCurrentStyle(patch);
+	}
+
+	private syncColour(): void {
+		const kind = this.colourKind();
+		if (!kind) return;
+		const style = this.store.currentStyle(kind);
+		for (const { picker, swatches } of this.colourRows) {
+			picker.update({ color: style.stroke, opacity: style.strokeOpacity, recent: this.store.recentColors() });
+			for (const { colour, button } of swatches) {
+				const active = colour.toLowerCase() === String(style.stroke).toLowerCase();
+				button.setAttribute('aria-pressed', String(active));
+				button.classList.toggle('ink-flyout-swatch-active', active);
+			}
+		}
+		// Thumbnails draw in currentColor, so the previews show the colour the next item will have.
+		this.brushScroll.style.color = style.stroke;
+		this.grid.style.color = style.stroke;
 	}
 
 	destroy(): void {
 		this.unsubscribe();
+		for (const { picker } of this.colourRows) picker.destroy();
 		this.el.remove();
 	}
 

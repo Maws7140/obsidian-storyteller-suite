@@ -13954,3 +13954,46 @@ body.mod-rtl .storyteller-group-members {
 		width: 200px;
 	}
 }
+
+/* Colour row at the top of the stamp and brush flyouts: label, quick swatches, full picker. */
+.ink-flyout-colour {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding-bottom: 6px;
+	border-bottom: 1px solid var(--ink-border, rgba(127, 127, 127, 0.3));
+}
+.ink-flyout-colour-label {
+	font-size: 12px;
+	color: var(--ink-muted, var(--text-muted, #888));
+	flex: none;
+}
+.ink-flyout-swatches {
+	display: flex;
+	gap: 3px;
+	flex: 1 1 auto;
+	flex-wrap: wrap;
+}
+.ink-flyout-swatch {
+	width: 16px;
+	height: 16px;
+	min-width: 0;
+	padding: 0;
+	border-radius: 50%;
+	border: 1px solid rgba(0, 0, 0, 0.25);
+	box-shadow: none;
+	cursor: pointer;
+}
+.ink-flyout-swatch:hover {
+	transform: scale(1.12);
+}
+.ink-flyout-swatch-active,
+.ink-flyout-swatch:focus-visible {
+	outline: 2px solid var(--interactive-accent, #7b6cd9);
+	outline-offset: 1px;
+}
+.ink-flyout-colour .ink-popover {
+	left: auto;
+	right: 0;
+}

@@ -575,7 +575,7 @@ describe('InkToolbar', () => {
 		const search = one(root, '[aria-label="Search stamps"]');
 		search.value = 'zzqqxx';
 		search.dispatch('input');
-		expect(one(root, '.ink-hint').textContent).toContain('No stamps match');
+		expect(queryAll(root, '.ink-hint').map(h => h.textContent).join(' ')).toContain('No stamps match');
 	});
 
 	it('the current stamp is marked pressed and its svg carries the symbol id', () => {
@@ -960,6 +960,24 @@ describe('InkToolbar brush flyout', () => {
 		expect(store.setCurrentStyle).toHaveBeenLastCalledWith(expect.objectContaining({ brush: 'cliff' }));
 		one(root, '[data-brush="none"]').dispatch('click');
 		expect(store.setCurrentStyle).toHaveBeenLastCalledWith({ brush: undefined, brushFlip: undefined });
+	});
+
+	it('the brush flyout has a colour row: a quick swatch sets the line colour for the active tool', () => {
+		const { root, store } = toolbar();
+		store.tool = 'freehand';
+		store.emit();
+		const swatch = one(root, '[aria-label="Brush colour #3b6fa8"]');
+		swatch.dispatch('click');
+		expect(store.setCurrentStyle).toHaveBeenLastCalledWith({ stroke: '#3b6fa8' });
+		expect(queryAll(root, 'button').some(b => (b.getAttribute('aria-label') ?? '').startsWith('Brush colour:'))).toBe(true);
+	});
+
+	it('the stamp flyout has its own colour row', () => {
+		const { root, store } = toolbar();
+		store.tool = 'stamp';
+		store.emit();
+		one(root, '[aria-label="Stamp colour #b03a2e"]').dispatch('click');
+		expect(store.setCurrentStyle).toHaveBeenLastCalledWith({ stroke: '#b03a2e' });
 	});
 
 	it('the brush in use is marked pressed; None is pressed when there is no brush', () => {

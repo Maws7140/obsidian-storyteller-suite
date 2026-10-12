@@ -252,11 +252,11 @@ export class InkInspector {
 	private colour(
 		parent: HTMLElement,
 		label: string,
-		opts: { allowNone?: boolean; showOpacity?: boolean; visible?: () => boolean },
+		opts: { allowNone?: boolean; showOpacity?: boolean; visible?: () => boolean; rowLabel?: string },
 		read: () => { color: string | null; opacity: number | null },
 		write: (colour: string | null, opacity: number | null) => void,
 	): void {
-		const row = this.row(parent, label, opts.visible);
+		const row = this.row(parent, opts.rowLabel ?? label, opts.visible);
 		const initial = read();
 		const picker = new ColorPicker(row, {
 			label,
@@ -405,6 +405,7 @@ export class InkInspector {
 		this.colour(sec, 'Stroke colour', {
 			showOpacity: true,
 			visible: styled,
+			rowLabel: 'Colour',
 		}, () => ({
 			color: this.styleShared('stroke') ?? null,
 			opacity: this.styleShared('strokeOpacity') ?? null,

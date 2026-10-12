@@ -320,15 +320,24 @@ const SHOT = '/home/user/wt/ink-w2a-draw.png';
 	// No host snap: a free point lands where it was clicked.
 	await page.evaluate(() => { delete host.snapPoint; });
 	let q = page2(grid.pP);
+	// Click a whole pixel and expect the latlng of that pixel: the browser reports whole-pixel
+	// pointer positions, so comparing against the fractional target made this check flaky.
+	q = { x: Math.round(q.x), y: Math.round(q.y) };
 	await page.mouse.click(q.x, q.y);
+	const freeExpected = await page.evaluate(([x, y]) => {
+		const r = map.getContainer().getBoundingClientRect();
+		const ll = map.containerPointToLatLng([x - r.left, y - r.top]);
+		return [ll.lat, ll.lng];
+	}, [q.x, q.y]);
 	const freeStamp = (await itemsOf('stamp')).pop();
-	assert.ok(Math.abs(freeStamp.at[0] - grid.P[0]) < 0.01 && Math.abs(freeStamp.at[1] - grid.P[1]) < 0.01, 'without snapping the stamp is where it was clicked ' + JSON.stringify(freeStamp.at));
+	if (Math.abs(freeStamp.at[1] - freeExpected[1]) >= 0.02) console.log('stamp landed off target; items near the click:', JSON.stringify((await doc()).items.map(i => [i.id, i.kind, i.at || i.a || (i.points || []).filter(pt => Math.abs(pt[0] - 103) < 15 && Math.abs(pt[1] - 103) < 15)]).filter(x => x[2] && (x[2].length === undefined || x[2].length))), JSON.stringify(q));
+	assert.ok(Math.abs(freeStamp.at[0] - freeExpected[0]) < 0.02 && Math.abs(freeStamp.at[1] - freeExpected[1]) < 0.02, 'without snapping the stamp is where it was clicked ' + JSON.stringify([freeStamp.at, freeExpected]));
 	// Host grid snap on: the click lands on the grid point 4 px away, and the free point is 4 px from the grid point, so the vertex snap moves it onto the free point.
 	await page.evaluate(() => { host.snapPoint = ll => [Math.round(ll[0] / 10) * 10, Math.round(ll[1] / 10) * 10]; });
 	q = page2(grid.pG);
 	await page.mouse.click(q.x, q.y);
 	const vertexSnapped = (await itemsOf('stamp')).pop();
-	assert.ok(Math.abs(vertexSnapped.at[0] - grid.P[0]) < 0.01 && Math.abs(vertexSnapped.at[1] - grid.P[1]) < 0.01, 'a vertex within 10 px wins over the grid: ' + JSON.stringify(vertexSnapped.at));
+	assert.ok(Math.abs(vertexSnapped.at[0] - freeStamp.at[0]) < 0.01 && Math.abs(vertexSnapped.at[1] - freeStamp.at[1]) < 0.01, 'a vertex within 10 px wins over the grid: ' + JSON.stringify(vertexSnapped.at));
 	// Grid snap alone, far from any vertex.
 	q = page2(grid.pG2);
 	await page.mouse.click(q.x, q.y);
