@@ -144,7 +144,11 @@ class InkSurface {
 		const svg = doc.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
 		svg.setAttribute('class', 'ink-svg leaflet-zoom-animated');
 		svg.setAttribute('role', 'group');
-		svg.setAttribute('aria-label', 'Map drawing');
+		// A <title>, not aria-label: Obsidian's tooltip handler treats any [aria-label] as an HTMLElement
+		// and throws on SVG elements.
+		const title = doc.createElementNS(SVG_NS, 'title');
+		title.textContent = 'Map drawing';
+		svg.appendChild(title);
 		svg.setAttribute('style', 'position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none;');
 		this.defsEl = doc.createElementNS(SVG_NS, 'defs') as SVGDefsElement;
 		this.rootEl = doc.createElementNS(SVG_NS, 'g') as SVGGElement;
@@ -324,8 +328,9 @@ class InkSurface {
 			const node = this.parse(this.itemsEl, entry.svg).firstElementChild as Element;
 			next.set(entry.id, { markup: entry.svg, node });
 		}
+		// Remove nodes for deleted items and the old node of every item that was redrawn.
 		for (const [id, old] of this.nodes) {
-			if (!next.has(id)) old.node.remove();
+			if (next.get(id)?.node !== old.node) old.node.remove();
 		}
 		// Put the nodes in paint order, moving only what is out of place.
 		let cursor: ChildNode | null = this.itemsEl.firstChild;

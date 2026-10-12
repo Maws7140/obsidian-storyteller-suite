@@ -316,6 +316,6 @@ export function symbolSvg(id: string, opts: SymbolSvgOptions = {}): string {
     const colourAttr = colour ? ` color="${escapeAttr(colour)}"` : '';
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}"`
         + ` fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round"`
-        + ` stroke-linejoin="round"${colourAttr} role="img" aria-label="${escapeAttr(symbol.name)}"`
-        + ` data-symbol="${escapeAttr(symbol.id)}">${symbol.body}</svg>`;
+        + ` stroke-linejoin="round"${colourAttr} role="img"`
+        + ` data-symbol="${escapeAttr(symbol.id)}"><title>${escapeAttr(symbol.name)}</title>${symbol.body}</svg>`;
 }

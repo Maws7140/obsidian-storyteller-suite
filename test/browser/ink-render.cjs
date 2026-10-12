@@ -254,6 +254,23 @@ const SHOT = '/home/user/wt/ink-w1c-render.png';
 	assert.ok(inRect.indexOf('stamp-linked') >= 0 && inRect.indexOf('box-rect') >= 0 && inRect.indexOf('stamp-keep') >= 0, 'itemsInRect finds items: ' + JSON.stringify(inRect));
 	assert.ok(inRect.indexOf('stamp-door') < 0 && inRect.indexOf('area-none') < 0, 'itemsInRect ignores items outside the bounds');
 
+	// 6b. Editing an item replaces its node; the old drawing must not stay behind.
+	const copies = await page.evaluate(() => {
+		const doc = ink.getDoc();
+		const target = doc.items.find(i => i.kind === 'stamp');
+		for (const [size, color] of [[30, '#b03a2e'], [44, '#3b82c4'], [60, '#3f7d3a']]) {
+			ink.setDoc({ ...doc, items: doc.items.map(i => i.id === target.id ? { ...i, size, color } : i) });
+		}
+		const ids = [...document.querySelectorAll('g.ink-item[data-ink-id]')].map(g => g.getAttribute('data-ink-id'));
+		const counts = {};
+		for (const id of ids) counts[id] = (counts[id] || 0) + 1;
+		const dupes = Object.entries(counts).filter(([, n]) => n > 1);
+		const g = document.querySelector(`g.ink-item[data-ink-id="${target.id}"]`);
+		return { dupes, color: g && g.querySelector('g[color]:last-of-type, g[color]') && [...g.querySelectorAll('[color]')].map(e => e.getAttribute('color')) };
+	});
+	assert.deepEqual(copies.dupes, [], 'every item is drawn once after edits');
+	assert.ok(copies.color.includes('#3f7d3a'), 'the edited stamp shows its new colour');
+
 	// 7. Read-only: no overlay, unlinked items take no pointer input.
 	await page.evaluate(() => { ink.setReadOnly(true); });
 	const ro = await page.evaluate(() => ({
