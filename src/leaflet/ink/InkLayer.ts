@@ -10,11 +10,12 @@
  *
  * Pure TypeScript apart from the DOM calls on the layer's own SVG: no Obsidian imports.
  */
-import { buildScene, buildSelection, fmt, itemBounds } from './svgBuild';
+import { brushDetailFor, buildScene, buildSelection, fmt, itemBounds } from './svgBuild';
 import type { Projector } from './svgBuild';
 import { defaultInkDoc } from './model';
 import type { InkDoc, InkItem } from './model';
 import { rectsIntersect } from './geometry';
+import { getBrush } from './brushes';
 import type { Bounds, Point } from './geometry';
 
 /** Name of the Leaflet pane that holds the ink SVG. */
@@ -96,6 +97,12 @@ interface ZoomAnimEvent {
 	zoom: number;
 }
 
+/** Whether an item draws a known brush, so its look depends on the zoom. */
+function hasBrush(item: InkItem): boolean {
+	const style = (item as { style?: { brush?: string } }).style;
+	return !!style?.brush && getBrush(style.brush) !== undefined;
+}
+
 /** Holds all the state. The Leaflet class forwards to it. */
 class InkSurface {
 	private map: InkMapLike | undefined;
@@ -117,6 +124,8 @@ class InkSurface {
 	private originX = 0;
 	private originY = 0;
 	private scale = 1;
+	/** Brush width multiplier for the current zoom, see brushDetailFor. */
+	private brushDetail = 1;
 	private handlers: Record<string, (e: never) => void> = {};
 	private readonly prefix: string;
 	private readonly project: Projector = p => {
@@ -254,6 +263,15 @@ class InkSurface {
 		this.rootEl.setAttribute('transform', `translate(${fmt(o.x)} ${fmt(o.y)}) scale(${fmt(s)})`);
 		this.svg.style.transform = '';
 		this.applyCounters(s);
+		const detail = brushDetailFor(s);
+		if (detail !== this.brushDetail) {
+			this.brushDetail = detail;
+			// Only brushed items change markup, so render() replaces just those nodes.
+			if (this.doc.items.some(hasBrush)) {
+				this.render();
+				return;
+			}
+		}
 		this.renderOverlay();
 	}
 
@@ -306,6 +324,7 @@ class InkSurface {
 			project: this.project,
 			readOnly: this.readOnly,
 			idPrefix: this.prefix,
+			brushDetail: this.brushDetail,
 		});
 		const byId = new Map<string, InkItem>();
 		for (const item of this.doc.items) byId.set(item.id, item);

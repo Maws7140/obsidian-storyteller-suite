@@ -27,6 +27,22 @@ export interface InkSvgOptions {
 	stampHalo?: string;
 	/** Symbol lookup. Defaults to the library in symbols.ts. */
 	lookupSymbol?: (id: string) => { body: string; name?: string } | undefined;
+	/** Multiplier on brush width and detail, from brushDetailFor. Defaults to 1. */
+	brushDetail?: number;
+}
+
+/**
+ * How much of the map's zoom brushes follow. Their path always follows the map, but their
+ * width, ticks, waves and dots grow only 2^BRUSH_ZOOM_FOLLOW times per zoom step on screen,
+ * so lines stay fine-inked up close (like the old hand-drawn notation) and still read when
+ * zoomed out. 0 would keep brush detail at screen size, 1 would scale it fully with the map.
+ */
+export const BRUSH_ZOOM_FOLLOW = 0.4;
+
+/** Brush width multiplier for a map scale s (2^(zoom - refZoom)). 1 at the reference zoom. */
+export function brushDetailFor(s: number): number {
+	if (!Number.isFinite(s) || s <= 0) return 1;
+	return Math.round(Math.pow(s, BRUSH_ZOOM_FOLLOW - 1) * 1000) / 1000;
 }
 
 export interface InkSceneItem {
@@ -272,6 +288,7 @@ interface Ctx {
 	stampHalo: string;
 	lookupSymbol: (id: string) => { body: string; name?: string } | undefined;
 	defs: Map<string, string>;
+	brushDetail: number;
 }
 
 function makeCtx(opts: InkSvgOptions, defs: Map<string, string> | undefined): Ctx {
@@ -283,6 +300,7 @@ function makeCtx(opts: InkSvgOptions, defs: Map<string, string> | undefined): Ct
 		stampHalo: opts.stampHalo === undefined ? PAPER : (opts.stampHalo === '' ? '' : colour(opts.stampHalo, PAPER)),
 		lookupSymbol: opts.lookupSymbol ?? getSymbol,
 		defs: defs ?? new Map<string, string>(),
+		brushDetail: typeof opts.brushDetail === 'number' && Number.isFinite(opts.brushDetail) && opts.brushDetail > 0 ? opts.brushDetail : 1,
 	};
 }
 
@@ -515,7 +533,9 @@ function strokeMarkup(pts: Point[], closed: boolean, st: StrokeOpts, arrows: str
 /** A brush's pieces in the item's stroke colour, opacity and width. */
 function brushMarkup(pts: Point[], closed: boolean, st: StrokeOpts, ctx: Ctx): string {
 	const line = st.smooth && pts.length >= (closed ? 3 : 2) ? sampleSmooth(pts, closed) : pts;
-	const pieces = brushPieces(String(st.brush), line, { width: st.width, closed, flip: st.brushFlip, scale: st.brushScale });
+	// Keep-size items already draw at screen size; map-scaled items take the zoom damping.
+	const width = st.vector ? st.width : st.width * ctx.brushDetail;
+	const pieces = brushPieces(String(st.brush), line, { width, closed, flip: st.brushFlip, scale: st.brushScale });
 	if (pieces.length === 0) return '';
 	const body = pieces
 		.map(piece => brushPieceMarkup(piece, {

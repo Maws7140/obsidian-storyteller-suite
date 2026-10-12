@@ -14,7 +14,7 @@ const SHEET = '/home/user/wt/w5a-brushes.png';
 (async () => {
 	const bundle = await esbuild.build({
 		stdin: {
-			contents: "export { createInkLayer } from './src/leaflet/ink/InkLayer'; export { normalizeInk, defaultInkDoc } from './src/leaflet/ink/model'; export { buildItem } from './src/leaflet/ink/svgBuild'; export { BRUSHES } from './src/leaflet/ink/brushes'; export { oldLinePieces, oldPieceMarkup } from './test/browser/maplog-old/lines';",
+			contents: "export { createInkLayer } from './src/leaflet/ink/InkLayer'; export { normalizeInk, defaultInkDoc } from './src/leaflet/ink/model'; export { buildItem, brushDetailFor } from './src/leaflet/ink/svgBuild'; export { BRUSHES } from './src/leaflet/ink/brushes'; export { oldLinePieces, oldPieceMarkup } from './test/browser/maplog-old/lines';",
 			resolveDir: path,
 			loader: 'ts',
 		},
@@ -104,6 +104,8 @@ const SHEET = '/home/user/wt/w5a-brushes.png';
 		items.push({ id: 'text-keep', kind: 'text', layer: 'labels', scaleWithMap: false, at: [690, 60], text: 'Keeps its size', rotation: 0, style: ts({ font: 'sans', size: 14, halo: '' }) });
 
 		// Items that must not be drawn.
+		items.push({ id: 'brush-wall', kind: 'path', layer: 'routes', scaleWithMap: true,
+			points: [[600, 460], [620, 560], [600, 660]], style: st({ stroke: '#2b2118', strokeWidth: 4, brush: 'wall' }) });
 		items.push({ id: 'hidden-item', kind: 'path', layer: 'routes', hidden: true, scaleWithMap: true, points: [[690, 40], [690, 300]], style: st({}) });
 		items.push({ id: 'hidden-layer-item', kind: 'path', layer: 'secret', scaleWithMap: true, points: [[680, 40], [680, 300]], style: st({}) });
 
@@ -178,9 +180,17 @@ const SHEET = '/home/user/wt/w5a-brushes.png';
 	assert.ok(Math.abs(p0.dx) < 1.5 && Math.abs(p0.dy) < 1.5, 'stamp centre on latlng at zoom 0 ' + JSON.stringify(p0));
 	assert.ok(Math.abs(p0.w - 48) < 1.5, 'map-scaled stamp is 48 px at zoom 0 ' + p0.w);
 
-	// 4. Zoom twice (in, then in again). No item node may be added or removed.
+	// 4. Zoom twice (in, then in again). No item node may be added or removed, except brushed
+	// items: their detail follows the zoom only partly (brushDetailFor), so they are redrawn.
+	const brushWidth = () => page.evaluate(() => {
+		const stroke = document.querySelector('.ink-items [data-ink-id="brush-wall"] .ink-brush path, .ink-items [data-ink-id="brush-wall"] .ink-brush polyline');
+		const root = document.querySelector('.ink-svg > g');
+		const scale = Number(/scale\(([^)]+)\)/.exec(root.getAttribute('transform'))[1]);
+		return stroke ? Number(stroke.getAttribute('stroke-width')) * scale : null;
+	});
+	const brushW0 = await brushWidth();
 	await page.evaluate(() => {
-		window.before = Array.from(document.querySelectorAll('.ink-items [data-ink-id]'));
+		window.before = Array.from(document.querySelectorAll('.ink-items [data-ink-id]')).filter(n => !n.querySelector('.ink-brush'));
 		window.records = [];
 		window.observer = new MutationObserver(list => { for (const r of list) window.records.push(r); });
 		window.observer.observe(document.querySelector('.ink-items'), { childList: true, subtree: true });
@@ -203,8 +213,9 @@ const SHEET = '/home/user/wt/w5a-brushes.png';
 	assert.ok(Math.abs(pan.dx) < 1.5 && Math.abs(pan.dy) < 1.5, 'stamp centre on latlng after pan ' + JSON.stringify(pan));
 
 	const nodeCheck = await page.evaluate(() => {
-		const added = window.records.reduce((n, r) => n + Array.from(r.addedNodes).filter(x => x.nodeType === 1 && x.hasAttribute('data-ink-id')).length, 0);
-		const removed = window.records.reduce((n, r) => n + Array.from(r.removedNodes).filter(x => x.nodeType === 1 && x.hasAttribute('data-ink-id')).length, 0);
+		const plain = x => x.nodeType === 1 && x.hasAttribute('data-ink-id') && !x.querySelector('.ink-brush');
+		const added = window.records.reduce((n, r) => n + Array.from(r.addedNodes).filter(plain).length, 0);
+		const removed = window.records.reduce((n, r) => n + Array.from(r.removedNodes).filter(plain).length, 0);
 		const same = window.before.every(n => n.isConnected && document.querySelector('.ink-items').contains(n));
 		window.observer.disconnect();
 		return { added, removed, same, count: window.before.length };
@@ -213,6 +224,14 @@ const SHEET = '/home/user/wt/w5a-brushes.png';
 	assert.equal(nodeCheck.removed, 0, 'zoom removed item nodes');
 	assert.ok(nodeCheck.same, 'every item node kept its identity across zoom and pan');
 	console.log('zoom and pan: item nodes kept', nodeCheck.count, 'added', nodeCheck.added, 'removed', nodeCheck.removed);
+	const brushW2 = await brushWidth();
+	if (brushW0 !== null) {
+		const growth = brushW2 / brushW0;
+		console.log('brush screen width zoom 0 to 2:', brushW0.toFixed(2), '->', brushW2.toFixed(2), 'x' + growth.toFixed(2));
+		assert.ok(growth > 1.5 && growth < 2.0, 'brush detail grows gently with zoom (about 4^0.4), not 4x: ' + growth);
+		const copies = await page.evaluate(() => document.querySelectorAll('.ink-items [data-ink-id="brush-wall"]').length);
+		assert.equal(copies, 1, 'a redrawn brush item is drawn once');
+	}
 
 	// 5. Keep-size items keep their screen size at every zoom.
 	const keep = await page.evaluate(() => document.querySelector('[data-ink-id="stamp-keep"] .ink-hit').getBoundingClientRect().width);
@@ -306,7 +325,7 @@ const SHEET = '/home/user/wt/w5a-brushes.png';
 	sheet.on('console', m => { if (m.type() === 'error') sheetErrors.push(m.text()); });
 	await sheet.setContent('<body style="margin:0;padding:20px 24px;background:#f4ecd8;color:#2b1d12;font:14px Georgia,serif">'
 		+ '<h2 style="margin:0 0 6px">Map Ink barrier brushes (W5a)</h2>'
-		+ '<div style="margin-bottom:10px">Left to right: Maplog as it was before removal, then the Map Ink brush of the same name. Zoom 1 shows every brush; zoom 2 doubles the map scale and keeps Maplog at its screen-pixel geometry, as Maplog drew it.</div>'
+		+ '<div style="margin-bottom:10px">Left to right: Maplog as it was before removal, then the Map Ink brush of the same name. Zoom 1 shows every brush; zoom 2 doubles the map scale: Maplog keeps its screen-pixel geometry, Map Ink brush detail grows 2^0.4 (brushDetailFor) while the path follows the map.</div>'
 		+ '<h3 style="margin:14px 0 6px">Rack, drawn by the Map Ink layer</h3>'
 		+ '<div id="rack" style="width:1000px;height:1200px;position:relative"></div>'
 		+ '<div id="cmp"></div></body>');
@@ -370,7 +389,7 @@ const SHEET = '/home/user/wt/w5a-brushes.png';
 			const b = BR.find(x => x.id === brushId);
 			const item = { id: 'cell-' + brushId, kind: 'path', layer: 'routes', scaleWithMap: true,
 				points: SAMPLE.map(p => [p.y, p.x]), style: brushStyle(b) };
-			const markup = INK.buildItem(item, { project: p => ({ x: p[1], y: p[0] }), readOnly: true, idPrefix: 'sh-' + brushId + '-' });
+			const markup = INK.buildItem(item, { project: p => ({ x: p[1], y: p[0] }), readOnly: true, idPrefix: 'sh-' + brushId + '-', brushDetail: INK.brushDetailFor(z) });
 			return `<svg width="${COL * z}" height="${ROW * z}" viewBox="0 0 ${COL} ${ROW}" style="display:block;flex:none">${markup}</svg>`;
 		};
 		const oldSvg = (mark, z) => {
