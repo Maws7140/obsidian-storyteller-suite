@@ -6,6 +6,7 @@ import {
     TFolder,
     setIcon,
     SettingPage,
+    TextComponent,
     type SettingDefinitionItem,
 } from 'obsidian';
 import StorytellerSuitePlugin from './main';
@@ -36,6 +37,7 @@ import type { TemplateEntityType } from './templates/TemplateTypes';
 import type { EntityType } from './yaml/EntitySections';
 import { CalendarRegistry } from './calendar/CalendarRegistry';
 import { parseReferenceDate } from './utils/DateParsing';
+import { iconColorKey, isSafeFrontmatterKey } from './utils/EntityIcon';
 import { encodeShareCode, makeCalendarDocument, makeThemeDocument } from './calendar/TimelineDocuments';
 import { CalendarManagerModal } from './modals/CalendarManagerModal';
 import { PlatformUtils } from './utils/PlatformUtils';
@@ -1471,6 +1473,73 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             'Alternative to the watch property: tag any note with this tag (e.g. #timeline) ' +
             'and give it a "date" frontmatter field to include it on the timeline.'
         );
+
+        this.renderTimelineIconSettings(container);
+    }
+
+    /** Timeline icons: which frontmatter keys hold an event or scene icon, and what the timeline shows. */
+    private renderTimelineIconSettings(container: HTMLElement): void {
+        new Setting(container).setName('Timeline icons').setHeading();
+
+        let colorText: TextComponent | undefined;
+        const iconSetting = new Setting(container)
+            .setName('Icon property')
+            .setDesc('Frontmatter key that holds an event or scene icon. Changing it does not rewrite existing notes; the plugin reads and writes the new key from then on.');
+        const errorEl = iconSetting.descEl.createDiv({ cls: 'mod-warning' });
+        errorEl.style.display = 'none';
+        iconSetting.addText(text => text
+            .setPlaceholder('icon')
+            .setValue(this.plugin.settings.timelineIconProperty || 'icon')
+            .onChange(async (v) => {
+                const value = v.trim() || 'icon';
+                if (!isSafeFrontmatterKey(value)) {
+                    errorEl.setText('Use letters, digits, "-" or "_", starting with a letter. Core entity keys such as "name" are not allowed.');
+                    errorEl.style.display = '';
+                    return;
+                }
+                errorEl.style.display = 'none';
+                this.plugin.settings.timelineIconProperty = value;
+                colorText?.setPlaceholder(iconColorKey(value));
+                await this.plugin.saveSettings();
+            }));
+
+        new Setting(container)
+            .setName('Icon colour property')
+            .setDesc('Frontmatter key that holds the icon colour. Leave empty to use the icon property name with "Color" added.')
+            .addText(text => {
+                colorText = text;
+                text
+                    .setPlaceholder(iconColorKey(this.plugin.settings.timelineIconProperty || 'icon'))
+                    .setValue(this.plugin.settings.timelineIconColorProperty || '')
+                    .onChange(async (v) => {
+                        const value = v.trim();
+                        if (value && !isSafeFrontmatterKey(value)) return;
+                        this.plugin.settings.timelineIconColorProperty = value;
+                        await this.plugin.saveSettings();
+                    });
+            });
+
+        new Setting(container)
+            .setName('Show icons on timelines')
+            .setDesc('Draw each event or scene icon on the timeline. When off, markers are plain dots.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.timelineShowIcons ?? true)
+                .onChange(async (v) => {
+                    this.plugin.settings.timelineShowIcons = v;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshTimelineViews();
+                }));
+
+        new Setting(container)
+            .setName('Use the cover image when there is no icon')
+            .setDesc('Show the cover image as a round thumbnail for events and scenes that have no icon.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.timelineUseCoverImage ?? true)
+                .onChange(async (v) => {
+                    this.plugin.settings.timelineUseCoverImage = v;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshTimelineViews();
+                }));
     }
 
     // ─── Timeline storage section ─────────────────────────────────────────────

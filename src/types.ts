@@ -404,6 +404,10 @@ export interface Scene {
     priority?: number;
     tags?: string[];
     profileImagePath?: string;
+    /** Icon value for timelines: a Lucide name, ink:/pack/emoji/vault/URL/data value. Stored in the frontmatter key set by Settings > Timeline icons (default `icon`). */
+    icon?: string;
+    /** Optional tint for the icon, as a hex or rgb()/hsl() colour. Stored in the colour key (default `iconColor`). */
+    iconColor?: string;
     /** Main prose */
     content?: string;
     /** Optional beat list */
@@ -999,6 +1003,10 @@ export interface Event {
 
     /** Path to a representative image of the event within the vault */
     profileImagePath?: string;
+    /** Icon value for timelines: a Lucide name, ink:/pack/emoji/vault/URL/data value. Stored in the frontmatter key set by Settings > Timeline icons (default `icon`). */
+    icon?: string;
+    /** Optional tint for the icon, as a hex or rgb()/hsl() colour. Stored in the colour key (default `iconColor`). */
+    iconColor?: string;
     
     /** Array of group ids this event belongs to */
     groups?: string[];

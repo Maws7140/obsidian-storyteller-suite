@@ -132,6 +132,8 @@ import { LONELOG_NAME } from './campaign/PartylogImport';
 import { PARTYLOG_NAME } from './campaign/PartylogExport';
 import { LORELOG_NAME } from './lore/WorldLog';
 import { buildCampaignSessionFrontmatter, normalizeCampaignSessionData } from './utils/CampaignModel';
+import { isSafeFrontmatterKey, readIconFromFrontmatter, resolveIconPropertyKeys, writeIconToFrontmatter } from './utils/EntityIcon';
+import type { IconPropertyKeys } from './utils/EntityIcon';
 
 /** Runtime-only flags added to entity objects during save/sync to prevent recursion. Not persisted. */
 type WithSyncFlags<T> = T & {
@@ -341,6 +343,17 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     /** Timeline watch settings for vault note inclusion */
     timelineWatchProperty?: string;
     timelineWatchTag?: string;
+
+    /** Timeline icons: frontmatter key read and written for an event or scene icon (default `icon`) */
+    timelineIconProperty?: string;
+    /** Frontmatter key for the icon colour. Empty means derived from the icon key (`icon` gives `iconColor`) */
+    timelineIconColorProperty?: string;
+    /** Draw icons on timeline markers, cards and tooltips */
+    timelineShowIcons?: boolean;
+    /** Show the cover image as a round thumbnail when an entity has no icon */
+    timelineUseCoverImage?: boolean;
+    /** Recently picked icon values, newest first (used by the icon picker) */
+    iconPickerRecent?: string[];
 
     /** Timeline & Causality */
     timelineForks?: TimelineFork[];
@@ -565,6 +578,11 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     entityTypeBackfilledVersion: '',
     timelineWatchProperty: 'timeline-date',
     timelineWatchTag: 'timeline',
+    timelineIconProperty: 'icon',
+    timelineIconColorProperty: '',
+    timelineShowIcons: true,
+    timelineUseCoverImage: true,
+    iconPickerRecent: [],
     timelineForks: [],
     causalityLinks: [],
     timelineConflicts: [],
@@ -4310,6 +4328,18 @@ export default class StorytellerSuitePlugin extends Plugin {
                 data['locationHistory'] = parseLocationHistory(data['locationHistory'] as unknown[]);
             }
 
+            // Timeline icon: read only the configured keys. The spread above copied every
+            // frontmatter key onto the entity, so drop the raw copies first. Otherwise a
+            // custom key would leak into the entity and be written back after a clear.
+            if (entityType === 'event' || entityType === 'scene') {
+                const iconKeys = this.timelineIconKeys();
+                delete data['icon'];
+                delete data['iconColor'];
+                delete data[iconKeys.icon];
+                delete data[iconKeys.color];
+                Object.assign(data, readIconFromFrontmatter(frontmatter, iconKeys));
+            }
+
             // Scene: beats is an array on the entity; convert the raw section text now.
             if (entityType === 'scene' && typeof data['beats'] === 'string') {
                 const beats = (data['beats'])
@@ -4495,8 +4525,28 @@ export default class StorytellerSuitePlugin extends Plugin {
         return this.buildLinkedFrontmatter('location', src, originalFrontmatter, extraOmitKeys);
     }
 
-    private buildFrontmatterForEvent(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
-        return this.buildLinkedFrontmatter('event', src, originalFrontmatter);
+    /** Frontmatter keys for the timeline icon and colour, from settings (utils/EntityIcon.ts). */
+    timelineIconKeys(): IconPropertyKeys {
+        return resolveIconPropertyKeys(this.settings.timelineIconProperty, this.settings.timelineIconColorProperty);
+    }
+
+    /**
+     * Move an entity's icon and colour onto the configured frontmatter keys, in place.
+     * Returns the configured keys to remove from the note because they are now empty.
+     */
+    private applyTimelineIconWrite(rest: Record<string, unknown>): { omit: string[] } {
+        const keys = this.timelineIconKeys();
+        const writes = writeIconToFrontmatter(rest, keys);
+        delete rest.icon;
+        delete rest.iconColor;
+        delete rest[keys.icon];
+        delete rest[keys.color];
+        Object.assign(rest, writes.set);
+        return { omit: writes.omit };
+    }
+
+    private buildFrontmatterForEvent(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>, extraOmitKeys?: readonly string[]): Promise<Record<string, unknown>> {
+        return this.buildLinkedFrontmatter('event', src, originalFrontmatter, extraOmitKeys);
     }
 
     private buildFrontmatterForItem(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -5720,6 +5770,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         delete rest.description;
         delete rest.outcome;
         if (rest.sections) delete rest.sections;
+        const eventIcon = this.applyTimelineIconWrite(rest);
 
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
@@ -5763,7 +5814,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		// Build frontmatter strictly from whitelist, preserving original frontmatter
-		const finalFrontmatter = await this.buildFrontmatterForEvent(rest, originalFrontmatter);
+		const finalFrontmatter = await this.buildFrontmatterForEvent(rest, originalFrontmatter, eventIcon.omit);
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -7072,6 +7123,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         delete rest.linkedItems;
         delete rest.linkedGroups;
         if (rest.sections) delete rest.sections;
+        const sceneIcon = this.applyTimelineIconWrite(rest);
 
         // Rename if needed
         let finalFilePath = filePath;
@@ -7110,7 +7162,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const fm: Record<string, unknown> = buildFrontmatter('scene', preparedScene.source, preserveScene, {
             customFieldsMode: mode,
             originalFrontmatter,
-            omitOriginalKeys: preparedScene.omitOriginalKeys,
+            omitOriginalKeys: [...preparedScene.omitOriginalKeys, ...sceneIcon.omit],
         });
 
 		// Validate that we're not losing any fields before serialization
@@ -10201,6 +10253,24 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!('eraFolderPath' in this.settings)) { this.settings.eraFolderPath = DEFAULT_SETTINGS.eraFolderPath; settingsUpdated = true; }
         if (!('trackFolderPath' in this.settings)) { this.settings.trackFolderPath = DEFAULT_SETTINGS.trackFolderPath; settingsUpdated = true; }
         if (!('branchFolderPath' in this.settings)) { this.settings.branchFolderPath = DEFAULT_SETTINGS.branchFolderPath; settingsUpdated = true; }
+
+        // Timeline icon settings: an unsafe key falls back to the default rather than
+        // writing odd frontmatter. Changing the key never rewrites notes.
+        if (!isSafeFrontmatterKey(this.settings.timelineIconProperty)) {
+            this.settings.timelineIconProperty = DEFAULT_SETTINGS.timelineIconProperty;
+            settingsUpdated = true;
+        }
+        if (typeof this.settings.timelineIconColorProperty !== 'string'
+            || (this.settings.timelineIconColorProperty !== '' && !isSafeFrontmatterKey(this.settings.timelineIconColorProperty))) {
+            this.settings.timelineIconColorProperty = DEFAULT_SETTINGS.timelineIconColorProperty;
+            settingsUpdated = true;
+        }
+        if (typeof this.settings.timelineShowIcons !== 'boolean') this.settings.timelineShowIcons = DEFAULT_SETTINGS.timelineShowIcons;
+        if (typeof this.settings.timelineUseCoverImage !== 'boolean') this.settings.timelineUseCoverImage = DEFAULT_SETTINGS.timelineUseCoverImage;
+        if (!Array.isArray(this.settings.iconPickerRecent)) {
+            this.settings.iconPickerRecent = [];
+            settingsUpdated = true;
+        }
 
         // A vault with no eras, tracks or branches in settings has nothing to
         // migrate, so it can start on notes and never meet the migration at
