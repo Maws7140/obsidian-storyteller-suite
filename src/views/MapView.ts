@@ -21,10 +21,14 @@ import { openMapModal } from '../utils/MapModalHelper';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { VIEW_TYPE_CAMPAIGN } from './CampaignView';
 import { createPlacementOverlay } from '../leaflet/placementOverlay';
-import { MaplogPalette } from '../leaflet/maplog/MaplogPalette';
-import { MaplogEditor } from '../leaflet/maplog/MaplogEditor';
-import { MAPLOG_FRONTMATTER_KEYS, maplogFrontmatter, normalizeMaplogData, type MaplogData } from '../leaflet/maplog/model';
-import { parseRoomStates } from '../leaflet/maplog/roomState';
+import { InkEditor, type InkEditorLeaflet } from '../leaflet/ink/InkEditor';
+import type { InkLayer } from '../leaflet/ink/InkLayer';
+import type { InkLegend } from '../leaflet/ink/InkLegend';
+import type { InkToolMap } from '../leaflet/ink/tools/types';
+import { ObsidianInkHost } from '../leaflet/ink/obsidian/ObsidianInkHost';
+import { INK_FRONTMATTER_KEY, inkFrontmatter, normalizeInk, type InkDoc } from '../leaflet/ink/model';
+import { MAPLOG_KEYS } from '../leaflet/ink/migrateMaplog';
+import { inkDocOf } from '../leaflet/utils/mapInk';
 
 export const VIEW_TYPE_MAP = 'storyteller-map-view';
 
@@ -58,16 +62,16 @@ interface MapViewState extends Record<string, unknown> {
  * - Map Container: Flex-grow to fill remaining space with Leaflet map
  * - Status Footer: Map info (type, scale, marker count)
  */
-/** What one Maplog save changed: the state before it and the state it asked for. */
-interface MaplogChange {
-    before: MaplogData;
-    after: MaplogData;
+/** What one drawing save changed: the drawing before it and the drawing it asked for. */
+interface InkChange {
+    before: InkDoc;
+    after: InkDoc;
 }
 
 /**
- * Undo one save's changes to a Maplog list. Items the save added are removed and items it
- * changed or removed get their old version back. An item that a later save changed again is
- * left alone, so that later edit is kept.
+ * Undo one save's changes to a list of layers or items. Entries the save added are removed and
+ * entries it changed or removed get their old version back. An entry that a later save changed
+ * again is left alone, so that later edit is kept.
  */
 function undoListChange<T extends { id: string }>(current: T[], before: T[], after: T[]): T[] {
     const same = (a: T, b: T | undefined): boolean => b !== undefined && JSON.stringify(a) === JSON.stringify(b);
@@ -115,11 +119,11 @@ export class MapView extends ItemView {
     private currentZoom = 2;
     private locationLevelMode: LocationLevel = 'auto';
     private gridController: GridController | null = null;
-    private maplogPalette: MaplogPalette | null = null;
-    private maplogEditor: MaplogEditor | null = null;
-    private maplogSaveQueue: Promise<void> = Promise.resolve();
-    /** Maplog writes queued or running; while any are, the in-memory marks are newer than the note. */
-    private maplogWritesPending = 0;
+    /** The Map Ink editor for the open map. Null while the map is loading or closed. */
+    private inkEditor: InkEditor | null = null;
+    private inkSaveQueue: Promise<void> = Promise.resolve();
+    /** Drawing writes queued or running; while any are, the in-memory drawing is newer than the note. */
+    private inkWritesPending = 0;
     private mapRenderToken = 0;
     private placementMode: { type: 'location' | 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference' | null } = { type: null };
     private placementClickHandler: ((e: L.LeafletMouseEvent) => void) | null = null;
@@ -260,17 +264,17 @@ export class MapView extends ItemView {
         // Spacer
         this.toolbarEl.createDiv('storyteller-toolbar-spacer');
 
-        // Maplog palette (edit mode for marks, lines and areas)
+        // Draw: opens the Map Ink editor (drawing tools, inspector and layers)
         if (this.currentMap) {
-            const maplogBtn = this.toolbarEl.createEl('button', {
+            const drawBtn = this.toolbarEl.createEl('button', {
                 cls: 'clickable-icon storyteller-toolbar-btn',
                 attr: {
-                    'aria-label': 'Maplog palette',
-                    'title': 'Maplog palette: walls, doors, stairs, traps, terrain'
+                    'aria-label': 'Draw on map',
+                    'title': 'Draw on map'
                 }
             });
-            setIcon(maplogBtn, 'pencil-ruler');
-            maplogBtn.onclick = () => this.toggleMaplogPalette();
+            setIcon(drawBtn, 'pen-tool');
+            drawBtn.onclick = () => { void this.toggleInk(); };
         }
 
         // Refresh button
@@ -692,146 +696,132 @@ export class MapView extends ItemView {
     }
 
     /**
-     * Enable placement mode for clicking on map to place entities
+     * Open or close the Map Ink editor. Opening first ends any grid painting and
+     * disarms entity placement, so only one of them is armed at a time.
      */
-    /** Show or hide the Maplog palette beside the map. */
-    private toggleMaplogPalette(): void {
-        if (!this.currentMap || !this.mapContainer) return;
-        if (this.maplogPalette?.isOpen()) {
-            this.maplogPalette.close();
+    private async toggleInk(): Promise<void> {
+        const editor = this.inkEditor;
+        if (!editor) {
+            new Notice('The map is still loading. Try again in a moment.');
             return;
         }
-        if (!this.maplogPalette) {
-            this.maplogPalette = new MaplogPalette(this.mapContainer, {
-                onChange: tool => {
-                    if (!this.maplogEditor) {
-                        if (tool) new Notice('The map is still loading. Pick the mark again in a moment.');
-                        return;
-                    }
-                    this.maplogEditor.setTool(tool);
-                },
-                chooseLocation: done => { new LocationSuggestModal(this.app, this.plugin, done).open(); },
-                onClose: () => undefined,
-                drawing: {
-                    finish: () => this.maplogEditor?.finish(),
-                    undo: () => this.maplogEditor?.undoPoint(),
-                    cancel: () => this.maplogEditor?.cancel(),
-                },
-            });
+        if (editor.isOpen()) {
+            await editor.close();
+            return;
         }
-        this.refreshRoomStates();
-        this.maplogPalette.open();
+        if (this.gridController && !await this.gridController.endEditing()) return;
+        this.disablePlacementMode();
+        editor.open();
     }
 
-    /** Disarm and remove the Maplog palette. Used before the map is rendered again. */
-    private closeMaplogPalette(): void {
-        this.maplogEditor?.setTool(null);
-        this.maplogPalette?.destroy();
-        this.maplogPalette = null;
+    /** Close the Map Ink editor when another tool arms. The drawing stays on the map. */
+    private closeInk(): void {
+        void this.inkEditor?.close();
     }
 
-    private createMaplogEditor(): MaplogEditor {
-        return new MaplogEditor({
-            app: this.app,
-            getMap: () => this.leafletRenderer?.getMap() ?? null,
-            getData: () => normalizeMaplogData(this.currentMap ?? {}),
-            save: next => this.saveMaplog(next),
-            onDisarm: () => this.maplogPalette?.clearSelection(),
+    /** Save the open Map Ink editor and remove it. Its pending save runs first, against the note it was made for. */
+    private async destroyInkEditor(): Promise<void> {
+        const editor = this.inkEditor;
+        this.inkEditor = null;
+        if (editor) await editor.destroy();
+    }
+
+    /**
+     * Build the Map Ink editor on the renderer's drawing layer and legend. The host saves to the
+     * note that was open when the editor was built, so a later map switch cannot redirect a write.
+     */
+    private createInkEditor(map: L.Map, layer: InkLayer, legend: InkLegend | null): InkEditor {
+        const current = this.currentMap;
+        const filePath = current?.filePath;
+        const host = new ObsidianInkHost({
+            plugin: this.plugin,
+            load: () => inkDocOf(this.currentMap ?? {}),
+            save: doc => this.saveInk(doc, filePath),
+            snapPoint: latlng => this.gridController?.snapPoint(latlng) ?? latlng,
+        });
+        return new InkEditor({
+            L: L as unknown as InkEditorLeaflet,
+            map: map as unknown as InkToolMap,
+            host,
+            container: map.getContainer(),
+            doc: inkDocOf(current ?? {}),
+            layer,
+            legend: legend ?? undefined,
         });
     }
 
     /**
-     * Write the Maplog state to the map note's frontmatter. Saves run one after
-     * another, and the drawn layer is updated once the note is written.
+     * Write the drawing to the map note's `mapInk` key. Writes run one after another. The open
+     * map is updated first, so a second change builds on this one. In the same write the old
+     * Maplog keys are removed, so they cannot come back over the new drawing.
      */
-    private saveMaplog(next: MaplogData): Promise<void> {
+    private saveInk(doc: InkDoc, filePath: string | undefined): Promise<void> {
+        const file = filePath ? this.app.vault.getAbstractFileByPath(filePath) : null;
+        if (!filePath || !(file instanceof TFile)) return Promise.reject(new Error('Save the map note before drawing on the map.'));
+        // Round-trip through the frontmatter shape, so the in-memory state equals what the note will hold.
+        const clean = inkDocOf({ mapInk: inkFrontmatter(normalizeInk(doc)) });
         const map = this.currentMap;
-        const file = map?.filePath ? this.app.vault.getAbstractFileByPath(map.filePath) : null;
-        if (!map || !(file instanceof TFile)) return Promise.reject(new Error('Save the map note before adding Maplog marks.'));
-        // next is MaplogData ({ marks, lines, areas }), not the frontmatter shape normalizeMaplogData reads.
-        const clean = normalizeMaplogData({ maplogMarks: next.marks, maplogLines: next.lines, maplogAreas: next.areas });
-        // Update the view first: a second mark placed before this write finishes must build on
-        // this one, not on the note as it was, or the earlier mark would be overwritten.
-        const optimistic = { ...map, maplogMarks: clean.marks, maplogLines: clean.lines, maplogAreas: clean.areas };
-        const change: MaplogChange = { before: normalizeMaplogData(map), after: clean };
-        this.currentMap = optimistic;
-        this.leafletRenderer?.getMaplogLayer()?.setData(clean);
-        this.maplogWritesPending++;
+        const isOpen = map?.filePath === filePath;
+        const change: InkChange = { before: isOpen && map ? inkDocOf(map) : clean, after: clean };
+        let optimistic: StoryMap | null = null;
+        if (isOpen && map) {
+            optimistic = { ...map, mapInk: inkFrontmatter(clean) };
+            this.currentMap = optimistic;
+        }
+        this.inkWritesPending++;
         const run = async (): Promise<void> => {
-            // Write the state as it is now, not as it was when this save was made: a later save may
+            // Write the drawing as it is now, not as it was when this save was made: a later save may
             // already be in memory, and an earlier save may have been rolled back while this one waited.
-            const latest = this.currentMap?.filePath === map.filePath ? normalizeMaplogData(this.currentMap) : clean;
-            const patch = maplogFrontmatter(latest);
+            const latest = isOpen && this.currentMap?.filePath === filePath ? inkDocOf(this.currentMap) : clean;
+            const patch = inkFrontmatter(latest);
             try {
                 // processFrontMatter keeps the rest of the note and writes in one operation.
                 await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-                    for (const key of MAPLOG_FRONTMATTER_KEYS) {
-                        const value = patch[key];
-                        if (value === undefined) Reflect.deleteProperty(fm, key);
-                        else fm[key] = value;
-                    }
+                    fm[INK_FRONTMATTER_KEY] = patch;
+                    for (const key of MAPLOG_KEYS) Reflect.deleteProperty(fm, key);
                 });
             } catch (error) {
                 // Undo this write before the next queued run starts, so that run does not write it.
-                this.rollbackMaplogWrite(map, optimistic, change);
+                if (optimistic && map) this.rollbackInk(map, optimistic, change);
                 throw error;
             }
         };
-        const queued = this.maplogSaveQueue.then(run, run).finally(() => { this.maplogWritesPending--; });
-        this.maplogSaveQueue = queued.catch(() => undefined);
+        const queued = this.inkSaveQueue.then(run, run).finally(() => { this.inkWritesPending--; });
+        this.inkSaveQueue = queued.catch(() => undefined);
         return queued;
     }
 
     /**
-     * Take back one rejected write from the in-memory state. Only that write's own changes are
-     * undone: a later save that was built on top of it keeps its edits.
+     * Take back one rejected write from the in-memory map. Only that write's own changes are
+     * undone: a later save that was built on top of it keeps its edits. The open editor keeps
+     * its drawing, so the next change saves it again.
      */
-    private rollbackMaplogWrite(map: StoryMap, optimistic: StoryMap, change: MaplogChange): void {
-        // Nothing has changed since the write, so the state from before it is restored as it was.
+    private rollbackInk(map: StoryMap, optimistic: StoryMap, change: InkChange): void {
+        // Nothing has changed since the write, so the map state from before it is restored as it was.
         if (this.currentMap === optimistic) {
             this.currentMap = map;
-            this.leafletRenderer?.getMaplogLayer()?.setData(normalizeMaplogData(map));
             return;
         }
-        // The open map has changed since the write, so its drawn state is not this note's.
+        // The open map has changed since the write, so its state is not this note's.
         if (!this.currentMap || this.currentMap.filePath !== map.filePath) return;
-        const current = normalizeMaplogData(this.currentMap);
-        const restored: MaplogData = {
-            marks: undoListChange(current.marks, change.before.marks, change.after.marks),
-            lines: undoListChange(current.lines, change.before.lines, change.after.lines),
-            areas: undoListChange(current.areas, change.before.areas, change.after.areas),
+        const current = inkDocOf(this.currentMap);
+        const restored: InkDoc = {
+            version: 1,
+            layers: undoListChange(current.layers, change.before.layers, change.after.layers),
+            items: undoListChange(current.items, change.before.items, change.after.items),
         };
-        this.currentMap = { ...this.currentMap, maplogMarks: restored.marks, maplogLines: restored.lines, maplogAreas: restored.areas };
-        this.leafletRenderer?.getMaplogLayer()?.setData(restored);
+        this.currentMap = { ...this.currentMap, mapInk: inkFrontmatter(restored) };
     }
 
     /**
-     * Read the room states from the campaign session open in this workspace, so
-     * place-ID tooltips can show what the log says about each room.
+     * Enable placement mode for clicking on map to place entities
      */
-    private refreshRoomStates(): void {
-        const layer = this.leafletRenderer?.getMaplogLayer();
-        if (!layer) return;
-        let path: string | undefined;
-        for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_CAMPAIGN)) {
-            const view = leaf.view as unknown as { getActiveSessionFilePath?: () => string | undefined };
-            path = view.getActiveSessionFilePath?.();
-            if (path) break;
-        }
-        if (!path) {
-            layer.setRoomStates(new Map());
-            return;
-        }
-        void this.plugin.loadSessionLog(path)
-            .then(log => layer.setRoomStates(parseRoomStates(log)))
-            .catch(() => layer.setRoomStates(new Map()));
-    }
-
     private async enablePlacementMode(
         entityType: 'location' | 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference',
         onPlaceCoordinates: (coordinates: [number, number]) => void
     ): Promise<void> {
         if (this.gridController && !await this.gridController.endEditing()) return;
+        this.closeInk();
         // Disable any existing placement mode first
         this.disablePlacementMode();
 
@@ -944,13 +934,11 @@ export class MapView extends ItemView {
                     await this.loadMap(mapId);
                 },
                 onDelete: async () => {
-                    // The map is going away: leave placement, grid, Maplog editor and palette with it.
+                    // The map is going away: leave placement, grid and the drawing editor with it.
                     this.disablePlacementMode();
                     this.gridController?.destroy();
                     this.gridController = null;
-                    this.closeMaplogPalette();
-                    this.maplogEditor?.destroy();
-                    this.maplogEditor = null;
+                    await this.destroyInkEditor();
                     // Clear current map and refresh selector
                     this.currentMap = null;
                     await this.buildMapSelector();
@@ -1988,6 +1976,8 @@ export class MapView extends ItemView {
 
             const resolvedMapId = map.id || map.name;
 
+            // The open drawing is saved before the map changes, so it lands in its own note.
+            await this.destroyInkEditor();
             this.currentMap = map;
 
             // Update dropdown
@@ -2023,7 +2013,7 @@ export class MapView extends ItemView {
         this.disablePlacementMode();
         this.gridController?.destroy();
         this.gridController = null;
-        this.closeMaplogPalette();
+        await this.destroyInkEditor();
         this.removeDocumentMapListeners();
         // Clean up existing renderer before creating new one
         if (this.leafletRenderer) {
@@ -2125,18 +2115,19 @@ export class MapView extends ItemView {
             const initializedMap = this.leafletRenderer.getMap();
             if (imageBounds && initializedMap) {
                 this.buildEntityBar();
-                try { this.gridController = new GridController(this.plugin, initializedMap, this.currentMap, imageBounds, this.entityBarEl!.querySelector<HTMLElement>('.entity-bar-quick-actions')!); }
+                try {
+                    this.gridController = new GridController(this.plugin, initializedMap, this.currentMap, imageBounds, this.entityBarEl!.querySelector<HTMLElement>('.entity-bar-quick-actions')!);
+                    // Painting the grid disarms the drawing editor, so its clicks cannot reach the map tools.
+                    this.gridController.onEditStart = () => this.closeInk();
+                }
                 catch (error) { new Notice(`Grid unavailable: ${error instanceof Error ? error.message : String(error)}`); }
                 initializedMap.on('storyteller:area-saved', () => { void this.leafletRenderer?.refreshEntities(); });
             }
 
-            // Maplog: right-click edits a placed item; the palette arms placement.
-            const maplogLayer = this.leafletRenderer.getMaplogLayer();
-            if (maplogLayer && initializedMap) {
-                this.maplogEditor?.destroy();
-                this.maplogEditor = this.createMaplogEditor();
-                maplogLayer.onItemContextMenu = (ref, event) => this.maplogEditor?.openItemMenu(ref, event);
-                this.refreshRoomStates();
+            // Map Ink: the drawing editor works on the renderer's own layer and legend.
+            const inkLayer = this.leafletRenderer.getInkLayer();
+            if (inkLayer && initializedMap) {
+                this.inkEditor = this.createInkEditor(initializedMap, inkLayer, this.leafletRenderer.getInkLegend());
             }
 
             // CRITICAL: Prevent Obsidian from intercepting events when using the map
@@ -2322,9 +2313,12 @@ export class MapView extends ItemView {
             const current = (await this.plugin.listMaps()).find(m => (m.id || m.name) === (this.currentMap!.id || this.currentMap!.name));
             if (current) {
                 const previous = this.currentMap;
-                this.currentMap = this.maplogWritesPending > 0 && previous
-                    ? { ...current, maplogMarks: previous.maplogMarks, maplogLines: previous.maplogLines, maplogAreas: previous.maplogAreas }
+                this.currentMap = this.inkWritesPending > 0 && previous
+                    ? { ...current, mapInk: previous.mapInk }
                     : current;
+                // A drawing edited in the note itself replaces the open one, but only when nothing of ours is unsaved.
+                const changedInNote = JSON.stringify(previous?.mapInk ?? null) !== JSON.stringify(current.mapInk ?? null);
+                if (changedInNote && this.inkWritesPending === 0) this.inkEditor?.setDoc(inkDocOf(current));
             }
             await this.gridController?.refreshFromVault(current);
             await this.leafletRenderer.refreshEntities();
@@ -2488,11 +2482,9 @@ export class MapView extends ItemView {
     async onClose(): Promise<void> {
         this.gridController?.destroy();
         this.gridController = null;
-        // Clean up placement mode
+        // Clean up placement mode and the drawing editor (its drawing stays in the note)
         this.disablePlacementMode();
-        this.closeMaplogPalette();
-        this.maplogEditor?.destroy();
-        this.maplogEditor = null;
+        await this.destroyInkEditor();
 
         // Clean up debounce timer for view state persistence
         if (this._persistViewStateTimeout) {

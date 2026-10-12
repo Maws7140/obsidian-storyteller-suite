@@ -1,4 +1,5 @@
-// Scratch: does a grid paint stroke leak a map 'click' to Leaflet listeners (e.g. an armed Maplog tool)?
+// Does a grid paint stroke leak to the map or to an armed Map Ink tool? Arms the Ink stamp tool,
+// wires the grid's onEditStart hook the way MapView does, then paints. Nothing may be placed.
 const path=require('path');const ROOT=path.resolve(__dirname,'../..');
 const {chromium}=require(ROOT+'/node_modules/playwright');const esbuild=require(ROOT+'/node_modules/esbuild');const fs=require('fs');const assert=require('assert');
 (async()=>{
@@ -12,7 +13,7 @@ export class LocationSuggestModal {constructor(a,p,fn){this.fn=fn}open(){this.fn
 export class LocationModal {open(){}}
 export async function confirmWithModal(){return true}
 `;
-const entry="export { GridController } from './src/leaflet/grid/GridController'; export { MaplogEditor } from './src/leaflet/maplog/MaplogEditor'; export { emptyMaplogData, normalizeMaplogData } from './src/leaflet/maplog/model';";
+const entry="export { GridController } from './src/leaflet/grid/GridController'; export { InkEditor } from './src/leaflet/ink/InkEditor'; export { defaultInkDoc } from './src/leaflet/ink/model';";
 const bundle=await esbuild.build({stdin:{contents:entry,resolveDir:ROOT,loader:'ts'},bundle:true,write:false,format:'iife',globalName:'Bundle',plugins:[{name:'host',setup(b){b.onResolve({filter:/^(leaflet|obsidian)$|LocationSuggestModal|LocationModal|ConfirmModal|MapMembershipService/},args=>({path:args.path,namespace:'host'}));b.onLoad({filter:/.*/,namespace:'host'},args=>({contents:args.path==='leaflet'?'module.exports=window.L':args.path==='obsidian'?stub:'export class MapMembershipService{}; export function detachFromMaps(){}; export function confirmWithModal(){return Promise.resolve(true)}; export class LocationModal{open(){}}; export class LocationSuggestModal{constructor(a,p,fn){this.fn=fn}open(){this.fn(window.locations[0])}}',loader:'js'}));}}]});
 const b=await chromium.launch({headless:true,executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome'});
 try{const p=await b.newPage({viewport:{width:1200,height:900}});const errors=[];p.on('pageerror',e=>errors.push(e.message));
@@ -30,18 +31,27 @@ window.plugin={app:{vault:{getName:()=>'Test',getAbstractFileByPath:()=>({path:'
 window.clicks=[];map.on('click',e=>clicks.push([e.latlng.lat,e.latlng.lng]));
 window.controller=new Bundle.GridController(plugin,map,record,bounds,document.getElementById('toolbar'));
 });
-// Arm a Maplog Door on the same map (the palette would do this), so a leaked click has a visible effect.
-await p.evaluate(()=>{window.mlData=Bundle.emptyMaplogData();window.ed=new Bundle.MaplogEditor({app:{},getMap:()=>map,getData:()=>mlData,save:async n=>{window.mlData=n},onDisarm:()=>{}});ed.setTool({markId:'door',attributes:[],dashed:false,rotation:0});});
+// Open the Ink editor on the same map and arm its stamp tool, so a leaked click has a visible effect.
+// MapView closes the editor when the grid starts editing; the same hook is wired here.
+await p.evaluate(()=>{
+window.inkSaves=[];
+const host={notify:()=>{},confirm:async()=>true,showMenu:()=>{},icon:()=>{},pickLocation:async()=>null,openLocation:()=>{},load:()=>Bundle.defaultInkDoc(),save:async d=>{inkSaves.push(d)},presets:()=>[],savePreset:()=>{}};
+window.ink=new Bundle.InkEditor({L,map,host,container:map.getContainer(),doc:Bundle.defaultInkDoc()});
+ink.open();ink.store.setTool('stamp');
+controller.onEditStart=()=>{void ink.close();};
+});
 await p.getByRole('button',{name:'Grid',exact:true}).click();
 await p.getByRole('button',{name:'Location area',exact:true}).click();
 await p.mouse.move(280,250);await p.mouse.down();await p.mouse.move(430,250,{steps:10});await p.mouse.up();await p.waitForTimeout(150);
 const painted=await p.evaluate(()=>controller.selected.size);
 const leaked=await p.evaluate(()=>clicks.length);
-const doors=await p.evaluate(()=>mlData.marks.length);
-console.log(JSON.stringify({painted,mapClicksAfterStroke:leaked,maplogMarksPlaced:doors,clickAt:await p.evaluate(()=>clicks),edBound:await p.evaluate(()=>!!ed.bound),edTool:await p.evaluate(()=>ed.tool && ed.tool.markId),notices:await p.evaluate(()=>window.notices||null)}));
+const stamps=await p.evaluate(()=>ink.store.doc.items.length);
+const inkOpen=await p.evaluate(()=>ink.isOpen());
+console.log(JSON.stringify({painted,mapClicksAfterStroke:leaked,inkStampsPlaced:stamps,inkOpenAfterPaint:inkOpen,clickAt:await p.evaluate(()=>clicks),notices:await p.evaluate(()=>window.notices||null)}));
 assert(painted>=3,'stroke painted cells');
 assert.equal(leaked,0,'a paint stroke must not reach map click listeners');
-assert.equal(doors,0,'a paint stroke must not place a Maplog mark');
+assert.equal(stamps,0,'a paint stroke must not place a Map Ink stamp');
+assert.equal(inkOpen,false,'starting a grid edit must close the Map Ink editor');
 console.log('PASS (no leak)');
 assert.deepEqual(errors,[]);
 }finally{await b.close()}

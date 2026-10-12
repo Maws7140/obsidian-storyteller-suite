@@ -108,7 +108,7 @@ Open this map in the Map view to set its image or coordinates, zoom levels and m
 1. Upload your world map image to your vault
 2. Open the map with Edit map in the Map view and set the image to your file name
 3. In the Map view, click Add location and then click the map where the place is to put its marker
-4. Use the Maplog palette to mark doors, roads, walls and areas on the map
+4. Use the Draw button to add doors, roads, walls and areas on the map
 5. Turn on the Grid button to show square cells for measuring distances
 
 ## Placing Markers
@@ -328,7 +328,7 @@ Open this map in the Map view to set its image or coordinates, zoom levels and m
 1. In Edit map, choose the map type: an image map for your own picture, or a real-world map that uses OpenStreetMap tiles
 2. For an image map, set the image file, width, height and zoom levels. For a real-world map, set the latitude, longitude and zoom levels
 3. In the Map view, use an Add button such as Add location, then click the map to place a marker
-4. Use the Maplog palette to draw doors, walls, roads and areas, and the Grid button for square cells`
+4. Use the Draw button to draw doors, walls, roads and areas, and the Grid button for square cells`
             }
         ]
     }

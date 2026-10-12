@@ -1,7 +1,7 @@
 import type { LatLngExpression, LatLngBoundsExpression, CRS, Layer } from 'leaflet';
 import type { TFile, CachedMetadata } from 'obsidian';
 import type { Location } from '../types';
-import type { MaplogData } from './maplog/model';
+import type { InkDoc } from './ink/model';
 
 /**
  * YAML Parameters from code block
@@ -46,8 +46,8 @@ export interface BlockParameters {
     gpx?: string | string[];              // GPX file paths
     gpxColor?: string;                    // GPX default color
 
-    // Maplog marks, lines and areas (normalised by mapToBlockParams)
-    maplog?: MaplogData;
+    // The Map Ink drawing (migrated from Maplog keys when needed), set by mapToBlockParams
+    ink?: InkDoc;
 
     // Overlays
     overlay?: Array<[string, [number, number], [number, number]]>; // Image overlays

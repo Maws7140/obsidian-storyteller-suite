@@ -30,7 +30,8 @@ vi.mock('../../src/leaflet/renderer', () => ({
         async initialize() { await Promise.resolve(); }
         getImageBounds() { return null; }
         getMap() { return this.map; }
-        getMaplogLayer() { return null; }
+        getInkLayer() { return null; }
+        getInkLegend() { return null; }
         async refreshEntities() { /* no-op */ }
     },
 }));
@@ -127,15 +128,13 @@ describe('MapView.renderMap placement and palette state', () => {
         expect(view.mapContainer.style.cursor).toBe('');
     });
 
-    it('destroys the grid, Maplog editor and palette when the map is deleted', async () => {
+    it('destroys the grid and the drawing editor when the map is deleted', async () => {
         const view = await freshView();
         await view.renderMap();
         const grid = { destroy: vi.fn(), setPlacement: vi.fn() };
-        const editor = { destroy: vi.fn(), setTool: vi.fn() };
-        const palette = { destroy: vi.fn(), open: vi.fn() };
+        const editor = { destroy: vi.fn(async () => undefined), close: vi.fn(async () => undefined), isOpen: () => false };
         view.gridController = grid;
-        view.maplogEditor = editor;
-        view.maplogPalette = palette;
+        view.inkEditor = editor;
         view.buildMapSelector = vi.fn(async () => undefined);
         view.buildEntityBar = vi.fn();
         view.updateFooterStatus = vi.fn();
@@ -145,9 +144,7 @@ describe('MapView.renderMap placement and palette state', () => {
         expect(grid.destroy).toHaveBeenCalled();
         expect(view.gridController).toBeNull();
         expect(editor.destroy).toHaveBeenCalled();
-        expect(view.maplogEditor).toBeNull();
-        expect(palette.destroy).toHaveBeenCalled();
-        expect(view.maplogPalette).toBeNull();
+        expect(view.inkEditor).toBeNull();
     });
 });
 

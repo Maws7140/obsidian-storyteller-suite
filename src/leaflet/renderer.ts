@@ -3,6 +3,7 @@ import { confirmWithModal } from '../modals/ui/ConfirmModal';
 import { constrainImageViewport } from './utils/ImageViewport';
 import { persistedMapMarkers } from './utils/PersistedMapMarkers';
 import { imageMimeForPath, planImageExport } from './utils/MapImageExport';
+import type { ExportPlan } from './utils/MapImageExport';
 import {
     describeOverlayProperties,
     parseGeoJsonText,
@@ -21,8 +22,13 @@ import { RasterCoords } from './utils/RasterCoords';
 import { EntityMarkerDiscovery } from './EntityMarkerDiscovery';
 import { MapEntityRenderer } from './MapEntityRenderer';
 import { ObsidianTileLayer } from './ObsidianTileLayer';
-import { MaplogLayer } from './maplog/MaplogLayer';
-import { emptyMaplogData } from './maplog/model';
+import { createInkLayer } from './ink/InkLayer';
+import type { InkLayer, InkLeafletNamespace as InkLayerLeafletNamespace } from './ink/InkLayer';
+import { InkLegend } from './ink/InkLegend';
+import { defaultInkDoc } from './ink/model';
+import { buildInkExportSvg } from './ink/exportSvg';
+import type { InkDoc, InkItem } from './ink/model';
+import { ObsidianInkHost, findLocation, openLocationNote } from './ink/obsidian/ObsidianInkHost';
 import {
     chooseSvgRenderMode,
     createNormalizedSvgElement,
@@ -80,7 +86,8 @@ export class LeafletRenderer extends Component {
     /** Colour and label per marker, kept for image export. */
     private markerExportMeta = new WeakMap<L.Marker, { color: string; label: string }>();
     private gridLayer: L.LayerGroup | null = null;
-    private maplogLayer: MaplogLayer | null = null;
+    private inkLayer: InkLayer | null = null;
+    private inkLegend: InkLegend | null = null;
     private workspaceResizeRef: EventRef | null = null;
 
     constructor(
@@ -143,7 +150,7 @@ export class LeafletRenderer extends Component {
         // Add layers (GeoJSON, GPX, overlays)
         await this.addLayers();
         this.addBoardGrid();
-        this.addMaplog();
+        this.addInk();
 
         // Initialize MapEntityRenderer for location and entity rendering
         if (this.map) {
@@ -2068,16 +2075,52 @@ export class LeafletRenderer extends Component {
         this.gridLayer = L.layerGroup(lines).addTo(this.map);
     }
 
-    /** Maplog marks, lines and areas from the map note, read-only when the renderer is. */
-    private addMaplog(): void {
+    /**
+     * The Map Ink drawing from the map note, with its legend. Read-only when the renderer is.
+     * Linked items open their location when clicked.
+     */
+    private addInk(): void {
         if (!this.map) return;
-        this.maplogLayer = new MaplogLayer(this.map, { readOnly: this.options.readOnly });
-        this.maplogLayer.setData(this.params.maplog ?? emptyMaplogData());
+        const leaflet = L as unknown as InkLayerLeafletNamespace;
+        this.inkLayer = createInkLayer(leaflet, {
+            readOnly: this.options.readOnly === true,
+            onItemClick: id => this.openInkItemLocation(id),
+        });
+        this.inkLayer.setDoc(this.params.ink ?? defaultInkDoc());
+        this.inkLayer.addTo(this.map);
+        this.inkLegend = new InkLegend(this.map.getContainer(), this.readOnlyInkHost(), {});
+        this.inkLegend.setDoc(this.inkLayer.getDoc());
     }
 
-    /** The Maplog layer, so the map view can edit and redraw it. Null before initialisation. */
-    getMaplogLayer(): MaplogLayer | null {
-        return this.maplogLayer;
+    /** A host for the legend and the read-only drawing. It can show and open things, but never saves. */
+    private readOnlyInkHost(): ObsidianInkHost {
+        return new ObsidianInkHost({
+            plugin: this.plugin,
+            load: () => this.inkLayer?.getDoc() ?? defaultInkDoc(),
+            save: () => Promise.reject(new Error('This drawing can only be changed from the map view.')),
+        });
+    }
+
+    /** Opens the location an ink item is linked to. Uses onLocationSelect when the host gives one. */
+    private openInkItemLocation(id: string): void {
+        const item: InkItem | undefined = this.inkLayer?.getDoc().items.find(candidate => candidate.id === id);
+        if (!item?.locationId) return;
+        const locationId = item.locationId;
+        void findLocation(this.plugin, locationId).then(location => {
+            if (!location) return;
+            if (this.options.onLocationSelect) this.options.onLocationSelect(location);
+            else openLocationNote(this.plugin.app, location);
+        });
+    }
+
+    /** The Map Ink layer, so the map view can edit and redraw it. Null before initialisation. */
+    getInkLayer(): InkLayer | null {
+        return this.inkLayer;
+    }
+
+    /** The legend for the drawing. Null before initialisation. */
+    getInkLegend(): InkLegend | null {
+        return this.inkLegend;
     }
 
     /**
@@ -2236,8 +2279,10 @@ export class LeafletRenderer extends Component {
         this.layers.forEach(layer => layer.remove());
         this.gridLayer?.remove();
         this.gridLayer = null;
-        this.maplogLayer?.destroy();
-        this.maplogLayer = null;
+        this.inkLegend?.destroy();
+        this.inkLegend = null;
+        this.inkLayer?.destroy();
+        this.inkLayer = null;
 
         if (this.workspaceResizeRef) {
             this.plugin.app.workspace.offref(this.workspaceResizeRef);
@@ -2319,6 +2364,12 @@ export class LeafletRenderer extends Component {
         const image = await this.loadImageForExport(imagePath);
         ctx.drawImage(image, plan.image.x, plan.image.y, plan.image.width, plan.image.height);
 
+        // The Map Ink drawing sits over the image and under the entity markers, as on the map.
+        const inkDoc = this.inkLayer?.getDoc();
+        if (inkDoc && inkDoc.items.length > 0) {
+            await this.drawInkForExport(ctx, inkDoc, plan, map, map.latLngToContainerPoint(bounds.getNorthWest()), map.latLngToContainerPoint(bounds.getSouthEast()));
+        }
+
         ctx.lineWidth = 2 * plan.scale;
         ctx.font = `600 ${12 * plan.scale}px sans-serif`;
         ctx.textBaseline = 'middle';
@@ -2347,6 +2398,49 @@ export class LeafletRenderer extends Component {
                 reject(error instanceof Error ? error : new Error(String(error)));
             }
         });
+    }
+
+    /**
+     * Draw the Map Ink drawing onto the export canvas. The drawing is placed where the image is in
+     * the export, so it lines up with the image at any export scale.
+     */
+    private async drawInkForExport(
+        ctx: CanvasRenderingContext2D,
+        doc: InkDoc,
+        plan: ExportPlan,
+        map: L.Map,
+        nw: L.Point,
+        se: L.Point,
+    ): Promise<void> {
+        const refZoom = map.options.crs === L.CRS.Simple ? 0 : map.getMinZoom();
+        const kx = plan.image.width / (se.x - nw.x);
+        const ky = plan.image.height / (se.y - nw.y);
+        const toCanvas = (container: { x: number; y: number }) => ({
+            x: plan.image.x + (container.x - nw.x) * kx,
+            y: plan.image.y + (container.y - nw.y) * ky,
+        });
+        const origin = toCanvas(map.latLngToContainerPoint(map.unproject([0, 0], refZoom)));
+        const svg = buildInkExportSvg(doc, {
+            width: plan.width,
+            height: plan.height,
+            originX: origin.x,
+            originY: origin.y,
+            scale: map.getZoomScale(map.getZoom(), refZoom) * kx,
+            viewScale: map.getZoomScale(map.getZoom(), refZoom),
+            project: p => {
+                const q = map.project([p[0], p[1]], refZoom);
+                return { x: q.x, y: q.y };
+            },
+        });
+        const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+        try {
+            const img = this.containerEl.ownerDocument.createElement('img');
+            img.src = url;
+            await img.decode();
+            ctx.drawImage(img, 0, 0, plan.width, plan.height);
+        } finally {
+            URL.revokeObjectURL(url);
+        }
     }
 
     /** Read a vault image into a decoded element. Blob URLs are same-origin, so the canvas stays untainted. */

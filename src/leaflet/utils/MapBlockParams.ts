@@ -1,6 +1,6 @@
 import type { StoryMap } from '../../types';
 import type { BlockParameters } from '../types';
-import { normalizeMaplogData } from '../maplog/model';
+import { inkDocOf } from './mapInk';
 
 /**
  * Convert a StoryMap entity to the BlockParameters consumed by LeafletRenderer.
@@ -48,8 +48,8 @@ export function mapToBlockParams(map: StoryMap): BlockParameters {
     if (map.geojsonFiles?.length) params.geojson = [...map.geojsonFiles];
     if (map.gpxFiles?.length) params.gpx = [...map.gpxFiles];
 
-    // Maplog marks, lines and areas, normalised so the renderer only sees valid records
-    params.maplog = normalizeMaplogData(map);
+    // The Map Ink drawing, migrated from the old Maplog keys when the note has no mapInk yet
+    params.ink = inkDocOf(map);
 
     // Note: Markers are handled differently in the renderer
     // They're loaded from the map entity's markers array

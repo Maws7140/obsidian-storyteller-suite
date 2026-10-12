@@ -36,6 +36,8 @@ export class GridController {
     private placing = false;
     private snap = true;
     private mode = 'paint';
+    /** Called when a location area starts editing, so the host can disarm other map tools. */
+    onEditStart: (() => void) | null = null;
     private radius = 0;
     private drawing = false;
     private space = false;
@@ -135,7 +137,7 @@ export class GridController {
         this.canvas.addEventListener('pointerup', this.up);
         this.canvas.addEventListener('pointercancel', this.cancelStroke);
         // A paint stroke ends with a browser click on the canvas. Keep it from reaching the map so armed tools
-        // (Maplog marks, entity placement) do not also act on the end of the stroke.
+        // (Map Ink, entity placement) do not also act on the end of the stroke.
         this.canvas.addEventListener('click', e => e.stopPropagation());
         host.ownerDocument.addEventListener('keydown', this.key);
         host.ownerDocument.addEventListener('keyup', this.keyUp);
@@ -334,6 +336,7 @@ export class GridController {
             return;
         }
         this.editing = loc;
+        this.onEditStart?.();
         const area = this.grid.areas.find(a => a.locationId === loc.id);
         this.selected = new Set(area?.cells ?? []);
         this.label = area?.label ?? '';

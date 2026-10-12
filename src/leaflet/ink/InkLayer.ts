@@ -57,6 +57,8 @@ export interface InkLayer {
 	onItemClick?: (id: string, event: MouseEvent) => void;
 	/** Replace the document. Items keep their DOM nodes when their markup is unchanged. */
 	setDoc(doc: InkDoc): void;
+	/** The document the layer is showing. */
+	getDoc(): InkDoc;
 	/** Draw the selection overlay for these item ids. */
 	setSelection(ids: readonly string[]): void;
 	setReadOnly(readOnly: boolean): void;
@@ -189,6 +191,10 @@ class InkSurface {
 		if (this.destroyed) return;
 		this.doc = doc;
 		this.render();
+	}
+
+	getDoc(): InkDoc {
+		return this.doc;
 	}
 
 	setSelection(ids: readonly string[]): void {
@@ -411,6 +417,9 @@ function layerClass(L: InkLeafletNamespace): new (options?: InkLayerOptions) => 
 		},
 		setDoc(this: InkLayerInternals, doc: InkDoc) {
 			this._surface.setDoc(doc);
+		},
+		getDoc(this: InkLayerInternals) {
+			return this._surface.getDoc();
 		},
 		setSelection(this: InkLayerInternals, ids: readonly string[]) {
 			this._surface.setSelection(ids);
