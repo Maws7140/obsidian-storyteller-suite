@@ -27,6 +27,7 @@ import { ObsidianInkHost } from '../leaflet/ink/obsidian/ObsidianInkHost';
 import { INK_FRONTMATTER_KEY, inkFrontmatter, normalizeInk, type InkDoc } from '../leaflet/ink/model';
 import { MAPLOG_KEYS } from '../leaflet/ink/migrateMaplog';
 import { inkDocOf } from '../leaflet/utils/mapInk';
+import { LatestToken } from '../utils/LatestToken';
 
 export const VIEW_TYPE_MAP = 'storyteller-map-view';
 
@@ -125,6 +126,8 @@ export class MapView extends ItemView {
     /** Drawing writes queued or running; while any are, the in-memory drawing is newer than the note. */
     private inkWritesPending = 0;
     private mapRenderToken = 0;
+    /** Last map requested by loadMap. Older loads that finish late are dropped. */
+    private mapLoadToken = new LatestToken();
     private placementMode: { type: 'location' | 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference' | null } = { type: null };
     private placementClickHandler: ((e: L.LeafletMouseEvent) => void) | null = null;
     private placementOverlay: HTMLElement | null = null;
@@ -378,49 +381,48 @@ export class MapView extends ItemView {
             return;
         }
 
-        // Create breadcrumb items
+        // Crumbs: each has a Lucide icon for its scale. Ancestors are buttons, the current map is plain text.
         breadcrumbPath.forEach((mapInfo, index) => {
-            // Don't add separator before first item
+            const isCurrent = index === breadcrumbPath.length - 1;
+
             if (index > 0) {
                 const separator = this.breadcrumbEl!.createSpan('breadcrumb-separator');
-                separator.textContent = ' > ';
+                setIcon(separator, 'chevron-right');
+                separator.setAttribute('aria-hidden', 'true');
             }
 
-            const breadcrumbItem = this.breadcrumbEl!.createEl('button', {
-                cls: 'breadcrumb-item',
-                text: mapInfo.name
-            });
+            const crumb = isCurrent
+                ? this.breadcrumbEl!.createSpan({ cls: 'breadcrumb-item breadcrumb-item-current' })
+                : this.breadcrumbEl!.createEl('button', {
+                    cls: 'breadcrumb-item breadcrumb-item-clickable',
+                    attr: { type: 'button', title: `Open ${mapInfo.name}` }
+                });
+            if (isCurrent) crumb.setAttribute('aria-current', 'page');
 
-            // Add scale emoji for visual hierarchy
-            const scaleEmoji = this.getScaleEmoji(mapInfo.scale);
-            if (scaleEmoji) {
-                breadcrumbItem.prepend(scaleEmoji + ' ');
-            }
+            const icon = crumb.createSpan({ cls: 'breadcrumb-item-icon' });
+            setIcon(icon, this.getScaleIcon(mapInfo.scale));
+            crumb.createSpan({ cls: 'breadcrumb-item-label', text: mapInfo.name });
 
-            // Make clickable unless it's the current map (last item)
-            if (index < breadcrumbPath.length - 1) {
-                breadcrumbItem.addClass('breadcrumb-item-clickable');
-                breadcrumbItem.onclick = async () => {
+            if (!isCurrent) {
+                crumb.onclick = async () => {
                     await this.loadMap(mapInfo.id);
                 };
-            } else {
-                breadcrumbItem.addClass('breadcrumb-item-current');
             }
         });
     }
 
     /**
-     * Get emoji icon for map scale
+     * Lucide icon name for a map scale (plugin UI uses Lucide icons, not emoji).
      */
-    private getScaleEmoji(scale: StoryMap['scale']): string {
-        const scaleEmojis: Record<string, string> = {
-            'world': '🌍',
-            'region': '👑',
-            'city': '🏰',
-            'building': '🏛️',
-            'custom': '📍'
+    private getScaleIcon(scale: StoryMap['scale']): string {
+        const scaleIcons: Record<string, string> = {
+            'world': 'globe',
+            'region': 'crown',
+            'city': 'castle',
+            'building': 'landmark',
+            'custom': 'map-pin'
         };
-        return scaleEmojis[scale || 'custom'] || '📍';
+        return scaleIcons[scale || 'custom'] || 'map-pin';
     }
 
     /**
@@ -1981,10 +1983,15 @@ export class MapView extends ItemView {
      * Load a specific map by ID or name
      */
     async loadMap(mapIdOrName: string): Promise<void> {
+        // Last request wins. Every await below can be overtaken by a newer switch (dropdown, breadcrumb,
+        // back button), so each one re-checks the token before touching the view.
+        const token = this.mapLoadToken.begin();
         if (this.gridController && !await this.gridController.canLeave()) return;
+        if (!this.mapLoadToken.isCurrent(token)) return;
         try {
             // Try to find map by ID first, then by name
             const maps = await this.plugin.listMaps();
+            if (!this.mapLoadToken.isCurrent(token)) return;
             const map = maps.find(m => m.id === mapIdOrName || m.name === mapIdOrName);
 
             if (!map) {
@@ -1992,10 +1999,9 @@ export class MapView extends ItemView {
                 return;
             }
 
-            const resolvedMapId = map.id || map.name;
-
             // The open drawing is saved before the map changes, so it lands in its own note.
             await this.destroyInkEditor();
+            if (!this.mapLoadToken.isCurrent(token)) return;
             this.currentMap = map;
 
             // Update dropdown
@@ -2006,15 +2012,18 @@ export class MapView extends ItemView {
 
             // Render the map
             await this.renderMap();
+            if (!this.mapLoadToken.isCurrent(token)) return;
 
             // Update toolbar, footer, breadcrumb, and entity bar
             await this.buildToolbar();
+            if (!this.mapLoadToken.isCurrent(token)) return;
             this.updateFooterStatus();
             await this.buildBreadcrumb();
+            if (!this.mapLoadToken.isCurrent(token)) return;
             this.buildEntityBar();
 
         } catch {
-            
+            if (!this.mapLoadToken.isCurrent(token)) return;
             new Notice('Error loading map. See console for details.');
         }
     }
@@ -2189,15 +2198,18 @@ export class MapView extends ItemView {
 
             // Add zoom/pan event handlers after a short delay
             window.setTimeout(() => {
-                const map = this.leafletRenderer?.getMap();
+                // Bind to this render's renderer only. A map switched away from within 100ms must not
+                // feed its view into the newly selected map's saved state.
+                if (this.leafletRenderer !== renderer) return;
+                const map = renderer.getMap();
                 if (map) {
                     map.on('zoomend', () => {
-                        this.saveMapViewState();
+                        this.saveMapViewState(map);
                         this.updateLocationLevelDropdownLabel();
                     });
 
                     map.on('moveend', () => {
-                        this.saveMapViewState();
+                        this.saveMapViewState(map);
                     });
 
                     this.updateLocationLevelDropdownLabel();
@@ -2208,7 +2220,8 @@ export class MapView extends ItemView {
             // Multiple delays handle different layout completion scenarios
             // IMPORTANT: Must also update tile layers, not just invalidateSize, or tiles disappear
             const forceMapUpdate = () => {
-                const map = this.leafletRenderer?.getMap();
+                if (this.leafletRenderer !== renderer) return;
+                const map = renderer.getMap();
                 if (map) {
                     map.invalidateSize({ animate: false });
 
@@ -2237,7 +2250,7 @@ export class MapView extends ItemView {
             window.setTimeout(forceMapUpdate, 500);
 
         } catch {
-            
+            if (token !== this.mapRenderToken) return;
             leafletContainer.empty();
             leafletContainer.createEl('div', {
                 text: 'Error rendering map. Check console for details.',
@@ -2505,15 +2518,8 @@ export class MapView extends ItemView {
         await this.destroyInkEditor();
 
         // Clean up debounce timer for view state persistence
-        if (this._persistViewStateTimeout) {
-            window.clearTimeout(this._persistViewStateTimeout);
-            // Save immediately if there's a pending save
-            const mapId = this.currentMap?.id || this.currentMap?.name;
-            if (mapId && this._savedCenter) {
-                void this.plugin.saveMapViewState(mapId, this.currentZoom, this._savedCenter);
-            }
-            this._persistViewStateTimeout = null;
-        }
+        // Save any pending view state now (the debounce timer would otherwise be lost with the view)
+        this.flushPendingViewState();
 
         // Clean up activeDocument-level event handlers
         this.removeDocumentMapListeners();
@@ -2541,8 +2547,8 @@ export class MapView extends ItemView {
      * 
      * Also persists to plugin settings so position is remembered across sessions.
      */
-    private saveMapViewState(): void {
-        const map = this.leafletRenderer?.getMap();
+    private saveMapViewState(liveMap?: L.Map): void {
+        const map = liveMap ?? this.leafletRenderer?.getMap();
         if (!map) return;
 
         const zoom = map.getZoom();
@@ -2569,13 +2575,30 @@ export class MapView extends ItemView {
      * Debounced persistence of view state to avoid excessive writes
      */
     private debouncedPersistViewState(mapId: string, zoom: number, center: { lat: number; lng: number }): void {
+        // A pending save for a different map must not be dropped by this one; write it now.
+        if (this.pendingViewSave && this.pendingViewSave.mapId !== mapId) {
+            this.flushPendingViewState();
+        }
         if (this._persistViewStateTimeout) {
             window.clearTimeout(this._persistViewStateTimeout);
         }
+        this.pendingViewSave = { mapId, zoom, center };
         this._persistViewStateTimeout = window.setTimeout(() => {
-            void this.plugin.saveMapViewState(mapId, zoom, center);
-            this._persistViewStateTimeout = null;
+            this.flushPendingViewState();
         }, 500); // 500ms debounce
+    }
+
+    private pendingViewSave: { mapId: string; zoom: number; center: { lat: number; lng: number } } | null = null;
+
+    /** Write the pending view state now, if any, and cancel its timer. */
+    private flushPendingViewState(): void {
+        if (this._persistViewStateTimeout) {
+            window.clearTimeout(this._persistViewStateTimeout);
+            this._persistViewStateTimeout = null;
+        }
+        const pending = this.pendingViewSave;
+        this.pendingViewSave = null;
+        if (pending) void this.plugin.saveMapViewState(pending.mapId, pending.zoom, pending.center);
     }
 
     /**
@@ -2603,8 +2626,10 @@ export class MapView extends ItemView {
 
         // Restore zoom and position after map loads (or if same map)
         if (s.zoom !== undefined) {
+            const restoredRenderer = this.leafletRenderer;
             window.setTimeout(() => {
-                const map = this.leafletRenderer?.getMap();
+                if (!restoredRenderer || this.leafletRenderer !== restoredRenderer) return;
+                const map = restoredRenderer.getMap();
                 if (map) {
                     const center = s.center;
                     map.setView(
