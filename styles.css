@@ -9671,7 +9671,7 @@ body.mod-rtl .storyteller-group-members {
 }
 .storyteller-campaign-toolbar-spacer { flex: 1; }
 .storyteller-campaign-scene-name { font-weight: 700; font-size: 0.95rem; letter-spacing: 0.01em; }
-.storyteller-campaign-main { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.storyteller-campaign-main { display: flex; flex: 1; min-height: 0; overflow: hidden; position: relative; }
 .storyteller-campaign-scene-panel { flex: 1; min-height: 0; overflow-y: auto; padding: 1.25rem 1.35rem 2.4rem; position: relative; display: flex; flex-direction: column; align-items: center; }
 .storyteller-campaign-scene-panel > :not(.storyteller-dice-overlay) { width: min(100%, 960px); }
 .storyteller-campaign-sidebar { width: clamp(280px, 24vw, 340px); min-height: 0; border-left: 1px solid var(--background-modifier-border); overflow-y: auto; display: flex; flex-direction: column; flex-shrink: 0; background: color-mix(in srgb, var(--background-secondary) 58%, transparent); }
@@ -9688,6 +9688,7 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-branch-card-tags { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .storyteller-branch-dice-tag { font-size: 0.75rem; color: var(--color-orange); }
 .storyteller-branch-item-tag { font-size: 0.75rem; color: var(--color-purple); }
+/* Lives on .storyteller-campaign-main (not the scrolling scene panel), so it always covers the visible view. */
 .storyteller-dice-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; border-radius: 8px; z-index: 100; }
 .storyteller-dice-face { font-size: 4rem; display: inline-block; }
 .storyteller-dice-face.rolling { animation: diceRoll 0.6s ease-out; }

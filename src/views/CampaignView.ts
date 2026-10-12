@@ -1410,8 +1410,23 @@ export class CampaignView extends ItemView {
 
     // â”€â”€ Dice overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+    /**
+     * Pass the non-scrolling campaign body (.storyteller-campaign-main), never the scene panel: the
+     * panel scrolls, so an absolute overlay inside it sits at the top of the content and is out of
+     * reach on long scenes.
+     */
+    private createDiceOverlay(host: HTMLElement): HTMLElement {
+        const overlay = host.createDiv('storyteller-dice-overlay');
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            e.stopPropagation();
+            overlay.remove();
+        });
+        return overlay;
+    }
+
     private showDiceOverlay(branch: SceneBranch, panelEl: HTMLElement): void {
-        const overlay = panelEl.createDiv('storyteller-dice-overlay');
+        const overlay = this.createDiceOverlay(panelEl.parentElement ?? panelEl);
         const box = overlay.createDiv('storyteller-dice-box');
 
         box.createEl('h3', { text: branch.label });
@@ -1509,11 +1524,12 @@ export class CampaignView extends ItemView {
         const cancelBtn = btnRow.createEl('button', { cls: 'storyteller-campaign-btn', text: 'Cancel' });
         cancelBtn.addEventListener('click', () => overlay.remove());
         overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        rollBtn.focus();
     }
 
-    private showEncounterOverlay(panelEl: HTMLElement): void {
+    private showEncounterOverlay(main: HTMLElement): void {
         if (!this.encounterTable) return;
-        const overlay = panelEl.createDiv('storyteller-dice-overlay');
+        const overlay = this.createDiceOverlay(main);
         const box = overlay.createDiv('storyteller-dice-box');
         renderEncounterWidget(box, this.encounterTable);
         const closeBtn = box.createEl('button', { cls: 'storyteller-campaign-btn', text: 'Close' });
