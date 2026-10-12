@@ -35,7 +35,8 @@ import {
     BAR_ICON_INSET, BAR_ICON_SIZE, CARD_ICON_SIZE, CARD_TEXT_HEIGHT, CARD_TEXT_INSET,
     CARD_TEXT_INSET_WITH_ICON, MARKER_DISC_SIZE, MARKER_GLYPH_SIZE, barIconLabelOffset,
     barShowsIcon, cardHeightWithImage, cardShowsImageStrip,
-    defaultTimelineIconMode, markerIconRoom
+    defaultTimelineIconMode, markerIconRoom,
+    NODE_GAP, NODE_HOVER_SCALE, NODE_MAX_TIERS, NODE_SIZE, nodeGlyphSize, placeIconNodes
 } from './TimelineIconLayout';
 import type { TimelineIconMode } from './TimelineIconLayout';
 
@@ -1029,6 +1030,8 @@ export class NativeTimelineRenderer {
      * of its neighbour, so both paths read the answer from here.
      */
     private chipWidth(ctx: CanvasRenderingContext2D, item: NativeItem, minimum: number): number {
+        // In "Icon nodes" mode a chip is a round node as tall as its row.
+        if (this.nodesMode()) return this.rowHeight() - 7;
         ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
         const narrativeIconWidth = narrativeDirectionOf(item.event) ? 18 : 0;
         return Math.max(minimum, Math.min(MAX_CHIP_WIDTH, this.text.measure(ctx, this.itemLabel(item)) + 34 + narrativeIconWidth));
@@ -1421,6 +1424,22 @@ export class NativeTimelineRenderer {
             .sort((a, b) => a.start - b.start
                 || narrativeSequenceOf(a.event) - narrativeSequenceOf(b.event)
                 || a.end - b.end);
+        if (this.nodesMode()) {
+            this.markerIconItems.clear();
+            this.drawAxisNodes(
+                ctx,
+                items,
+                item => this.horizontalTimelineTimeToX(item.start, width),
+                (position, offset) => ({ x: position, y: axisY + offset }),
+                true,
+                width,
+                height
+            );
+            this.drawHorizontalTimelineDropTarget(ctx, axisY, width, height);
+            this.drawConnectors(ctx, width, height);
+            this.drawNowHorizontalTimeline(ctx, axisY, width);
+            return;
+        }
         const cardWidth = Math.max(120, Math.min(210, (right - left) * 0.24));
         const placements = placeAlternatingTimelineCards(
             items.map(item => ({ value: item, position: this.horizontalTimelineTimeToX(item.start, width) })),
@@ -2142,6 +2161,22 @@ export class NativeTimelineRenderer {
             value: item,
             position: top + (item.start - this.viewStart) / (this.viewEnd - this.viewStart) * (bottom - top)
         }));
+        if (this.nodesMode()) {
+            this.markerIconItems.clear();
+            this.drawAxisNodes(
+                ctx,
+                items,
+                item => timeToY(item.start),
+                (position, offset) => ({ x: axisX + offset, y: position }),
+                alternateSides,
+                width,
+                height
+            );
+            this.drawVerticalDropTarget(ctx, axisX, width, timeToY);
+            this.drawConnectors(ctx, width, height);
+            this.drawNowVertical(ctx, axisX, top, bottom);
+            return;
+        }
         const sideWidth = (rightSide: boolean) => Math.max(0, rightSide ? width - axisX - 38 : axisX - 38 - (alternateSides ? VERTICAL_LABEL_GUTTER : 0));
         // Only cards inside each side's readable column count set the column
         // width; overflow cards take no room because they draw as markers.
@@ -2444,6 +2479,14 @@ export class NativeTimelineRenderer {
             || (item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : item.laneColor);
         // How far a bar's label moves right to clear its icon.
         let barIconShift = 0;
+        if (isPoint && this.nodesMode()) {
+            // A node, no label: the name and details are in the tooltip.
+            ctx.restore();
+            const diameter = Math.min(rect.width, rect.height);
+            this.drawEventNode(ctx, rect.x + rect.width / 2, rect.y + rect.height / 2, item, diameter);
+            this.drawConflictBadge(ctx, rect, this.conflictSeverity(item.event));
+            return;
+        }
         if (isPoint) {
             // Opaque backing in the plot colour under the translucent fill, so
             // a stem behind the chip cannot show through its label.
@@ -2534,7 +2577,7 @@ export class NativeTimelineRenderer {
         // Keep the label clear of the corner badge, which sits over the top
         // few pixels at the right edge.
         const labelAvailable = severity ? available - CONFLICT_BADGE_INSET : available;
-        if (labelAvailable > 18) {
+        if (labelAvailable > 18 && !this.nodesMode()) {
             ctx.fillStyle = isPoint ? this.css('--text-normal', '#e5e7eb') : this.css('--text-on-accent', '#fff');
             ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
             ctx.fillText(this.truncate(ctx, labelOverride || this.itemLabel(item), labelAvailable), labelX, rect.y + rect.height / 2 + 4);
@@ -2825,6 +2868,16 @@ export class NativeTimelineRenderer {
         return this.iconHost?.resourceUrl(path) ?? null;
     }
 
+    /** Loadable URL when an icon source is a picture (vault image, web image, data URI or cover), else null. */
+    private photoUrl(source: EntityIconSource): string | null {
+        if (!source) return null;
+        if (source.kind === 'cover') return this.coverUrl(source.path);
+        const icon = source.icon;
+        if (icon.kind === 'vault') return this.coverUrl(icon.ref);
+        if (icon.kind === 'url' || icon.kind === 'data') return icon.ref;
+        return null;
+    }
+
     private devicePixelRatio(): number {
         return this.container.ownerDocument.defaultView?.devicePixelRatio ?? 1;
     }
@@ -2850,7 +2903,9 @@ export class NativeTimelineRenderer {
      */
     private planMarkerIcons(items: readonly NativeItem[], positions: readonly number[]): void {
         this.markerIconItems.clear();
-        if ((this.options.iconMode ?? 'off') === 'off') return;
+        // Nodes carry the icons in "Icon nodes" mode; axis markers stay plain dots.
+        const mode = this.options.iconMode ?? 'off';
+        if (mode === 'off' || mode === 'nodes') return;
         const roomy = markerIconRoom(positions);
         items.forEach((item, index) => {
             if (roomy[index] && this.iconSourceFor(item.event)) this.markerIconItems.add(item);
@@ -2875,8 +2930,16 @@ export class NativeTimelineRenderer {
      * Returns false when nothing is ready, so the caller draws the dot.
      */
     private drawIconDisc(ctx: CanvasRenderingContext2D, x: number, y: number, item: NativeItem, source: EntityIconSource): boolean {
+        return this.drawIconNode(ctx, x, y, item, source, MARKER_DISC_SIZE, MARKER_GLYPH_SIZE);
+    }
+
+    /**
+     * An icon disc of any size: the axis marker disc and the event nodes of
+     * "Icon nodes" mode. Returns false when nothing is ready.
+     */
+    private drawIconNode(ctx: CanvasRenderingContext2D, x: number, y: number, item: NativeItem, source: EntityIconSource, size: number, glyphSize: number): boolean {
         if (!source) return false;
-        const radius = MARKER_DISC_SIZE / 2;
+        const radius = size / 2;
         const colour = this.markerColor(item);
         const dpr = this.devicePixelRatio();
         const kind = source.kind === 'icon' ? source.icon.kind : 'cover';
@@ -2884,34 +2947,136 @@ export class NativeTimelineRenderer {
         const emoji = kind === 'emoji';
         const tinted = kind === 'lucide' || kind === 'ink' || kind === 'pack';
         const ownColour = tinted && source.kind === 'icon' && source.color !== undefined;
+        const ring = size > MARKER_DISC_SIZE ? 2 : 1.5;
 
         ctx.save();
         if (photo) {
             // Round bitmap: drawIconBitmap clips it to the disc.
-            const bitmap = this.icons().get({ source, size: MARKER_DISC_SIZE, dpr, fallbackColor: ICON_WHITE });
+            const bitmap = this.icons().get({ source, size, dpr, fallbackColor: ICON_WHITE });
             if (!bitmap) { ctx.restore(); return false; }
-            drawIconBitmap(ctx, bitmap, x, y, MARKER_DISC_SIZE);
+            drawIconBitmap(ctx, bitmap, x, y, size);
             ctx.strokeStyle = colour;
-            ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.arc(x, y, radius - 0.75, 0, Math.PI * 2); ctx.stroke();
+            ctx.lineWidth = ring;
+            ctx.beginPath(); ctx.arc(x, y, radius - ring / 2, 0, Math.PI * 2); ctx.stroke();
         } else {
-            const glyphSize = emoji ? MARKER_GLYPH_SIZE + 2 : MARKER_GLYPH_SIZE;
-            const glyph = this.icons().get({ source, size: glyphSize, dpr, fallbackColor: ICON_WHITE });
+            const drawnGlyph = emoji ? glyphSize + 2 : glyphSize;
+            const glyph = this.icons().get({ source, size: drawnGlyph, dpr, fallbackColor: ICON_WHITE });
             if (!glyph) { ctx.restore(); return false; }
             // White disc for a chosen icon colour and for emoji; otherwise the event colour carries a white glyph.
             ctx.fillStyle = tinted && !ownColour ? colour : ICON_WHITE;
             ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
             if (ownColour || emoji) {
                 ctx.strokeStyle = colour;
-                ctx.lineWidth = 1.5;
-                ctx.beginPath(); ctx.arc(x, y, radius - 0.75, 0, Math.PI * 2); ctx.stroke();
+                ctx.lineWidth = ring;
+                ctx.beginPath(); ctx.arc(x, y, radius - ring / 2, 0, Math.PI * 2); ctx.stroke();
             }
-            drawIconBitmap(ctx, glyph, x, y, glyphSize);
+            drawIconBitmap(ctx, glyph, x, y, drawnGlyph);
         }
         ctx.restore();
 
         if (item.event.isMilestone) this.drawMilestoneBadge(ctx, x + radius * 0.75, y - radius * 0.75, item);
         return true;
+    }
+
+    /**
+     * One event in "Icon nodes" mode: its icon or image, or, without one (or while
+     * it loads), a disc in the event colour with the name's first letter. Hovered
+     * and selected nodes get a ring.
+     */
+    private drawEventNode(ctx: CanvasRenderingContext2D, x: number, y: number, item: NativeItem, diameter: number): void {
+        const hovered = item === this.hovered;
+        const size = hovered ? Math.round(diameter * NODE_HOVER_SCALE) : diameter;
+        const radius = size / 2;
+        ctx.save();
+        ctx.globalAlpha = item.inherited ? 0.45 : this.certaintyAlpha(item.event);
+        // A soft shadow lifts the node off stems and era bands.
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+        ctx.shadowBlur = hovered ? 8 : 4;
+        ctx.shadowOffsetY = 1;
+        ctx.fillStyle = this.css('--background-primary', '#111827');
+        ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowColor = 'transparent';
+        const source = this.iconSourceFor(item.event);
+        const drawn = this.drawIconNode(ctx, x, y, item, source, size, nodeGlyphSize(size));
+        if (!drawn) {
+            ctx.fillStyle = this.markerColor(item);
+            ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+            const initial = (item.event.name || '?').trim().charAt(0).toUpperCase() || '?';
+            ctx.fillStyle = ICON_WHITE;
+            ctx.font = `600 ${Math.round(size * 0.45)}px ${this.css('--font-interface', 'sans-serif')}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(initial, x, y + 1);
+            if (item.event.isMilestone) this.drawMilestoneBadge(ctx, x + radius * 0.75, y - radius * 0.75, item);
+        }
+        if (hovered || item === this.selected) {
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = this.css('--interactive-accent', '#7c3aed');
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(x, y, radius + 3, 0, Math.PI * 2); ctx.stroke();
+        }
+        if (item.approximate) {
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = this.css('--text-muted', '#9ca3af');
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.arc(x, y, radius + 3, 0, Math.PI * 2); ctx.stroke();
+            ctx.setLineDash([]);
+        }
+        ctx.restore();
+    }
+
+    /** Whether the timeline draws events as bare icon nodes. */
+    private nodesMode(): boolean {
+        return (this.options.iconMode ?? 'off') === 'nodes';
+    }
+
+    /**
+     * "Icon nodes" along a straight axis, for the horizontal and vertical timelines.
+     * Crowded nodes step off the axis in tiers, each on a stem from its true spot.
+     */
+    private drawAxisNodes(
+        ctx: CanvasRenderingContext2D,
+        items: readonly NativeItem[],
+        positionOf: (item: NativeItem) => number,
+        toPoint: (position: number, offset: number) => { x: number; y: number },
+        bothSides: boolean,
+        width: number,
+        height: number
+    ): void {
+        const positions = items.map(positionOf);
+        const tiers = placeIconNodes(positions, NODE_SIZE + NODE_GAP, NODE_MAX_TIERS, bothSides);
+        const pitch = NODE_SIZE + NODE_GAP;
+        const placed = items.map((item, index) => {
+            const axis = toPoint(positions[index], 0);
+            const node = toPoint(positions[index], tiers[index] * pitch);
+            item.rect = new DOMRect(node.x - NODE_SIZE / 2, node.y - NODE_SIZE / 2, NODE_SIZE, NODE_SIZE);
+            this.visibleItems.push(item);
+            if (this.slotsVisible() && this.isDraggable(item)) this.markerHits.push({ item, x: node.x, y: node.y });
+            return { item, axis, node, tier: tiers[index] };
+        });
+        const onCanvas = (p: { x: number; y: number }) => this.isOnCanvas(p.x - NODE_SIZE, p.y - NODE_SIZE, p.x + NODE_SIZE, p.y + NODE_SIZE, width, height);
+        // Stems and the small true-time dots first, so every node sits on top.
+        placed.forEach(({ item, axis, node, tier }) => {
+            if (!onCanvas(node) && !onCanvas(axis)) return;
+            ctx.save();
+            ctx.globalAlpha = item.inherited ? 0.45 : 0.85;
+            ctx.fillStyle = item.laneColor;
+            ctx.strokeStyle = item.laneColor;
+            ctx.lineWidth = 1.5;
+            if (tier !== 0) {
+                ctx.beginPath(); ctx.moveTo(axis.x, axis.y); ctx.lineTo(node.x, node.y); ctx.stroke();
+                ctx.beginPath(); ctx.arc(axis.x, axis.y, 2.5, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.restore();
+        });
+        // The hovered node paints last, so its larger size is never covered.
+        const order = placed.filter(entry => entry.item !== this.hovered);
+        const hoveredEntry = placed.find(entry => entry.item === this.hovered);
+        if (hoveredEntry) order.push(hoveredEntry);
+        order.forEach(({ item, node }) => {
+            if (onCanvas(node)) this.drawEventNode(ctx, node.x, node.y, item, NODE_SIZE);
+        });
     }
 
     /** The gold star that marks a milestone, drawn as a small badge on an icon's corner. */
@@ -3423,6 +3588,10 @@ export class NativeTimelineRenderer {
         if (mode === 'images' && this.imageStripFor(event)) {
             // The cover image as a banner above the text, when the note has one.
             const url = this.coverUrl(event.profileImagePath!);
+            if (url) tooltip.createEl('img', { cls: 'sts-native-timeline-tooltip-banner', attr: { src: url, alt: '' } });
+        } else if (mode === 'nodes') {
+            // A node shows its picture small, so the hover card shows it large.
+            const url = this.photoUrl(source);
             if (url) tooltip.createEl('img', { cls: 'sts-native-timeline-tooltip-banner', attr: { src: url, alt: '' } });
         }
         const head = tooltip.createDiv({ cls: source ? 'sts-native-timeline-tooltip-head is-with-icon' : 'sts-native-timeline-tooltip-head' });

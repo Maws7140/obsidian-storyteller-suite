@@ -708,7 +708,8 @@ export class TimelineControlsBuilder {
         [
             { value: 'off', label: 'Off' },
             { value: 'icons', label: 'Icons' },
-            { value: 'images', label: 'Icons and images' }
+            { value: 'images', label: 'Icons and images' },
+            { value: 'nodes', label: 'Icon nodes' }
         ].forEach(opt => {
             const option = select.createEl('option', { value: opt.value, text: opt.label });
             if (opt.value === current) option.selected = true;

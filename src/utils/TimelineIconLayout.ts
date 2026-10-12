@@ -4,14 +4,18 @@
  * unit tested. NativeTimelineRenderer applies them while it draws.
  */
 
-/** off: plain dots and bars. icons: icons on markers, bars and cards. images: also cover image strips on cards. */
-export type TimelineIconMode = 'off' | 'icons' | 'images';
+/**
+ * off: plain dots and bars. icons: icons on markers, bars and cards. images: also
+ * cover image strips on cards. nodes: a minimal timeline where each event is only
+ * its icon or image, with the details on hover.
+ */
+export type TimelineIconMode = 'off' | 'icons' | 'images' | 'nodes';
 
 /** Parse a stored or block-supplied mode. Returns undefined for anything else. */
 export function parseTimelineIconMode(value: unknown): TimelineIconMode | undefined {
     if (typeof value !== 'string') return undefined;
     const v = value.trim().toLowerCase();
-    if (v === 'off' || v === 'icons' || v === 'images') return v;
+    if (v === 'off' || v === 'icons' || v === 'images' || v === 'nodes') return v;
     return undefined;
 }
 
@@ -91,4 +95,56 @@ export function cardHeightWithImage(cardWidth: number, hasImageStrip: boolean, t
 /** The image strip shows only in "Icons and images" mode, and only for a note with a cover image. */
 export function cardShowsImageStrip(mode: TimelineIconMode, coverPath: string | undefined): boolean {
     return mode === 'images' && typeof coverPath === 'string' && coverPath.trim() !== '';
+}
+
+/** Diameter of an event node in "Icon nodes" mode on the timeline axis. */
+export const NODE_SIZE = 30;
+/** Gap between two nodes in the same tier. */
+export const NODE_GAP = 6;
+/** Tiers a node may move away from the axis on each side before nodes overlap. */
+export const NODE_MAX_TIERS = 4;
+/** How much a hovered node grows. */
+export const NODE_HOVER_SCALE = 1.2;
+
+/**
+ * Tier for each node along an axis, in "Icon nodes" mode. 0 sits on the axis,
+ * negative tiers go before it (above, or left) and positive tiers after it.
+ *
+ * Greedy, in axis order: a node takes the first tier, trying 0, -1, 1, -2, 2...
+ * (or 0, 1, 2... with `bothSides` off), whose last node is at least `pitch`
+ * away. When every tier is full it takes the tier that frees up first, so a
+ * crowded moment overlaps instead of running off the canvas.
+ */
+export function placeIconNodes(
+    positions: readonly number[],
+    pitch = NODE_SIZE + NODE_GAP,
+    maxTiers = NODE_MAX_TIERS,
+    bothSides = true
+): number[] {
+    const tiers: number[] = [0];
+    for (let t = 1; t <= maxTiers; t++) {
+        if (bothSides) tiers.push(-t);
+        tiers.push(t);
+    }
+    const last = new Map<number, number>();
+    const result = new Array<number>(positions.length).fill(0);
+    const order = positions.map((_, index) => index).sort((a, b) => positions[a] - positions[b]);
+    order.forEach(index => {
+        const p = positions[index];
+        let chosen = tiers.find(tier => {
+            const previous = last.get(tier);
+            return previous === undefined || p - previous >= pitch;
+        });
+        if (chosen === undefined) {
+            chosen = tiers.reduce((best, tier) => ((last.get(tier) ?? -Infinity) < (last.get(best) ?? -Infinity) ? tier : best), tiers[0]);
+        }
+        last.set(chosen, p);
+        result[index] = chosen;
+    });
+    return result;
+}
+
+/** Glyph size inside a node of this diameter. */
+export function nodeGlyphSize(diameter: number): number {
+    return Math.round(diameter * 0.6);
 }

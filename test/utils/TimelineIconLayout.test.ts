@@ -141,3 +141,40 @@ describe('verticalCardWidth for photo card heights', () => {
         expect(one).toBeGreaterThan(three);
     });
 });
+
+import { NODE_GAP, NODE_SIZE, nodeGlyphSize, placeIconNodes } from '../../src/utils/TimelineIconLayout';
+
+describe('icon nodes mode', () => {
+    it('parses nodes', () => {
+        expect(parseTimelineIconMode('Nodes')).toBe('nodes');
+    });
+
+    it('keeps spread out nodes on the axis', () => {
+        expect(placeIconNodes([0, 100, 200])).toEqual([0, 0, 0]);
+    });
+
+    it('moves crowded nodes off the axis, alternating sides', () => {
+        expect(placeIconNodes([0, 5, 10, 15])).toEqual([0, -1, 1, -2]);
+    });
+
+    it('reuses a tier once the previous node there is a pitch away', () => {
+        const pitch = NODE_SIZE + NODE_GAP;
+        expect(placeIconNodes([0, 5, pitch, pitch + 5])).toEqual([0, -1, 0, -1]);
+    });
+
+    it('handles positions in any order', () => {
+        expect(placeIconNodes([10, 0])).toEqual([-1, 0]);
+    });
+
+    it('uses one side only when asked', () => {
+        expect(placeIconNodes([0, 1, 2], 36, 4, false)).toEqual([0, 1, 2]);
+    });
+
+    it('overlaps in the tier that frees up first when every tier is full', () => {
+        expect(placeIconNodes([0, 1, 2, 3], 36, 1)).toEqual([0, -1, 1, 0]);
+    });
+
+    it('sizes the glyph inside a node', () => {
+        expect(nodeGlyphSize(30)).toBe(18);
+    });
+});

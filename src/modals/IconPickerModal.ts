@@ -867,7 +867,7 @@ export function addIconSetting(
     target: { icon?: string; iconColor?: string }
 ): Setting {
     let clearButton: { setDisabled(disabled: boolean): unknown } | null = null;
-    const setting = new Setting(parent).setName('Icon');
+    const setting = new Setting(parent).setName('Icon or image');
     const chip = setting.controlEl.createDiv({ cls: 'storyteller-icon-picker-chip' });
 
     const refresh = (): void => {
