@@ -89,6 +89,8 @@ export class LeafletRenderer extends Component {
     private inkLayer: InkLayer | null = null;
     private inkLegend: InkLegend | null = null;
     private workspaceResizeRef: EventRef | null = null;
+    /** Set by onunload. A disposed renderer never creates a map again, even if an init await is still pending. */
+    private disposed = false;
 
     constructor(
         private plugin: StorytellerSuitePlugin,
@@ -127,12 +129,19 @@ export class LeafletRenderer extends Component {
         return this.initializationPromise;
     }
 
+    /** Throws if the renderer was unloaded while an async init step was pending. */
+    private assertLive(): void {
+        if (this.disposed) throw new Error('Map was unloaded during initialization');
+    }
+
     /**
      * Internal initialization method
      */
     private async doInitialize(): Promise<void> {
+        this.assertLive();
         // Wait for container to have computed dimensions
         await this.waitForContainerDimensions();
+        this.assertLive();
 
         // Create map based on type
         // Default to 'image' if type is not specified but image param exists
@@ -143,12 +152,15 @@ export class LeafletRenderer extends Component {
         } else {
             await this.initializeRealMap();
         }
+        this.assertLive();
 
         // Add markers
         await this.addMarkers();
+        this.assertLive();
 
         // Add layers (GeoJSON, GPX, overlays)
         await this.addLayers();
+        this.assertLive();
         this.addBoardGrid();
         this.addInk();
 
@@ -530,6 +542,7 @@ export class LeafletRenderer extends Component {
         let attempts = 0;
 
         while (attempts < maxAttempts) {
+            if (this.disposed || !this.map) return;
             const size = this.map.getSize();
             
             if (size.x > 0 && size.y > 0) {
@@ -660,6 +673,7 @@ export class LeafletRenderer extends Component {
 
             // Check if tiles exist for this image
             let tileInfo = await this.checkForTiles(imagePath);
+            this.assertLive();
 
             if (tileInfo) {
                 // Tiles found - use tile-based rendering
@@ -737,6 +751,7 @@ export class LeafletRenderer extends Component {
         }).addTo(this.map);
 
         await new Promise(resolve => window.requestAnimationFrame(resolve));
+        this.assertLive();
         this.map.invalidateSize({ animate: false });
 
         this.updateImageViewport();
@@ -865,6 +880,7 @@ export class LeafletRenderer extends Component {
         // Leaflet uses map.getSize() to determine which tiles to load
         // If size is 0x0, no tiles will be requested
         await this.ensureMapHasDimensions();
+        this.assertLive();
         
         tileLayer.addTo(this.map);
         
@@ -978,6 +994,7 @@ export class LeafletRenderer extends Component {
         // Load image dimensions
         
         const { width, height } = await this.loadImageDimensions(imageUrl);
+        this.assertLive();
         
 
         if (width === 0 || height === 0) {
@@ -1052,6 +1069,7 @@ export class LeafletRenderer extends Component {
 
         // Wait for DOM
         await new Promise(resolve => window.requestAnimationFrame(resolve));
+        this.assertLive();
 
         // Invalidate size first
         this.map.invalidateSize({ animate: false });
@@ -1118,6 +1136,7 @@ export class LeafletRenderer extends Component {
         if (rect.width === 0 || rect.height === 0) {
             
             await new Promise(resolve => window.setTimeout(resolve, 100));
+            this.assertLive();
         }
 
         // Create map using L.map() factory function with element directly
@@ -2187,8 +2206,9 @@ export class LeafletRenderer extends Component {
      * Following javalent-obsidian-leaflet pattern
      */
     onload(): void {
-        
-        
+        // Obsidian (and MapView's deferred addChild) can call onload after a switch already unloaded this renderer.
+        if (this.disposed) return;
+
         // If map hasn't been initialized yet, initialize it now
         // This ensures the container is in the DOM before initialization
         // Use a small delay to ensure the container has been properly reflowed
@@ -2211,7 +2231,7 @@ export class LeafletRenderer extends Component {
                         }
                     }, 100);
                 } catch (error) {
-                    
+                    if (this.disposed) return;
                     // Show error in the container
                     this.showErrorInContainer(`Map initialization failed: ${error instanceof Error ? error.message : String(error)}`);
                 }
@@ -2257,6 +2277,7 @@ export class LeafletRenderer extends Component {
      * Called automatically by Obsidian when the markdown section is unloaded
      */
     onunload(): void { void (async () => {
+        this.disposed = true;
         // Clean up MapEntityRenderer
         if (this.mapEntityRenderer) {
             this.mapEntityRenderer.cleanup();
