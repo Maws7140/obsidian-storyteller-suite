@@ -85,9 +85,9 @@ export const PRESETS: readonly InkPreset[] = [
 
 	// Paths
 	{ id: 'river', name: 'River', fits: 'path',
-		style: { stroke: '#3b82c4', strokeWidth: 3, dash: 'wavy' } },
+		style: { stroke: '#3b6fa8', strokeWidth: 3, dash: 'wavy' } },
 	{ id: 'stream', name: 'Stream', fits: 'path',
-		style: { stroke: '#6fa8dc', strokeWidth: 1.5, dash: 'wavy' } },
+		style: { stroke: '#5f8fc4', strokeWidth: 1.6, dash: 'wavy' } },
 	{ id: 'road', name: 'Road', fits: 'path',
 		style: { stroke: '#7a5c3a', strokeWidth: 3, dash: 'solid' } },
 	{ id: 'track', name: 'Track', fits: 'path',

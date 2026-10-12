@@ -24,6 +24,9 @@ export interface InkStyle {
   smooth?: boolean;        // path/area/freehand: Catmull-Rom
   arrowStart?: boolean;
   arrowEnd?: boolean;
+  brush?: string;          // brush id from brushes.ts; when set it replaces `dash`. Unknown ids draw as `dash`.
+  brushFlip?: boolean;     // one-sided brushes put their marks on the other side
+  brushScale?: number;     // 0.5..3, spacing and tick size multiplier. Omitted when 1.
 }
 
 export interface InkTextStyle {
@@ -79,6 +82,7 @@ const TEXT_LIMIT = 2000;
 const NAME_LIMIT = 200;
 const ID_LIMIT = 64;
 const SYMBOL_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const BRUSH_ID = /^[a-z0-9-]{1,40}$/;
 
 /** CSS named colours (CSS Color Module Level 4). */
 const CSS_COLOR_NAMES = new Set(
@@ -373,6 +377,13 @@ function normalizeStyle(v: unknown): InkStyle {
   if (s.smooth === true) out.smooth = true;
   if (s.arrowStart === true) out.arrowStart = true;
   if (s.arrowEnd === true) out.arrowEnd = true;
+  if (typeof s.brush === 'string' && BRUSH_ID.test(s.brush)) out.brush = s.brush;
+  if (s.brushFlip === true) out.brushFlip = true;
+  const scale = toNumber(s.brushScale);
+  if (scale !== undefined) {
+    const clamped = round2(clamp(scale, 0.5, 3));
+    if (clamped !== 1) out.brushScale = clamped;
+  }
   return out;
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultInkDoc, normalizeInk } from '../../src/leaflet/ink/model';
+import { defaultInkDoc, isValidColor, normalizeInk } from '../../src/leaflet/ink/model';
 import type { InkArea, InkDoc, InkItem, InkPath, InkStamp, InkText } from '../../src/leaflet/ink/model';
 import { MAPLOG_KEYS, hasMaplogData, migrateMaplog } from '../../src/leaflet/ink/migrateMaplog';
 import { PRESETS } from '../../src/leaflet/ink/styles';
@@ -370,8 +370,28 @@ describe('migrateMaplog: lines', () => {
     expect(pathFor('trail').style.dash).toBe('dotted');
     expect(pathFor('stream').style.dash).toBe('wavy');
     expect(pathFor('border').style.dash).toBe('double');
-    expect(pathFor('ledge').style.strokeWidth).toBe(1);
+    expect(pathFor('ledge').style.strokeWidth).toBe(1.5);
     expect(pathFor('ledge').style.dash).toBe('ticked');
+  });
+
+  it('gives every Maplog line the brush of the same name, keeping its preset colour', () => {
+    const marks = ['wall', 'offmap', 'bars', 'ledge', 'cliff', 'border', 'road', 'track', 'trail', 'river', 'stream'];
+    for (const mark of marks) {
+      const style = pathFor(mark).style;
+      expect(style.brush, mark).toBe(mark);
+      expect(isValidColor(style.stroke), mark).toBe(true);
+    }
+    expect(pathFor('river').style.stroke).toBe(PRESETS.find(p => p.id === 'river')?.style?.stroke);
+    expect(pathFor('cliff').style.stroke).toBe(PRESETS.find(p => p.id === 'cliff')?.style?.stroke);
+    expect(pathFor('ledge').style.strokeWidth).toBe(1.5);
+  });
+
+  it('keeps the migrated brushes valid through normalizeInk', () => {
+    const doc = migrateMaplog(fm);
+    const again = normalizeInk(JSON.parse(JSON.stringify(doc)));
+    expect(again).toEqual(doc);
+    const brushed = doc.items.filter(i => (i.kind === 'path' || i.kind === 'area') && i.style.brush);
+    expect(brushed.length).toBeGreaterThan(0);
   });
 
   it('draws bars as a dotted wall and off-map edges as a dashed wall', () => {

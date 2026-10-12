@@ -32,25 +32,30 @@ type LayerId = 'terrain' | 'routes' | 'features' | 'labels';
 
 interface LineRule {
   preset: string;
+  /** The barrier brush (brushes.ts) that draws the line. Same id as the Maplog mark. */
+  brush: string;
   layer: LayerId;
   labelPreset: string;
   dash?: DashStyle;
   strokeWidth?: number;
 }
 
-/** Maplog line marks and how they are drawn. */
+/**
+ * Maplog line marks and how they are drawn. Each keeps its preset colour and gets the brush of the same name.
+ * `dash` is the plain fallback for when the brush is unknown.
+ */
 const LINE_RULES: ReadonlyMap<string, LineRule> = new Map<string, LineRule>([
-  ['wall', { preset: 'wall', layer: 'features', labelPreset: 'label-place' }],
-  ['bars', { preset: 'wall', layer: 'features', labelPreset: 'label-place', dash: 'dotted' }],
-  ['offmap', { preset: 'wall', layer: 'features', labelPreset: 'label-place', dash: 'dashed' }],
-  ['ledge', { preset: 'cliff', layer: 'features', labelPreset: 'label-place', strokeWidth: 1 }],
-  ['cliff', { preset: 'cliff', layer: 'terrain', labelPreset: 'label-place' }],
-  ['border', { preset: 'border', layer: 'terrain', labelPreset: 'label-place' }],
-  ['road', { preset: 'road', layer: 'routes', labelPreset: 'label-place' }],
-  ['track', { preset: 'track', layer: 'routes', labelPreset: 'label-place' }],
-  ['trail', { preset: 'trail', layer: 'routes', labelPreset: 'label-place' }],
-  ['river', { preset: 'river', layer: 'routes', labelPreset: 'label-water' }],
-  ['stream', { preset: 'stream', layer: 'routes', labelPreset: 'label-water' }],
+  ['wall', { preset: 'wall', brush: 'wall', layer: 'features', labelPreset: 'label-place' }],
+  ['bars', { preset: 'wall', brush: 'bars', layer: 'features', labelPreset: 'label-place', dash: 'dotted' }],
+  ['offmap', { preset: 'wall', brush: 'offmap', layer: 'features', labelPreset: 'label-place', dash: 'dashed' }],
+  ['ledge', { preset: 'cliff', brush: 'ledge', layer: 'features', labelPreset: 'label-place', strokeWidth: 1.5 }],
+  ['cliff', { preset: 'cliff', brush: 'cliff', layer: 'terrain', labelPreset: 'label-place' }],
+  ['border', { preset: 'border', brush: 'border', layer: 'terrain', labelPreset: 'label-place' }],
+  ['road', { preset: 'road', brush: 'road', layer: 'routes', labelPreset: 'label-place' }],
+  ['track', { preset: 'track', brush: 'track', layer: 'routes', labelPreset: 'label-place' }],
+  ['trail', { preset: 'trail', brush: 'trail', layer: 'routes', labelPreset: 'label-place', strokeWidth: 1.2 }],
+  ['river', { preset: 'river', brush: 'river', layer: 'routes', labelPreset: 'label-water' }],
+  ['stream', { preset: 'stream', brush: 'stream', layer: 'routes', labelPreset: 'label-water', strokeWidth: 1.6 }],
 ]);
 
 /** Maplog area marks. Each one is also the id of a built-in preset. */
@@ -137,6 +142,7 @@ export function migrateMaplog(frontmatter: unknown): InkDoc {
     const style = presetStyle(rule.preset);
     if (rule.dash) style.dash = rule.dash;
     if (rule.strokeWidth !== undefined) style.strokeWidth = rule.strokeWidth;
+    style.brush = rule.brush;
     style.dash = dashFor(style.dash, raw.dashed);
     const path: InkPath = { id, kind: 'path', layer: rule.layer, scaleWithMap: true, points: pts, style };
     const name = cleanText(raw.label, TEXT_LIMIT);

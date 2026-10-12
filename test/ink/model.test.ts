@@ -364,3 +364,57 @@ describe('defaultInkDoc', () => {
     expect(defaultInkDoc()).not.toBe(doc);
   });
 });
+
+describe('brush style fields', () => {
+  function pathWith(style: Record<string, unknown>): Record<string, unknown> {
+    return { items: [{ id: 'p', kind: 'path', points: [[0, 0], [1, 1]], style }] };
+  }
+
+  it('keeps a brush id that matches the id pattern, even when unknown', () => {
+    expect(normalizeInk(pathWith({ brush: 'cliff' })).items[0]).toMatchObject({ style: { brush: 'cliff' } });
+    expect(normalizeInk(pathWith({ brush: 'no-such-brush-2' })).items[0]).toMatchObject({ style: { brush: 'no-such-brush-2' } });
+  });
+
+  it('drops brush ids that do not match /^[a-z0-9-]{1,40}$/', () => {
+    for (const bad of ['Cliff', 'cliff brush', 'a'.repeat(41), '', 'x/../y', 'cliff<script>', 42, null]) {
+      const style = (normalizeInk(pathWith({ brush: bad })).items[0] as { style: Record<string, unknown> }).style;
+      expect(style.brush, String(bad)).toBeUndefined();
+    }
+  });
+
+  it('keeps brushFlip only when true', () => {
+    const on = (normalizeInk(pathWith({ brushFlip: true })).items[0] as { style: Record<string, unknown> }).style;
+    expect(on.brushFlip).toBe(true);
+    for (const v of [false, 'yes', 1, null]) {
+      const style = (normalizeInk(pathWith({ brushFlip: v })).items[0] as { style: Record<string, unknown> }).style;
+      expect('brushFlip' in style, String(v)).toBe(false);
+    }
+  });
+
+  it('clamps brushScale to 0.5..3 and omits it when it is 1 or missing', () => {
+    const scaleOf = (v: unknown): unknown => (normalizeInk(pathWith({ brushScale: v })).items[0] as { style: Record<string, unknown> }).style.brushScale;
+    expect(scaleOf(0.1)).toBe(0.5);
+    expect(scaleOf(9)).toBe(3);
+    expect(scaleOf(2.345)).toBe(2.35);
+    expect(scaleOf(1)).toBeUndefined();
+    expect(scaleOf(undefined)).toBeUndefined();
+    expect(scaleOf('big')).toBeUndefined();
+    expect(scaleOf(Number.NaN)).toBeUndefined();
+  });
+
+  it('round-trips brush fields through frontmatter and is idempotent', () => {
+    const raw = pathWith({ brush: 'castle-wall', brushFlip: true, brushScale: 0.5, stroke: '#333333' });
+    const once = normalizeInk(raw);
+    expect(normalizeInk(once)).toEqual(once);
+    const fm = JSON.parse(JSON.stringify(inkFrontmatter(once)));
+    expect(normalizeInk(fm)).toEqual(once);
+    expect(fm.items[0].style).toMatchObject({ brush: 'castle-wall', brushFlip: true, brushScale: 0.5 });
+  });
+
+  it('writes no brush keys for a plain style', () => {
+    const fm = inkFrontmatter(normalizeInk(pathWith({ stroke: '#333333' })));
+    expect(fm.items[0].style).not.toHaveProperty('brush');
+    expect(fm.items[0].style).not.toHaveProperty('brushFlip');
+    expect(fm.items[0].style).not.toHaveProperty('brushScale');
+  });
+});
