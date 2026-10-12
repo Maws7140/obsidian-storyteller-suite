@@ -5,6 +5,7 @@ import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent, Notice, View
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { TimelineRenderer, TimelineFilters } from '../utils/NativeTimelineRenderer';
+import { defaultTimelineIconMode, parseTimelineIconMode } from '../utils/TimelineIconLayout';
 import { TimelineConflict, TimelineUIFilters, TimelineUIState, Event as StoryEvent } from '../types';
 import { TimelineTrackManager } from '../utils/TimelineTrackManager';
 import { TimelineControlsBuilder, TimelineControlCallbacks } from '../utils/TimelineControlsBuilder';
@@ -202,6 +203,7 @@ export class TimelineView extends ItemView {
         // How is it drawn
         const display = this.toolbarEl.createDiv('storyteller-toolbar-group');
         this.controlsBuilder.createEditModeToggle(display);
+        this.buildIconsField(display);
         this.controlsBuilder.createDisplayMenu(display, {
             getShowScenes: () => this.showScenes,
             setShowScenes: value => { this.showScenes = value; this.renderer?.setShowScenes(value); },
@@ -227,6 +229,12 @@ export class TimelineView extends ItemView {
     private buildGroupingField(container: HTMLElement): void {
         const field = this.labelledField(container, 'Group');
         this.controlsBuilder.createGroupingDropdown(field);
+    }
+
+    /** Icons: off, icons, or icons and cover image strips. */
+    private buildIconsField(container: HTMLElement): void {
+        const field = this.labelledField(container, 'Icons');
+        this.controlsBuilder.createIconsDropdown(field);
     }
 
     /**
@@ -481,6 +489,7 @@ export class TimelineView extends ItemView {
             showEras: this.currentState.showEras,
             showPresence: this.currentState.showPresence,
             narrativeOrder: this.currentState.narrativeOrder,
+            iconMode: this.currentState.icons,
             getReferenceDate: () => this.plugin.getReferenceTodayDate(),
             defaultGanttDuration: this.plugin.settings.ganttDefaultDuration ?? 1,
             showProgressBars: this.plugin.settings.ganttShowProgressBars ?? true,
@@ -927,6 +936,7 @@ export class TimelineView extends ItemView {
             showEras: this.currentState.showEras,
             showPresence: this.currentState.showPresence,
             narrativeOrder: this.currentState.narrativeOrder,
+            icons: this.currentState.icons,
             currentTrackId: this.currentState.currentTrackId,
             currentForkId: this.currentState.currentForkId,
             // Layers live on the view rather than in TimelineUIState, but they
@@ -984,6 +994,7 @@ export class TimelineView extends ItemView {
                 showEras: state.showEras === true,
                 showPresence: state.showPresence === true,
                 narrativeOrder: state.narrativeOrder === true,
+                icons: parseTimelineIconMode(state.icons) ?? defaultTimelineIconMode(this.plugin.settings.timelineShowIcons),
                 currentTrackId: typeof state.currentTrackId === 'string' ? state.currentTrackId : undefined,
                 currentForkId: typeof state.currentForkId === 'string' ? state.currentForkId : undefined
             };

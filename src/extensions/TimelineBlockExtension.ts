@@ -44,6 +44,7 @@ class TimelineBlockChild extends MarkdownRenderChild {
             showEras: this.config.showEras,
             showPresence: this.config.showPresence,
             narrativeOrder: this.config.narrativeOrder,
+            iconMode: this.config.iconMode,
             stackEnabled: this.config.stackEnabled,
             // An embedded timeline is a picture of a story, not a place to edit
             // one. Dragging an event here would rewrite a note the reader may

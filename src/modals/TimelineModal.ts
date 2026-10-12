@@ -93,6 +93,7 @@ export class TimelineModal extends Modal {
         this.controlsBuilder.createZoomInButton(toolbarContainer);
         this.controlsBuilder.createZoomOutButton(toolbarContainer);
         this.controlsBuilder.createGroupingDropdown(toolbarContainer);
+        this.controlsBuilder.createIconsDropdown(toolbarContainer);
         this.controlsBuilder.createFitButton(toolbarContainer);
         this.controlsBuilder.createFitGroupsButton(toolbarContainer);
         this.controlsBuilder.createDecadeButton(toolbarContainer);
@@ -235,6 +236,7 @@ export class TimelineModal extends Modal {
             showEras: this.currentState.showEras,
             showPresence: this.currentState.showPresence,
             narrativeOrder: this.currentState.narrativeOrder,
+            iconMode: this.currentState.icons,
             getReferenceDate: () => this.plugin.getReferenceTodayDate()
         });
 

@@ -453,6 +453,9 @@ export function definedFieldSaveOptions(
  * as fields. Arrays and numbers are not swept. Mutates `src` and returns the
  * resulting customFields map, which is also assigned to `src.customFields`.
  */
+/** Names the timeline icon fields are read into on events and scenes. Never swept into customFields. */
+const TIMELINE_ICON_READ_KEYS: readonly string[] = ['icon', 'iconColor'];
+
 export function sweepCustomFieldsOnRead(
     entityType: EntityType,
     src: Record<string, unknown>,
@@ -466,6 +469,8 @@ export function sweepCustomFieldsOnRead(
         ...(DERIVED_SECTION_FIELDS[entityType] ?? []),
         ...sectionFrontmatterFields,
         ...definitions.map(definition => definition.key),
+        // Timeline icon and colour, read from the configured keys into these names.
+        ...(entityType === 'event' || entityType === 'scene' ? TIMELINE_ICON_READ_KEYS : []),
     ]);
     const existing = src.customFields;
     const currentCustom: Record<string, string> = existing && typeof existing === 'object' && !Array.isArray(existing)

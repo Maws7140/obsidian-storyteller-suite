@@ -43,7 +43,7 @@ export function placeAlternatingTimelineCards<T>(
     points: AlternatingTimelinePoint<T>[],
     _start: number,
     _end: number,
-    cardWidth: number,
+    cardWidth: number | ((value: T, above: boolean) => number),
     gap = 12,
     alternateSides = true
 ): AlternatingTimelinePlacement<T>[] {
@@ -61,11 +61,14 @@ export function placeAlternatingTimelineCards<T>(
         const side = placements.filter(placement => placement.above === above);
         const tierEnds: number[] = [];
         side.forEach(placement => {
-            const cardStart = placement.placedPosition - cardWidth / 2;
+            // A fixed number sizes every card alike. A function sizes each card, for
+            // cards whose extent differs (photo cards are taller than text cards).
+            const extent = typeof cardWidth === 'number' ? cardWidth : cardWidth(placement.value, above);
+            const cardStart = placement.placedPosition - extent / 2;
             let tier = tierEnds.findIndex(previousEnd => previousEnd + gap <= cardStart);
             if (tier < 0) tier = tierEnds.length;
             placement.tier = tier;
-            tierEnds[tier] = placement.placedPosition + cardWidth / 2;
+            tierEnds[tier] = placement.placedPosition + extent / 2;
         });
     });
 

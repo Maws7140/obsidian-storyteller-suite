@@ -2688,6 +2688,8 @@ export interface TimelineUIState {
     currentForkId?: string;
     /** Whether narrative order is enabled */
     narrativeOrder: boolean;
+    /** Icons on markers, bars and cards: off, icons, or icons with cover image strips. Unset means the plugin default. */
+    icons?: 'off' | 'icons' | 'images';
 }
 
 /**

@@ -10,6 +10,7 @@ import { TrackManagerModal } from '../modals/TrackManagerModal';
 import { ConflictViewModal } from '../modals/ConflictViewModal';
 import { TagTimelineModal } from '../modals/TagTimelineModal';
 import { ConflictDetector } from './ConflictDetector';
+import { defaultTimelineIconMode, parseTimelineIconMode } from './TimelineIconLayout';
 
 /**
  * Callbacks for control state changes
@@ -122,7 +123,8 @@ export class TimelineControlsBuilder {
             editMode: false,
             showEras: false,
             showPresence: false,
-            narrativeOrder: false
+            narrativeOrder: false,
+            icons: defaultTimelineIconMode(plugin.settings.timelineShowIcons)
         };
     }
 
@@ -691,6 +693,33 @@ export class TimelineControlsBuilder {
             menu.showAtMouseEvent(clickEvent);
         });
         return btn;
+    }
+
+    /**
+     * Icon mode select: off, icons, or icons with cover image strips on cards.
+     * The mode is saved with the view and with each embedded block.
+     */
+    createIconsDropdown(container: HTMLElement): HTMLSelectElement {
+        const select = container.createEl('select', {
+            cls: 'dropdown storyteller-icons-select',
+            attr: { 'aria-label': 'Icons on the timeline' }
+        });
+        const current = parseTimelineIconMode(this.state.icons) ?? defaultTimelineIconMode(this.plugin.settings.timelineShowIcons);
+        [
+            { value: 'off', label: 'Off' },
+            { value: 'icons', label: 'Icons' },
+            { value: 'images', label: 'Icons and images' }
+        ].forEach(opt => {
+            const option = select.createEl('option', { value: opt.value, text: opt.label });
+            if (opt.value === current) option.selected = true;
+        });
+        select.addEventListener('change', () => {
+            const next = parseTimelineIconMode(select.value) ?? 'icons';
+            this.state.icons = next;
+            this.callbacks.getRenderer()?.setIconMode(next);
+            this.callbacks.onStateChange();
+        });
+        return select;
     }
 
     /**

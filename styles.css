@@ -11700,6 +11700,52 @@ body.mod-rtl .storyteller-group-members {
   pointer-events: none;
 }
 
+/* Icons and cover images on the timeline tooltip */
+.sts-native-timeline-tooltip-banner {
+  display: block;
+  width: calc(100% + 20px);
+  height: 110px;
+  margin: -8px -10px 8px;
+  object-fit: cover;
+  border-radius: 6px 6px 0 0;
+}
+
+.sts-native-timeline-tooltip-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sts-native-timeline-tooltip-head .sts-native-timeline-tooltip-title {
+  min-width: 0;
+}
+
+.sts-native-timeline-tooltip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.sts-native-timeline-tooltip-icon .storyteller-icon-picker-preview {
+  width: 28px;
+  height: 28px;
+}
+
+.sts-native-timeline-tooltip-icon .storyteller-icon-picker-preview svg {
+  width: 26px;
+  height: 26px;
+}
+
+.sts-native-timeline-tooltip-icon img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 .sts-native-timeline-tooltip-title {
   font-weight: 600;
   color: var(--text-normal);

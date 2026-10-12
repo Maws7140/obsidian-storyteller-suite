@@ -17,6 +17,7 @@ import type { AxisTick, AxisView, SnapResolution } from '../calendar/TimelineAxi
 import { isEventInFork, isEventLinkedToFork, isEventOnMain, orderForksByParent } from './ForkVisibility';
 import { chooseConnectorEnds } from './ConnectorGeometry';
 import { maxVerticalCardTiers, placeAlternatingTimelineCards, verticalCardWidth } from './TimelineCardLayout';
+import type { AlternatingTimelinePlacement } from './TimelineCardLayout';
 import { placeReadableAxisLabels } from './AxisLabelLayout';
 import { sameMarkerRuns } from './ChronologyMarkerGroups';
 import { packChronologyRows } from './ChronologyRowPacking';
@@ -24,6 +25,19 @@ import type { ChronologySpan } from './ChronologyRowPacking';
 import { narrativeDirectionOf, narrativeSequenceOf, timelineDateForMode } from './NarrativeTimeline';
 import type { NarrativeDirection } from './NarrativeTimeline';
 import { TextMeasureCache } from './TextMeasureCache';
+import { iconForEntity } from './EntityIcon';
+import { renderIconPreview } from './IconPreview';
+import type { EntityIconSource } from './EntityIcon';
+import { IconRasterCache, drawIconBitmap } from './IconRasterCache';
+import type { IconRequest } from './IconRasterCache';
+import { ObsidianIconRasterHost } from './ObsidianIconRasterHost';
+import {
+    BAR_ICON_INSET, BAR_ICON_SIZE, CARD_ICON_SIZE, CARD_TEXT_HEIGHT, CARD_TEXT_INSET,
+    CARD_TEXT_INSET_WITH_ICON, MARKER_DISC_SIZE, MARKER_GLYPH_SIZE, barIconLabelOffset,
+    barShowsIcon, cardHeightWithImage, cardShowsImageStrip,
+    defaultTimelineIconMode, markerIconRoom
+} from './TimelineIconLayout';
+import type { TimelineIconMode } from './TimelineIconLayout';
 
 export interface TimelineRendererOptions {
     ganttMode?: boolean;
@@ -50,7 +64,27 @@ export interface TimelineRendererOptions {
     onEventSelected?: (event: Event | null) => void;
     /** Fired after each frame so a toolbar can mirror the visible range. */
     onViewChange?: () => void;
+    /**
+     * What to draw for icons: off, icons, or icons with cover image strips on cards.
+     * Defaults to off when the plugin's timelineShowIcons setting is off, else icons.
+     */
+    iconMode?: TimelineIconMode;
 }
+
+/** Shown instead of a PNG export when the canvas holds a web image that blocks reading pixels. */
+export const TAINTED_EXPORT_NOTICE = 'This timeline uses a web image that blocks image export. Save the image to your vault from the event\'s icon picker, then try again.';
+
+/** A marker disc on screen this frame, as a press target for selecting its event. */
+interface MarkerDisc {
+    item: NativeItem;
+    x: number;
+    y: number;
+}
+
+const DISC_HIT_RADIUS = 10;
+const ICON_WHITE = '#ffffff';
+const MILESTONE_BADGE_RADIUS = 4.5;
+const GANTT_CHIP_ICON_SIZE = 12;
 
 export interface TimelineFilters {
     characters?: Set<string>;
@@ -344,6 +378,15 @@ export class NativeTimelineRenderer {
     /** The story's "today" in epoch milliseconds, for the now marker and jump. */
     private nowMs(): number { return this.options.getReferenceDate().getTime(); }
     private palette = ['#7c3aed', '#2563eb', '#059669', '#ca8a04', '#dc2626', '#ea580c', '#0ea5e9', '#22c55e', '#d946ef', '#f59e0b'];
+    /** Bitmaps for icons and cover images. Created on first use, cleared on destroy. */
+    private iconCache: IconRasterCache | null = null;
+    private iconHost: ObsidianIconRasterHost | null = null;
+    /** Items whose axis marker has room for an icon disc this frame. */
+    private markerIconItems = new Set<NativeItem>();
+    /** Marker discs drawn this frame, as press and hover targets. */
+    private markerDiscs: MarkerDisc[] = [];
+    /** Icon source per event for the frame in progress. Cleared at the start of each paint. */
+    private iconSourceMemo = new Map<Event, EntityIconSource>();
 
     constructor(container: HTMLElement, plugin: StorytellerSuitePlugin, options: TimelineRendererOptions = {}) {
         this.container = container;
@@ -366,7 +409,8 @@ export class NativeTimelineRenderer {
             showPresence: false,
             narrativeOrder: false,
             getReferenceDate: () => new Date(),
-            ...options
+            ...options,
+            iconMode: options.iconMode ?? defaultTimelineIconMode(plugin.settings.timelineShowIcons)
         };
     }
 
@@ -424,6 +468,8 @@ export class NativeTimelineRenderer {
     // per frame, so there is nothing to draw until one has run.
     setShowPresence(value: boolean): void { this.options.showPresence = value; this.rebuild(false); }
     setNarrativeOrder(value: boolean): void { this.options.narrativeOrder = value; this.rebuild(false); }
+    // Icons change what each marker and card draws, not where it sits, so a repaint is enough.
+    setIconMode(value: TimelineIconMode): void { this.options.iconMode = value; this.scheduleDraw(); }
     setShowScenes(value: boolean): void { this.showScenes = value; this.rebuild(false); }
     setShowWatchedNotes(value: boolean): void { this.showWatchedNotes = value; this.rebuild(false); }
     setStackEnabled(value: boolean): void { this.options.stackEnabled = value; this.rebuild(false); }
@@ -433,6 +479,12 @@ export class NativeTimelineRenderer {
     destroy(): void {
         this.destroyed = true;
         this.releaseMount();
+        this.iconCache?.clear();
+        this.iconCache = null;
+        this.iconHost = null;
+        this.iconSourceMemo.clear();
+        this.markerIconItems.clear();
+        this.markerDiscs = [];
     }
 
     /** Tear down what mount() created. Separate from destroy() so a remount does not mark the renderer dead. */
@@ -597,13 +649,28 @@ export class NativeTimelineRenderer {
      *   at whatever zoom was set when the menu was opened.
      */
     async exportAsImage(format: 'png' | 'jpg', scope: 'view' | 'full' = 'view'): Promise<void> {
+        // A web image without CORS taints the canvas, and reading it back throws.
+        // Say why instead, the way the export would have failed anyway.
+        if (this.iconCache?.tainted) {
+            new Notice(TAINTED_EXPORT_NOTICE);
+            return;
+        }
         const canvas = scope === 'full' ? this.renderFullRange() : this.canvas;
         if (!canvas) return;
+        if (this.iconCache?.tainted) {
+            new Notice(TAINTED_EXPORT_NOTICE);
+            return;
+        }
         const mime = format === 'jpg' ? 'image/jpeg' : 'image/png';
         const link = this.container.ownerDocument.createElement('a');
         const suffix = scope === 'full' ? '-full' : '';
         link.download = `timeline-${new Date().toISOString().slice(0, 10)}${suffix}.${format}`;
-        link.href = canvas.toDataURL(mime, 0.94);
+        try {
+            link.href = canvas.toDataURL(mime, 0.94);
+        } catch {
+            new Notice(TAINTED_EXPORT_NOTICE);
+            return;
+        }
         link.click();
     }
 
@@ -796,6 +863,10 @@ export class NativeTimelineRenderer {
             // reading Event.location; _sceneLocations carries the rest.
             location: locations[0],
             _sceneLocations: locations.length ? locations : undefined,
+            // Scenes take the same icon and cover image as events.
+            icon: scene.icon,
+            iconColor: scene.iconColor,
+            profileImagePath: scene.profileImagePath,
             // 'scene' stays first: the show/hide toggle, the styling, and the
             // double-click guard all key off it.
             tags: ['scene', ...(scene.tags || [])],
@@ -1207,6 +1278,9 @@ export class NativeTimelineRenderer {
         this.visibleClusters = [];
         this.markerHits = [];
         this.controlHits = [];
+        this.markerDiscs = [];
+        this.markerIconItems.clear();
+        this.iconSourceMemo.clear();
         // A rect is a screen position, so it is only true for the frame that
         // computed it. Keeping last frame's meant an arrow end whose bar had
         // scrolled away stayed pinned to the viewport and drifted along with
@@ -1348,17 +1422,21 @@ export class NativeTimelineRenderer {
                 || narrativeSequenceOf(a.event) - narrativeSequenceOf(b.event)
                 || a.end - b.end);
         const cardWidth = Math.max(120, Math.min(210, (right - left) * 0.24));
-        const cardHeight = 42;
         const placements = placeAlternatingTimelineCards(
             items.map(item => ({ value: item, position: this.horizontalTimelineTimeToX(item.start, width) })),
             left,
             right,
             cardWidth
         );
+        // Tiers stack at one pitch: the tallest card in view plus a gap, so a photo
+        // card and a text card in the same tier line up on the axis.
+        const tierStride = (items.some(item => this.imageStripFor(item.event)) ? cardHeightWithImage(cardWidth, true) : CARD_TEXT_HEIGHT) + 12;
+        this.planMarkerIcons(placements.map(placement => placement.value), placements.map(placement => placement.position));
 
         const cards = placements.map(({ value: item, position: desiredX, placedPosition: placedX, above, tier }) => {
             const chipX = placedX - cardWidth / 2;
-            const tierOffset = tier * (cardHeight + 12);
+            const cardHeight = cardHeightWithImage(cardWidth, this.imageStripFor(item.event));
+            const tierOffset = tier * tierStride;
             const chipY = above ? axisY - cardHeight - 34 - tierOffset : axisY + 34 + tierOffset;
             const rect = new DOMRect(chipX, chipY, cardWidth, cardHeight);
             item.rect = rect;
@@ -1822,6 +1900,7 @@ export class NativeTimelineRenderer {
         this.drawMarkerGroups(ctx, lane, top, width, 'stems');
         this.visibleOverflow(lane).forEach(chip => this.drawOverflowChip(ctx, lane, chip, top, baselineY, width, 'stems'));
         laid.filter(entry => !entry.collides).forEach(({ item }) => this.drawItem(ctx, item, true, undefined, false));
+        this.planMarkerIcons(laid.map(entry => entry.item), laid.map(entry => entry.pointX));
         laid.forEach(({ item, pointX, collides }) => {
             this.drawPointMarker(ctx, pointX, baselineY, item);
             if (!collides) return;
@@ -1856,7 +1935,12 @@ export class NativeTimelineRenderer {
         groups.forEach(group => {
             if (group.start < this.viewStart || group.start > this.viewEnd) return;
             const pointX = this.timeToX(group.start, width);
-            if (pass === 'chips' && group.members.length > 1) this.drawCountBadge(ctx, pointX + 9, baselineY - 9, group.members.length);
+            if (pass === 'chips' && group.members.length > 1) {
+                // The column stands for its first event, so that event's icon is drawn over the stack.
+                const first = group.members[0];
+                if (first && this.markerIconItems.has(first)) this.drawPointMarker(ctx, pointX, baselineY, first);
+                this.drawCountBadge(ctx, pointX + 9, baselineY - 9, group.members.length);
+            }
             if (group.controlRow === undefined || !group.controlLabel) return;
 
             const chipX = pointX + 9;
@@ -1983,7 +2067,14 @@ export class NativeTimelineRenderer {
         ctx.stroke();
         ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
         ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
-        ctx.fillText(this.truncate(ctx, `+${chip.items.length} more`, OVERFLOW_CHIP_WIDTH - 12), chipX + 6, chipY + chipHeight / 2 + 4);
+        // The chip stands for its first event, so that event's icon leads the count.
+        let textX = chipX + 6;
+        const lead = chip.items[0];
+        const leadSource = lead && (this.options.iconMode ?? 'off') !== 'off' ? this.iconSourceFor(lead.event) : null;
+        if (leadSource && this.drawEntityGlyph(ctx, leadSource, chipX + 6 + 6, chipY + chipHeight / 2, 12, this.css('--text-normal', '#e5e7eb'))) {
+            textX = chipX + 6 + 12 + 4;
+        }
+        ctx.fillText(this.truncate(ctx, `+${chip.items.length} more`, OVERFLOW_CHIP_WIDTH - (textX - chipX) - 6), textX, chipY + chipHeight / 2 + 4);
         ctx.restore();
     }
 
@@ -2047,26 +2138,33 @@ export class NativeTimelineRenderer {
             .filter(item => item.end >= this.viewStart && item.start <= this.viewEnd)
             .sort((a, b) => a.start - b.start || narrativeSequenceOf(a.event) - narrativeSequenceOf(b.event));
         this.visibleItems = [];
-        const chipHeight = 42;
-        const placements = placeAlternatingTimelineCards(
-            items.map(item => ({
-                value: item,
-                position: top + (item.start - this.viewStart) / (this.viewEnd - this.viewStart) * (bottom - top)
-            })),
-            top,
-            bottom,
-            chipHeight,
-            8,
-            alternateSides
-        );
+        const points = items.map(item => ({
+            value: item,
+            position: top + (item.start - this.viewStart) / (this.viewEnd - this.viewStart) * (bottom - top)
+        }));
         const sideWidth = (rightSide: boolean) => Math.max(0, rightSide ? width - axisX - 38 : axisX - 38 - (alternateSides ? VERTICAL_LABEL_GUTTER : 0));
         // Only cards inside each side's readable column count set the column
         // width; overflow cards take no room because they draw as markers.
-        const tierCounts = new Map<boolean, number>();
-        placements.forEach(placement => {
-            if (placement.tier >= maxVerticalCardTiers(sideWidth(placement.above))) return;
-            tierCounts.set(placement.above, Math.max(tierCounts.get(placement.above) || 0, placement.tier + 1));
-        });
+        const columnsOf = (list: AlternatingTimelinePlacement<NativeItem>[]) => {
+            const counts = new Map<boolean, number>();
+            list.forEach(placement => {
+                if (placement.tier >= maxVerticalCardTiers(sideWidth(placement.above))) return;
+                counts.set(placement.above, Math.max(counts.get(placement.above) || 0, placement.tier + 1));
+            });
+            return counts;
+        };
+        // A photo card's height depends on its width, and its width on how many
+        // columns its side needs. Size the columns with text cards first, then
+        // space the photo cards by the heights they will actually get.
+        const extentOf = (item: NativeItem, above: boolean, counts: Map<boolean, number>) => this.imageStripFor(item.event)
+            ? cardHeightWithImage(verticalCardWidth(sideWidth(above), counts.get(above) || 1), true)
+            : CARD_TEXT_HEIGHT;
+        const firstPass = placeAlternatingTimelineCards(points, top, bottom, CARD_TEXT_HEIGHT, 8, alternateSides);
+        const placements = items.some(item => this.imageStripFor(item.event))
+            ? placeAlternatingTimelineCards(points, top, bottom, (item, above) => extentOf(item, above, columnsOf(firstPass)), 8, alternateSides)
+            : firstPass;
+        const tierCounts = columnsOf(placements);
+        this.planMarkerIcons(placements.map(placement => placement.value), placements.map(placement => placement.position));
 
         // Too many cards for the vertical space at this zoom: those events stay
         // as markers on the axis (still selectable) instead of squeezing cards
@@ -2082,6 +2180,7 @@ export class NativeTimelineRenderer {
             }
             const tierCount = tierCounts.get(rightSide) || 1;
             const chipWidth = verticalCardWidth(sideWidth(rightSide), tierCount);
+            const chipHeight = extentOf(item, rightSide, tierCounts);
             const tierOffset = tier * (chipWidth + 12);
             // Clamp to the canvas so a card never clips at either edge. Only X
             // moves; the leader still meets the card at the event's true Y.
@@ -2255,14 +2354,52 @@ export class NativeTimelineRenderer {
         ctx.lineWidth = item === this.selected ? 2 : 1; ctx.stroke();
         ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
         ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
-        const titleX = narrativeDirection ? rect.x + 29 : rect.x + 10;
-        if (narrativeDirection) this.drawNarrativeIcon(ctx, narrativeDirection, rect.x + 14, rect.y + 12, 12);
+        // The icon sits left of the title. Its space is reserved whenever the event
+        // has one, even while the bitmap loads, so the text does not jump.
+        const source = this.iconSourceFor(item.event);
+        const iconX = rect.x + CARD_TEXT_INSET + CARD_ICON_SIZE / 2;
+        const iconY = rect.y + CARD_TEXT_HEIGHT / 2 - 1;
+        const textInset = source ? CARD_TEXT_INSET_WITH_ICON : (narrativeDirection ? 29 : CARD_TEXT_INSET);
+        const titleX = rect.x + textInset;
+        if (source) this.drawEntityGlyph(ctx, source, iconX, iconY, CARD_ICON_SIZE, this.css('--text-normal', '#e5e7eb'));
+        // Beside the icon the direction glyph becomes a corner badge; without one it keeps its own place.
+        if (narrativeDirection) {
+            if (source) this.drawNarrativeIcon(ctx, narrativeDirection, iconX + CARD_ICON_SIZE / 2 - 2, iconY - CARD_ICON_SIZE / 2 + 2, 11);
+            else this.drawNarrativeIcon(ctx, narrativeDirection, rect.x + 14, rect.y + 12, 12);
+        }
         ctx.fillText(this.truncate(ctx, title, rect.width - (titleX - rect.x) - 8), titleX, rect.y + 16);
         ctx.fillStyle = this.css('--text-muted', '#9ca3af');
         ctx.font = `10px ${this.css('--font-interface', 'sans-serif')}`;
         const detail = `${dateLabel}  ·  ${meta}`;
-        ctx.fillText(this.truncate(ctx, detail, rect.width - 18), rect.x + 10, rect.y + 32);
+        ctx.fillText(this.truncate(ctx, detail, rect.width - (titleX - rect.x) - 8), titleX, rect.y + 32);
+        if (this.imageStripFor(item.event) && rect.height > CARD_TEXT_HEIGHT) this.drawCardImageStrip(ctx, rect, item.event.profileImagePath!);
         this.drawConflictBadge(ctx, rect, this.conflictSeverity(item.event));
+        ctx.restore();
+    }
+
+    /**
+     * The cover image as a 16:9 strip under a card's title and date. The bitmap is a
+     * square crop, so the strip shows its centre band. A grey strip stands in while it loads.
+     */
+    private drawCardImageStrip(ctx: CanvasRenderingContext2D, rect: DOMRect, path: string): void {
+        const top = rect.y + CARD_TEXT_HEIGHT;
+        const height = rect.bottom - top;
+        if (height <= 0) return;
+        ctx.save();
+        // Clip to the card's rounded outline, then to the strip band, so a square
+        // photo taller than the strip cannot paint over the title above it.
+        this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 4);
+        ctx.clip();
+        ctx.beginPath();
+        ctx.rect(rect.x, top, rect.width, height);
+        ctx.clip();
+        ctx.fillStyle = this.css('--background-modifier-border', '#374151');
+        ctx.fillRect(rect.x, top, rect.width, height);
+        const bitmap = this.icons().get({ source: { kind: 'cover', path }, size: Math.round(rect.width), dpr: this.devicePixelRatio(), fallbackColor: '#808080' });
+        if (bitmap) {
+            const side = rect.width;
+            ctx.drawImage(bitmap.image, rect.x, top + (height - side) / 2, side, side);
+        }
         ctx.restore();
     }
 
@@ -2305,6 +2442,8 @@ export class NativeTimelineRenderer {
         ctx.globalAlpha = item.inherited ? 0.45 : this.certaintyAlpha(item.event);
         const accent = item.customColor
             || (item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : item.laneColor);
+        // How far a bar's label moves right to clear its icon.
+        let barIconShift = 0;
         if (isPoint) {
             // Opaque backing in the plot colour under the translucent fill, so
             // a stem behind the chip cannot show through its label.
@@ -2335,7 +2474,14 @@ export class NativeTimelineRenderer {
                 ctx.fillStyle = this.markerColor(item);
                 const markerX = rect.x + 10;
                 const markerY = rect.y + rect.height / 2;
-                if (item.event.isMilestone) {
+                // A Gantt chip stands for its event, so the icon takes the marker's place.
+                // It is tinted in the marker colour, which reads on the chip's pale fill.
+                const chipSource = this.options.ganttMode ? this.iconSourceFor(item.event) : null;
+                const chipIconDrawn = chipSource !== null
+                    && this.drawEntityGlyph(ctx, chipSource, markerX, markerY, GANTT_CHIP_ICON_SIZE, this.markerColor(item));
+                if (chipIconDrawn) {
+                    if (item.event.isMilestone) this.drawMilestoneBadge(ctx, markerX + 5, markerY - 5, item);
+                } else if (item.event.isMilestone) {
                     this.starPath(ctx, markerX, markerY, 6.5);
                     ctx.fill();
                     if (!item.customColor) {
@@ -2365,16 +2511,22 @@ export class NativeTimelineRenderer {
                 ctx.globalAlpha = 0.3;
                 ctx.fillRect(rect.x, rect.y + rect.height - 3, rect.width * Math.max(0, Math.min(1, item.event.progress / 100)), 3);
             }
+            // A bar big enough to carry it shows the icon at its start, inset from the edge.
+            const barSource = barShowsIcon(rect.width, rect.height) ? this.iconSourceFor(item.event) : null;
+            if (barSource) {
+                this.drawEntityGlyph(ctx, barSource, rect.x + BAR_ICON_INSET + BAR_ICON_SIZE / 2, rect.y + rect.height / 2, BAR_ICON_SIZE, ICON_WHITE);
+                barIconShift = barIconLabelOffset() - 6;
+            }
         }
         ctx.globalAlpha = 1;
         const markerInset = isPoint && withMarker;
         const narrativeDirection = narrativeDirectionOf(item.event);
         const narrativeInset = narrativeDirection ? 18 : 0;
-        const baseLabelX = markerInset ? rect.x + 22 : rect.x + 6;
+        const baseLabelX = (markerInset ? rect.x + 22 : rect.x + 6) + barIconShift;
         const labelX = baseLabelX + narrativeInset;
         const available = markerInset
             ? Math.max(0, rect.width - 28 - narrativeInset)
-            : Math.max(0, rect.width - 12 - narrativeInset);
+            : Math.max(0, rect.width - 12 - narrativeInset - barIconShift);
         if (narrativeDirection) {
             this.drawNarrativeIcon(ctx, narrativeDirection, baseLabelX + 6, rect.y + rect.height / 2, 11);
         }
@@ -2639,22 +2791,164 @@ export class NativeTimelineRenderer {
         ctx.restore();
     }
 
+    /** The icon-or-cover source for an event under the current icon mode. Memoized for one frame. */
+    private iconSourceFor(event: Event): EntityIconSource {
+        if (this.iconSourceMemo.has(event)) return this.iconSourceMemo.get(event) ?? null;
+        const mode = this.options.iconMode ?? 'off';
+        const source = iconForEntity(event, {
+            showIcons: mode !== 'off' && this.plugin.settings.timelineShowIcons !== false,
+            useCoverImage: this.plugin.settings.timelineUseCoverImage !== false
+        });
+        this.iconSourceMemo.set(event, source);
+        return source;
+    }
+
+    /** Whether a card for this event grows a cover image strip. */
+    private imageStripFor(event: Event): boolean {
+        return this.plugin.settings.timelineShowIcons !== false
+            && this.plugin.settings.timelineUseCoverImage !== false
+            && cardShowsImageStrip(this.options.iconMode ?? 'off', event.profileImagePath);
+    }
+
+    /** The shared icon cache. Created the first time an icon is needed. */
+    private icons(): IconRasterCache {
+        if (!this.iconCache) {
+            this.iconHost = new ObsidianIconRasterHost(this.app, () => this.scheduleDraw());
+            this.iconCache = new IconRasterCache(this.iconHost);
+        }
+        return this.iconCache;
+    }
+
+    /** Vault resource URL for a cover image path, or null when the file is gone. */
+    private coverUrl(path: string): string | null {
+        this.icons();
+        return this.iconHost?.resourceUrl(path) ?? null;
+    }
+
+    private devicePixelRatio(): number {
+        return this.container.ownerDocument.defaultView?.devicePixelRatio ?? 1;
+    }
+
+    /**
+     * Draw an entity's icon or cover image centred on (x, y). Returns false while the
+     * bitmap is still loading, so the caller can fall back to the plain dot.
+     * `fallback` is the colour for tinted icons without an iconColor.
+     */
+    private drawEntityGlyph(ctx: CanvasRenderingContext2D, source: EntityIconSource, x: number, y: number, size: number, fallback: string): boolean {
+        if (!source) return false;
+        const request: IconRequest = { source, size, dpr: this.devicePixelRatio(), fallbackColor: fallback };
+        const bitmap = this.icons().get(request);
+        if (!bitmap) return false;
+        drawIconBitmap(ctx, bitmap, x, y, size);
+        return true;
+    }
+
+    /**
+     * Decide which axis markers may show an icon this frame. `items` and `positions`
+     * are parallel: each item's position along the axis (x for chronology and horizontal,
+     * y for vertical). Markers without room keep their plain dot.
+     */
+    private planMarkerIcons(items: readonly NativeItem[], positions: readonly number[]): void {
+        this.markerIconItems.clear();
+        if ((this.options.iconMode ?? 'off') === 'off') return;
+        const roomy = markerIconRoom(positions);
+        items.forEach((item, index) => {
+            if (roomy[index] && this.iconSourceFor(item.event)) this.markerIconItems.add(item);
+        });
+    }
+
+    /** The marker disc under the pointer, if one was drawn this frame. */
+    private discAt(x: number, y: number): NativeItem | null {
+        let best: NativeItem | null = null;
+        let bestDistance = DISC_HIT_RADIUS;
+        this.markerDiscs.forEach(disc => {
+            const distance = Math.hypot(disc.x - x, disc.y - y);
+            if (distance <= bestDistance) { bestDistance = distance; best = disc.item; }
+        });
+        return best;
+    }
+
+    /**
+     * An 18 px icon disc on an axis marker. Icons in tinted kinds are white on the
+     * event colour; a chosen iconColor flips that to a white disc with the icon in
+     * that colour. Emoji sit on a white disc, and photos are round thumbnails.
+     * Returns false when nothing is ready, so the caller draws the dot.
+     */
+    private drawIconDisc(ctx: CanvasRenderingContext2D, x: number, y: number, item: NativeItem, source: EntityIconSource): boolean {
+        if (!source) return false;
+        const radius = MARKER_DISC_SIZE / 2;
+        const colour = this.markerColor(item);
+        const dpr = this.devicePixelRatio();
+        const kind = source.kind === 'icon' ? source.icon.kind : 'cover';
+        const photo = kind === 'cover' || kind === 'vault' || kind === 'url' || kind === 'data';
+        const emoji = kind === 'emoji';
+        const tinted = kind === 'lucide' || kind === 'ink' || kind === 'pack';
+        const ownColour = tinted && source.kind === 'icon' && source.color !== undefined;
+
+        ctx.save();
+        if (photo) {
+            // Round bitmap: drawIconBitmap clips it to the disc.
+            const bitmap = this.icons().get({ source, size: MARKER_DISC_SIZE, dpr, fallbackColor: ICON_WHITE });
+            if (!bitmap) { ctx.restore(); return false; }
+            drawIconBitmap(ctx, bitmap, x, y, MARKER_DISC_SIZE);
+            ctx.strokeStyle = colour;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.arc(x, y, radius - 0.75, 0, Math.PI * 2); ctx.stroke();
+        } else {
+            const glyphSize = emoji ? MARKER_GLYPH_SIZE + 2 : MARKER_GLYPH_SIZE;
+            const glyph = this.icons().get({ source, size: glyphSize, dpr, fallbackColor: ICON_WHITE });
+            if (!glyph) { ctx.restore(); return false; }
+            // White disc for a chosen icon colour and for emoji; otherwise the event colour carries a white glyph.
+            ctx.fillStyle = tinted && !ownColour ? colour : ICON_WHITE;
+            ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+            if (ownColour || emoji) {
+                ctx.strokeStyle = colour;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.arc(x, y, radius - 0.75, 0, Math.PI * 2); ctx.stroke();
+            }
+            drawIconBitmap(ctx, glyph, x, y, glyphSize);
+        }
+        ctx.restore();
+
+        if (item.event.isMilestone) this.drawMilestoneBadge(ctx, x + radius * 0.75, y - radius * 0.75, item);
+        return true;
+    }
+
+    /** The gold star that marks a milestone, drawn as a small badge on an icon's corner. */
+    private drawMilestoneBadge(ctx: CanvasRenderingContext2D, x: number, y: number, item: NativeItem): void {
+        ctx.save();
+        const rim = item.customColor ? this.markerColor(item) : this.css('--sts-timeline-milestone-edge', MILESTONE_GOLD_EDGE);
+        this.starPath(ctx, x, y, MILESTONE_BADGE_RADIUS);
+        ctx.fillStyle = this.css('--sts-timeline-milestone', MILESTONE_GOLD);
+        ctx.fill();
+        ctx.strokeStyle = rim;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+    }
+
     private drawPointMarker(ctx: CanvasRenderingContext2D, x: number, y: number, item: NativeItem): void {
         ctx.save();
-        ctx.fillStyle = this.markerColor(item);
-        if (item.event.isMilestone) {
-            this.starPath(ctx, x, y, 7.5);
-            ctx.fill();
-            // A thin darker rim keeps the gold's points legible against a light
-            // theme or a pale era band. A chosen colour is left exactly as
-            // chosen, so no rim there.
-            if (!item.customColor) {
-                ctx.strokeStyle = this.css('--sts-timeline-milestone-edge', MILESTONE_GOLD_EDGE);
-                ctx.lineWidth = 1;
-                ctx.stroke();
-            }
+        const source = this.markerIconItems.has(item) ? this.iconSourceFor(item.event) : null;
+        const iconDrawn = source !== null && this.drawIconDisc(ctx, x, y, item, source);
+        if (iconDrawn) {
+            this.markerDiscs.push({ item, x, y });
         } else {
-            ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = this.markerColor(item);
+            if (item.event.isMilestone) {
+                this.starPath(ctx, x, y, 7.5);
+                ctx.fill();
+                // A thin darker rim keeps the gold's points legible against a light
+                // theme or a pale era band. A chosen colour is left exactly as
+                // chosen, so no rim there.
+                if (!item.customColor) {
+                    ctx.strokeStyle = this.css('--sts-timeline-milestone-edge', MILESTONE_GOLD_EDGE);
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            } else {
+                ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+            }
         }
         // A grab ring on anything that can be dragged. Slots alone were not
         // enough of a signal: they are hidden whenever the zoom puts them
@@ -2664,7 +2958,8 @@ export class NativeTimelineRenderer {
             ctx.strokeStyle = this.css('--interactive-accent', '#7c3aed');
             ctx.lineWidth = 1.5;
             ctx.globalAlpha = 0.9;
-            ctx.beginPath(); ctx.arc(x, y, item.event.isMilestone ? 10.5 : 8.5, 0, Math.PI * 2); ctx.stroke();
+            const ringRadius = iconDrawn ? 11 : (item.event.isMilestone ? 10.5 : 8.5);
+            ctx.beginPath(); ctx.arc(x, y, ringRadius, 0, Math.PI * 2); ctx.stroke();
         }
         ctx.restore();
     }
@@ -3056,7 +3351,8 @@ export class NativeTimelineRenderer {
         // a press on it cannot also drag the view away from the chip.
         const control = this.controlAt(event.offsetX, event.offsetY);
         if (control) { this.activateMarkerControl(control); return; }
-        const item = this.hit(event.offsetX, event.offsetY);
+        // A marker disc is a target too: its event is selected by pressing the icon on the axis.
+        const item = this.hit(event.offsetX, event.offsetY) ?? this.discAt(event.offsetX, event.offsetY);
         if (item) {
             const wasSelected = this.selected === item;
             this.selected = item; this.options.onEventSelected?.(item.event);
@@ -3122,7 +3418,23 @@ export class NativeTimelineRenderer {
         tooltip.empty();
         const event = item.event;
 
-        tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-title', text: event.name || '(Untitled event)' });
+        const mode = this.options.iconMode ?? 'off';
+        const source = this.iconSourceFor(event);
+        if (mode === 'images' && this.imageStripFor(event)) {
+            // The cover image as a banner above the text, when the note has one.
+            const url = this.coverUrl(event.profileImagePath!);
+            if (url) tooltip.createEl('img', { cls: 'sts-native-timeline-tooltip-banner', attr: { src: url, alt: '' } });
+        }
+        const head = tooltip.createDiv({ cls: source ? 'sts-native-timeline-tooltip-head is-with-icon' : 'sts-native-timeline-tooltip-head' });
+        if (source) {
+            const glyph = head.createSpan({ cls: 'sts-native-timeline-tooltip-icon' });
+            if (source.kind === 'icon') renderIconPreview(glyph, event.icon, event.iconColor, this.app);
+            else {
+                const url = this.coverUrl(source.path);
+                if (url) glyph.createEl('img', { attr: { src: url, alt: '' } });
+            }
+        }
+        head.createDiv({ cls: 'sts-native-timeline-tooltip-title', text: event.name || '(Untitled event)' });
 
         const when = event.dateTime?.trim();
         if (when) tooltip.createDiv({ cls: 'sts-native-timeline-tooltip-meta', text: `Occurred: ${this.formatEventDateText(when)}` });
@@ -3251,7 +3563,7 @@ export class NativeTimelineRenderer {
         const vertical = this.isVerticalTimeline();
         const control = marker ? null : this.controlAt(event.offsetX, event.offsetY);
         if (this.canvas) this.canvas.style.cursor = marker ? (vertical ? 'ns-resize' : 'ew-resize') : control ? 'pointer' : '';
-        const item = marker ?? this.hit(event.offsetX, event.offsetY);
+        const item = marker ?? this.hit(event.offsetX, event.offsetY) ?? this.discAt(event.offsetX, event.offsetY);
         if (item) this.showTooltip(item, event.offsetX, event.offsetY);
         else {
             const lane = this.clippedLaneLabelAt(event.offsetX, event.offsetY);
