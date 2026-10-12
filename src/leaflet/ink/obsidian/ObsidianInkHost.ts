@@ -80,9 +80,10 @@ export class ObsidianInkHost implements InkHost {
 				finish(location?.id ? { id: location.id, name: location.name } : null);
 			});
 			// Closing the picker without a choice cancels it.
-			const close = modal.onClose.bind(modal);
-			modal.onClose = () => {
-				close();
+			const view = modal as unknown as { onClose: () => void };
+			const original = view.onClose.bind(modal) as () => void;
+			view.onClose = () => {
+				original();
 				finish(null);
 			};
 			modal.open();
@@ -127,6 +128,6 @@ export class ObsidianInkHost implements InkHost {
 		const index = list.findIndex(existing => existing.id === preset.id);
 		if (index >= 0) list[index] = preset;
 		else list.push(preset);
-		this.opts.plugin.saveSettings().catch(() => new Notice('Map Ink could not save the preset.'));
+		this.opts.plugin.saveSettings().catch(() => new Notice('Could not save the preset.'));
 	}
 }

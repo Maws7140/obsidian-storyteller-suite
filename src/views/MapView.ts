@@ -19,12 +19,10 @@ import { EventSuggestModal } from '../modals/EventSuggestModal';
 import { PlotItemSuggestModal } from '../modals/PlotItemSuggestModal';
 import { openMapModal } from '../utils/MapModalHelper';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
-import { VIEW_TYPE_CAMPAIGN } from './CampaignView';
 import { createPlacementOverlay } from '../leaflet/placementOverlay';
-import { InkEditor, type InkEditorLeaflet } from '../leaflet/ink/InkEditor';
+import { InkEditor } from '../leaflet/ink/InkEditor';
 import type { InkLayer } from '../leaflet/ink/InkLayer';
 import type { InkLegend } from '../leaflet/ink/InkLegend';
-import type { InkToolMap } from '../leaflet/ink/tools/types';
 import { ObsidianInkHost } from '../leaflet/ink/obsidian/ObsidianInkHost';
 import { INK_FRONTMATTER_KEY, inkFrontmatter, normalizeInk, type InkDoc } from '../leaflet/ink/model';
 import { MAPLOG_KEYS } from '../leaflet/ink/migrateMaplog';
@@ -740,8 +738,8 @@ export class MapView extends ItemView {
             snapPoint: latlng => this.gridController?.snapPoint(latlng) ?? latlng,
         });
         return new InkEditor({
-            L: L as unknown as InkEditorLeaflet,
-            map: map as unknown as InkToolMap,
+            L,
+            map,
             host,
             container: map.getContainer(),
             doc: inkDocOf(current ?? {}),

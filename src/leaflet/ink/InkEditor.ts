@@ -136,10 +136,6 @@ export class InkEditor {
 		const doc = this.doc;
 
 		this.previewPane = makeEl(doc, 'div', 'ink-preview-pane');
-		this.previewPane.setAttribute(
-			'style',
-			'position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 640;',
-		);
 		this.map.getContainer().appendChild(this.previewPane);
 
 		this.context = {
@@ -158,8 +154,8 @@ export class InkEditor {
 
 		this.mountDocks();
 		this.layer.setReadOnly(false);
-		this.listen(doc, 'keydown', this.onKey as EventListener);
-		this.listen(doc, 'pointerdown', this.trackPointer as EventListener, true);
+		this.listen(doc, 'keydown', this.onKey);
+		this.listen(doc, 'pointerdown', this.trackPointer, true);
 		this.activate('select');
 		this.syncFinish();
 	}
