@@ -139,10 +139,25 @@ class CalendarEditorModal extends Modal {
             .addTextArea(text => {
                 text.setValue(this.draft.week?.days.join(', ') || '').onChange(value => {
                     const days = csv(value);
-                    this.draft.week = days.length ? { days } : undefined;
+                    const firstWeekday = this.draft.week?.firstWeekday;
+                    this.draft.week = days.length
+                        ? { days, ...(firstWeekday != null && firstWeekday < days.length ? { firstWeekday } : {}) }
+                        : undefined;
                 });
                 text.inputEl.rows = 2;
+                // The start-day list is built from these names, so rebuild once editing is done.
+                text.inputEl.addEventListener('blur', () => this.render());
             });
+        const week = this.draft.week;
+        if (week?.days.length) {
+            new Setting(contentEl).setName('First day falls on')
+                .setDesc('The weekday of the first day of year 1. Every later weekday follows from it.')
+                .addDropdown(dropdown => {
+                    week.days.forEach((day, index) => { dropdown.addOption(String(index), day); });
+                    dropdown.setValue(String(Math.min(week.firstWeekday ?? 0, week.days.length - 1)));
+                    dropdown.onChange(value => { week.firstWeekday = Number(value); });
+                });
+        }
 
         this.renderLeapRule();
         this.renderIntercalaryMonths();

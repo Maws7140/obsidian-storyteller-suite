@@ -96,13 +96,15 @@ export function weekLength(cal: CalendarSystem): number {
 }
 
 /**
- * Which weekday index the calendar's origin day falls on. The built-in
- * Gregorian origin, 0001-01-01, is a Monday, which is index 1 of the
- * Sunday-first list. Any other calendar has no stated anchor, so its origin
- * takes the first weekday.
+ * Which weekday index the calendar's origin day falls on, from the week's
+ * `firstWeekday` setting. The built-in Gregorian origin, 0001-01-01, is a
+ * Monday; a saved copy of it from before the setting existed keeps that.
  */
 export function weekdayOfOrigin(cal: CalendarSystem): number {
-  return cal.id === GREGORIAN_CALENDAR.id ? 1 : 0;
+  const length = weekLength(cal);
+  const anchor = cal.week?.firstWeekday ?? (cal.id === GREGORIAN_CALENDAR.id ? 1 : 0);
+  const index = Number.isFinite(anchor) ? Math.floor(anchor) : 0;
+  return ((index % length) + length) % length;
 }
 
 /** Weekday index (0-based, into weekdayNames) of an absolute day. */

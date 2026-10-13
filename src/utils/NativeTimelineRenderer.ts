@@ -13,7 +13,8 @@ import { sidebarWidthFor } from './TimelineSidebarWidth';
 import { daysInYear, fromAbsolute, monthsInYear, normalYearLength, toAbsolute } from '../calendar/CalendarEngine';
 import type { CalendarSystem } from '../calendar/types';
 import { chooseSnapResolution, generateTicks, snapDay, snapSlots, stepDay } from '../calendar/TimelineAxis';
-import { holidayOccurrencesInYear, monthOfDay, monthStartDay, shiftMonth } from './TimelineCalendarGrid';
+import { daySpanOf, holidayOccurrencesInYear, monthOfDay, monthStartDay, shiftMonth } from './TimelineCalendarGrid';
+import { calendarImageMonths, MAX_EXPORT_MONTHS, paintCalendarImage, type CalendarImageChip } from './TimelineCalendarImage';
 import type { CalendarMonthRef } from './TimelineCalendarGrid';
 import { TimelineCalendarPanel } from './TimelineCalendarPanel';
 import type { TimelineCalendarHost } from './TimelineCalendarPanel';
@@ -43,6 +44,9 @@ import {
     NODE_GAP, NODE_HOVER_SCALE, NODE_MAX_TIERS, NODE_SIZE, nodeCornerRadius, nodeGlyphSize, placeIconNodes
 } from './TimelineIconLayout';
 import type { TimelineIconMode } from './TimelineIconLayout';
+
+/** Every view the renderer can draw, for exporting one that is not on screen. */
+export type TimelineExportView = 'chronology' | 'timeline' | 'gantt' | 'calendar';
 
 export interface TimelineRendererOptions {
     ganttMode?: boolean;
@@ -769,15 +773,33 @@ export class NativeTimelineRenderer {
      *   export of the view is only ever whatever happened to be in the window
      *   at whatever zoom was set when the menu was opened.
      */
-    async exportAsImage(format: 'png' | 'jpg', scope: 'view' | 'full' = 'view'): Promise<void> {
+    /** The view on screen now. */
+    currentExportView(): TimelineExportView {
+        if (this.options.calendarMode) return 'calendar';
+        if (this.options.ganttMode) return 'gantt';
+        return this.options.timelineLayout === 'timeline' ? 'timeline' : 'chronology';
+    }
+
+    /**
+     * Save any view as an image, not only the one on screen. `view` defaults to
+     * the current one; `scope` is what is in view now, or every event.
+     */
+    async exportAsImage(format: 'png' | 'jpg', scope: 'view' | 'full' = 'view', view: TimelineExportView = this.currentExportView()): Promise<void> {
         // A web image without CORS taints the canvas, and reading it back throws.
         // Say why instead, the way the export would have failed anyway.
         if (this.iconCache?.tainted) {
             new Notice(TAINTED_EXPORT_NOTICE);
             return;
         }
-        const canvas = scope === 'full' ? this.renderFullRange() : this.canvas;
-        if (!canvas) return;
+        const canvas = view === 'calendar'
+            ? this.renderCalendarImage(scope)
+            : view === this.currentExportView() && scope === 'view'
+                ? this.canvas
+                : this.withCanvasView(view, () => scope === 'full' ? this.renderFullRange() : this.renderCurrentWindow());
+        if (!canvas) {
+            new Notice('There is nothing to export in that view yet.');
+            return;
+        }
         if (this.iconCache?.tainted) {
             new Notice(TAINTED_EXPORT_NOTICE);
             return;
@@ -785,7 +807,7 @@ export class NativeTimelineRenderer {
         const mime = format === 'jpg' ? 'image/jpeg' : 'image/png';
         const link = this.container.ownerDocument.createElement('a');
         const suffix = scope === 'full' ? '-full' : '';
-        link.download = `timeline-${new Date().toISOString().slice(0, 10)}${suffix}.${format}`;
+        link.download = `timeline-${view}-${new Date().toISOString().slice(0, 10)}${suffix}.${format}`;
         try {
             link.href = canvas.toDataURL(mime, 0.94);
         } catch {
@@ -804,6 +826,97 @@ export class NativeTimelineRenderer {
      * this.ctx currently is, and painting the export into the visible canvas
      * would leave the user staring at a frame they never asked for.
      */
+    /**
+     * Draw a canvas view the renderer is not showing, then put the shown one
+     * back. Calendar is switched off for the draw so draw() paints the canvas
+     * instead of the month grid; its panel stays on screen throughout.
+     */
+    private withCanvasView(view: Exclude<TimelineExportView, 'calendar'>, render: () => HTMLCanvasElement | null): HTMLCanvasElement | null {
+        const saved = { calendar: this.options.calendarMode, gantt: this.options.ganttMode, layout: this.options.timelineLayout };
+        const gantt = view === 'gantt';
+        const layout = view === 'timeline' ? 'timeline' : 'chronology';
+        const relayout = saved.gantt !== gantt || saved.layout !== layout;
+        this.options.calendarMode = false;
+        this.options.ganttMode = gantt;
+        this.options.timelineLayout = layout;
+        try {
+            if (relayout) this.rebuild(false);
+            return render();
+        } finally {
+            this.options.calendarMode = saved.calendar;
+            this.options.ganttMode = saved.gantt;
+            this.options.timelineLayout = saved.layout;
+            if (relayout) this.rebuild(false);
+            else this.scheduleDraw();
+        }
+    }
+
+    /** The current view window, at the pane's size, drawn into a canvas of its own. */
+    private renderCurrentWindow(): HTMLCanvasElement | null {
+        if (!this.ctx) return null;
+        const width = Math.max(1, this.root?.clientWidth || EXPORT_WIDTH / 2);
+        const height = Math.max(EXPORT_MIN_HEIGHT, this.root?.clientHeight || EXPORT_MIN_HEIGHT);
+        const saved = { canvas: this.canvas, ctx: this.ctx, surface: this.exportSurface, hovered: this.hovered, selected: this.selected };
+        try {
+            this.hovered = null;
+            this.selected = null;
+            const surface = this.container.ownerDocument.createElement('canvas');
+            surface.width = Math.round(width * EXPORT_SCALE);
+            surface.height = Math.round(height * EXPORT_SCALE);
+            const ctx = surface.getContext('2d');
+            if (!ctx) return null;
+            ctx.setTransform(EXPORT_SCALE, 0, 0, EXPORT_SCALE, 0, 0);
+            this.exportSurface = { width, height };
+            this.layoutRows();
+            this.canvas = surface;
+            this.ctx = ctx;
+            this.draw();
+            return surface;
+        } finally {
+            this.canvas = saved.canvas;
+            this.ctx = saved.ctx;
+            this.exportSurface = saved.surface;
+            this.hovered = saved.hovered;
+            this.selected = saved.selected;
+            this.layoutRows();
+            this.scheduleDraw();
+        }
+    }
+
+    /**
+     * The Calendar view as an image: the month on screen, or every month from
+     * the first event to the last (capped, see MAX_EXPORT_MONTHS).
+     */
+    private renderCalendarImage(scope: 'view' | 'full'): HTMLCanvasElement | null {
+        const calendar = this.calendarRegistry.getActiveCalendar();
+        const items = this.calendarItems();
+        const chips: CalendarImageChip[] = items.map(item => ({
+            key: item.id,
+            ...daySpanOf(this.dayOfTime(item.start), this.dayOfTime(item.end)),
+            label: item.event.name,
+            color: item.customColor || (item.event.isMilestone ? this.css('--sts-timeline-milestone', MILESTONE_GOLD) : item.laneColor),
+        }));
+        let months: CalendarMonthRef[];
+        if (scope === 'view' || chips.length === 0) {
+            months = [this.calendarMonth()];
+        } else {
+            const first = Math.min(...chips.map(chip => chip.firstDay));
+            const last = Math.max(...chips.map(chip => chip.lastDay));
+            months = calendarImageMonths(calendar, first, last);
+            if (monthOfDay(calendar, last).year !== months[months.length - 1].year || monthOfDay(calendar, last).month !== months[months.length - 1].month) {
+                new Notice(`Exported the first ${MAX_EXPORT_MONTHS} months. Narrow the filters to export a later stretch.`);
+            }
+        }
+        return paintCalendarImage(this.container.ownerDocument, calendar, months, chips, {
+            background: this.css('--background-primary', '#ffffff'),
+            text: this.css('--text-normal', '#222222'),
+            muted: this.css('--text-muted', '#666666'),
+            border: this.css('--background-modifier-border', '#dddddd'),
+            accent: this.css('--interactive-accent', '#8b5cf6'),
+            font: this.css('--font-interface', 'sans-serif'),
+        });
+    }
+
     private renderFullRange(): HTMLCanvasElement | null {
         const range = this.getDateRange();
         if (!range || !this.ctx) return null;

@@ -13,6 +13,7 @@ import { TimelineFilterBuilder, TimelineFilterCallbacks } from '../utils/Timelin
 import { ConflictDetector, DetectedConflict } from '../utils/ConflictDetector';
 import { PlatformUtils } from '../utils/PlatformUtils';
 import { openNewEventModal } from '../utils/OpenNewEventModal';
+import { TimelineImageExportModal } from '../modals/TimelineImageExportModal';
 
 export const VIEW_TYPE_TIMELINE = 'storyteller-timeline-view';
 
@@ -870,31 +871,15 @@ export class TimelineView extends ItemView {
         const menu = new Menu();
 
         menu.addItem((item) => {
-            item.setTitle(t('exportAsPNG'))
+            item.setTitle('Export image...')
                 .setIcon('image')
-                .onClick(() => { void this.renderer?.exportAsImage('png'); });
-        });
-
-        menu.addItem((item) => {
-            item.setTitle(t('exportAsJPG'))
-                .setIcon('image')
-                .onClick(() => { void this.renderer?.exportAsImage('jpg'); });
-        });
-
-        menu.addSeparator();
-
-        // Kept apart from the two above because they capture different things:
-        // those save the window, these save the story.
-        menu.addItem((item) => {
-            item.setTitle('Export whole timeline as PNG')
-                .setIcon('maximize')
-                .onClick(() => { void this.renderer?.exportAsImage('png', 'full'); });
-        });
-
-        menu.addItem((item) => {
-            item.setTitle('Export whole timeline as JPG')
-                .setIcon('maximize')
-                .onClick(() => { void this.renderer?.exportAsImage('jpg', 'full'); });
+                .onClick(() => {
+                    const renderer = this.renderer;
+                    if (!renderer) return;
+                    new TimelineImageExportModal(this.app, renderer.currentExportView(), choice => {
+                        void renderer.exportAsImage(choice.format, choice.scope, choice.view);
+                    }).open();
+                });
         });
 
         menu.addSeparator();

@@ -102,6 +102,8 @@ export class TimelineControlsBuilder {
     private plugin: StorytellerSuitePlugin;
     private state: TimelineUIState;
     private callbacks: TimelineControlCallbacks;
+    /** Zoom and fit controls. The Calendar view pages by month, so they are hidden there. */
+    private zoomElements: HTMLElement[] = [];
     /** Span readout inside the zoom control, refreshed from the draw loop. */
     private zoomReadoutEl: HTMLElement | null = null;
 
@@ -254,6 +256,7 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'maximize-2');
         btn.addEventListener('click', () => this.callbacks.getRenderer()?.fitToView());
+        this.registerZoomElement(btn);
         return btn;
     }
 
@@ -264,6 +267,7 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'zoom-in');
         btn.addEventListener('click', () => this.callbacks.getRenderer()?.zoomBy(0.25));
+        this.registerZoomElement(btn);
         return btn;
     }
 
@@ -274,6 +278,7 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'zoom-out');
         btn.addEventListener('click', () => this.callbacks.getRenderer()?.zoomBy(4));
+        this.registerZoomElement(btn);
         return btn;
     }
 
@@ -290,6 +295,7 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'rows-3');
         btn.addEventListener('click', () => this.callbacks.getRenderer()?.fitToView());
+        this.registerZoomElement(btn);
         return btn;
     }
 
@@ -306,6 +312,7 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'calendar');
         btn.addEventListener('click', () => this.callbacks.getRenderer()?.zoomPresetYears(10));
+        this.registerZoomElement(btn);
         return btn;
     }
 
@@ -322,6 +329,7 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'calendar-days');
         btn.addEventListener('click', () => this.callbacks.getRenderer()?.zoomPresetYears(100));
+        this.registerZoomElement(btn);
         return btn;
     }
 
@@ -560,9 +568,22 @@ export class TimelineControlsBuilder {
             minimal.toggleClass('is-active', timelineActive && this.state.minimal === true);
             minimal.setAttribute('aria-pressed', String(timelineActive && this.state.minimal === true));
             minimal.disabled = !timelineActive;
+            this.syncZoomVisibility();
         };
         sync();
         return wrapper;
+    }
+
+    private registerZoomElement(el: HTMLElement): void {
+        this.zoomElements.push(el);
+        el.toggleClass('storyteller-calendar-hidden', this.state.calendarMode === true);
+    }
+
+    /** Hide zoom and fit while the Calendar view is on; it moves a month at a time instead. */
+    private syncZoomVisibility(): void {
+        const calendar = this.state.calendarMode === true;
+        this.zoomElements = this.zoomElements.filter(el => el.isConnected);
+        for (const el of this.zoomElements) el.toggleClass('storyteller-calendar-hidden', calendar);
     }
 
     private setViewMode(mode: TimelineViewMode, sync: () => void): void {
@@ -640,6 +661,7 @@ export class TimelineControlsBuilder {
         });
 
         this.updateZoomReadout();
+        this.registerZoomElement(group);
         return group;
     }
 

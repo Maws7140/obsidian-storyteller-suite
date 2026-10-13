@@ -172,3 +172,28 @@ describe('TimelineCalendarGrid: spans and week rows', () => {
     ]);
   });
 });
+
+describe('TimelineCalendarGrid: first weekday setting', () => {
+  it('starts the calendar on the chosen weekday and shifts every later day with it', () => {
+    const anchored: CalendarSystem = { ...ODD, week: { days: ODD.week!.days, firstWeekday: 3 } };
+    const origin = toAbsolute(anchored, { year: 1, month: 0, day: 1 }).absoluteDay;
+    expect(weekdayIndex(anchored, origin)).toBe(3);
+    expect(weekdayIndex(anchored, origin + 2)).toBe(0);
+    expect(weekdayIndex(ODD, origin)).toBe(0);
+    const grid = buildMonthGrid(anchored, { year: 1, month: 0 });
+    expect(grid.days[0].column).toBe(3);
+  });
+
+  it('keeps Gregorian on its real weekdays, with or without the saved setting', () => {
+    const legacy: CalendarSystem = { ...GREGORIAN_CALENDAR, week: { days: GREGORIAN_CALENDAR.week!.days } };
+    const thursday = gregorianDay(2026, 9, 1);
+    expect(weekdayIndex(GREGORIAN_CALENDAR, thursday)).toBe(4);
+    expect(weekdayIndex(legacy, thursday)).toBe(4);
+  });
+
+  it('wraps an out-of-range setting into the week', () => {
+    const wrapped: CalendarSystem = { ...ODD, week: { days: ODD.week!.days, firstWeekday: 7 } };
+    const origin = toAbsolute(wrapped, { year: 1, month: 0, day: 1 }).absoluteDay;
+    expect(weekdayIndex(wrapped, origin)).toBe(2);
+  });
+});
