@@ -85,7 +85,7 @@ import {
     renderCampaignSetupFields,
 } from '../campaign/CampaignSetup';
 import { outcomeChips } from '../utils/SceneOutcomeSummary';
-import { splitNoteSections } from '../campaign/PlayerPush';
+import { splitNoteSections, VIEW_TYPE_PLAYER_SCREEN } from '../campaign/PlayerPush';
 import type { NoteSection, PlayerPushMode } from '../campaign/PlayerPush';
 import {
     addCampaignAdvancement,
@@ -111,6 +111,7 @@ import {
 } from '../utils/CampaignModel';
 import { PromptModal } from '../modals/ui/PromptModal';
 import { EventModal } from '../modals/EventModal';
+import * as L from 'leaflet';
 import { LeafletRenderer } from '../leaflet/renderer';
 import type { LeafletRendererOptions, LocationPinHighlight } from '../leaflet/types';
 import { mapToBlockParams } from '../leaflet/utils/MapBlockParams';
@@ -152,6 +153,28 @@ export const VIEW_TYPE_CAMPAIGN = 'storyteller-campaign-view';
 
 /** Sidebar sections that can be re-rendered on their own after a Partylog entry. */
 type SidebarPart = 'read' | 'party' | 'progress' | 'standings' | 'log';
+type RailTab = 'read' | 'party' | 'progress' | 'world';
+
+const RAIL_TABS: ReadonlyArray<{ id: RailTab; label: string; icon: string }> = [
+    { id: 'read', label: 'Read', icon: 'book-open' },
+    { id: 'party', label: 'Party', icon: 'users' },
+    { id: 'progress', label: 'Progress', icon: 'gauge' },
+    { id: 'world', label: 'World', icon: 'globe' },
+];
+
+/** Which rail tab shows each sidebar part. The log is not in the rail: it is docked under the board. */
+const PART_TAB: Partial<Record<SidebarPart, RailTab>> = {
+    read: 'read',
+    party: 'party',
+    progress: 'progress',
+    standings: 'world',
+};
+
+/** Leaflet pane for the choice paths on the board. */
+const BOARD_PATH_PANE = 'storyteller-choice-paths';
+
+/** Headers that hold the text read out when a scene starts: "Read-aloud", "Read aloud", "Boxed text". */
+const READ_ALOUD_HEADING = /\bread\b|read-aloud|boxed text/i;
 type QuickMode = 'action' | 'assist' | 'group' | 'world' | 'roll' | 'consequence' | 'note';
 type QuickNoteKind = 'note' | 'rule' | 'ooc' | 'safety';
 
@@ -251,6 +274,28 @@ const THREAD_GROUPS: ReadonlyArray<{ kind: CampaignThreadKind; label: string }> 
     { kind: 'quest', label: 'Quests' },
 ];
 
+/** A scene's text without its branch and encounter blocks, which the play screen draws itself. */
+export function stripPlayBlocks(markdown: string): string {
+    return (markdown ?? '')
+        .replace(/^```branch[\s\S]*?^```\n?/gm, '')
+        .replace(/^```encounter[\s\S]*?^```\n?/gm, '')
+        .trim();
+}
+
+/**
+ * The scene note as sections for the Read tab. Text before the first header becomes an
+ * "Opening" section, branch and encounter blocks are dropped, and empty sections are left out.
+ */
+export function readSectionsFor(content: string): NoteSection[] {
+    const sections = splitNoteSections(content)
+        .map(section => ({ ...section, markdown: stripPlayBlocks(section.markdown) }));
+    const body = (content ?? '').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+    const firstHeader = body.search(/^#{1,6}\s+\S/m);
+    const opening = stripPlayBlocks(firstHeader >= 0 ? body.slice(0, firstHeader) : body);
+    const all = opening ? [{ heading: 'Opening', level: 1, markdown: opening }, ...sections] : sections;
+    return all.filter(section => section.markdown.length > 0);
+}
+
 /** Which sidebar sections a set of bridge summary lines touches. */
 function partsAffectedBy(summary: readonly string[]): SidebarPart[] {
     const parts: SidebarPart[] = ['log'];
@@ -318,8 +363,14 @@ export class CampaignView extends ItemView {
     private sidebarPartEls = new Map<SidebarPart, HTMLElement>();
     /** Per scene: index of the selected header in the Read panel, or null when collapsed on it. */
     private readSelection = new Map<string, number | null>();
-    /** Whether the Read panel body is hidden. */
-    private readCollapsed = false;
+    /** The rail tab showing on the right of the play screen. */
+    private railTab: RailTab = 'read';
+    /** The current scene note split by header, for the Read tab and the players menu. */
+    private readSections: NoteSection[] = [];
+    /** Whether the location inspector is open over the board. Opens when the DM clicks a pin. */
+    private boardInspectorOpen = false;
+    /** Whether the docked log shows its last few lines or a longer list. */
+    private logDockExpanded = false;
     private quick: QuickEntryState = createQuickEntryState();
     /** The main quick entry input currently shown, so a submit can clear and restore its text. */
     private quickInputEl: HTMLInputElement | null = null;
@@ -573,42 +624,75 @@ export class CampaignView extends ItemView {
         const session = this.session!;
         this.ensureActiveActor(session);
         await this.ensurePartyCharacterStats(session);
+        this.sidebarPartEls.clear();
 
-        // â”€â”€ Toolbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        this.renderPlayTopBar(root, session);
+
+        // Board on the left with the choices and the log under it; one tabbed rail on the right.
+        const main = root.createDiv('storyteller-campaign-main');
+        const stageCol = main.createDiv('storyteller-campaign-stage-col');
+        const scenePanel = stageCol.createDiv('storyteller-campaign-scene-panel');
+        await this.renderScenePanel(scenePanel);
+        await this.renderLogDock(stageCol, session);
+
+        const rail = main.createDiv('storyteller-campaign-sidebar storyteller-campaign-rail');
+        rail.setAttribute('data-sts-part', 'rail');
+        await this.renderRail(rail, session);
+    }
+
+    /** The quiet top bar: where the party has been, the date, who rolls, the players' screen and End. */
+    private renderPlayTopBar(root: HTMLElement, session: CampaignSession): void {
         const toolbar = root.createDiv('storyteller-campaign-toolbar');
+        toolbar.setAttribute('data-sts-part', 'top-bar');
 
         const backBtn = toolbar.createEl('button', { cls: 'storyteller-campaign-toolbar-btn', attr: { 'aria-label': 'Go back' } });
         setIcon(backBtn, 'arrow-left');
         backBtn.disabled = this.sceneHistory.length === 0;
         backBtn.addEventListener('click', () => { void this.navigateBack(); });
 
-        toolbar.createEl('span', {
-            cls: 'storyteller-campaign-scene-name',
-            text: this.currentScene?.name ?? 'No scene',
-        });
-        this.renderSceneKindControl(toolbar);
+        const trail = toolbar.createDiv('storyteller-campaign-trail');
+        for (const name of this.sceneHistory.slice(-2)) {
+            const step = trail.createEl('button', { cls: 'storyteller-campaign-trail-step', text: name, attr: { type: 'button' } });
+            step.addEventListener('click', () => { void this.doNavigate(name, true); });
+            trail.createSpan({ cls: 'storyteller-campaign-trail-sep', text: '›' });
+        }
+        trail.createSpan({ cls: 'storyteller-campaign-scene-name', text: this.currentScene?.name ?? 'No scene' });
+
         this.renderCampaignClock(toolbar, session);
         this.renderActorSelector(toolbar, session);
         toolbar.createDiv({ cls: 'storyteller-campaign-toolbar-spacer' });
 
-        if (this.rollableEncounterTable()) {
-            const encBtn = toolbar.createEl('button', { cls: 'storyteller-campaign-toolbar-btn', attr: { 'aria-label': 'Roll encounter' } });
-            setIcon(encBtn.createSpan(), 'dices');
-            encBtn.createSpan({ text: ' Encounter' });
-            encBtn.addEventListener('click', () => { void this.rollManualEncounter(); });
-        }
-
-        const graphBtn = toolbar.createEl('button', { cls: 'storyteller-campaign-toolbar-btn', attr: { 'aria-label': 'Scene graph' } });
-        setIcon(graphBtn, 'git-fork');
-        graphBtn.addEventListener('click', () => { void this.plugin.activateSceneGraphView(); });
-
-        const timelineBtn = toolbar.createEl('button', {
-            cls: 'storyteller-campaign-toolbar-btn',
-            attr: { 'aria-label': 'Record session event on timeline' },
+        const playersBtn = toolbar.createEl('button', {
+            cls: 'storyteller-campaign-toolbar-btn storyteller-campaign-players-btn',
+            attr: { 'aria-label': 'Player screen' },
         });
-        setIcon(timelineBtn.createSpan(), 'calendar-plus');
-        timelineBtn.createSpan({ text: ' Timeline event' });
-        timelineBtn.addEventListener('click', () => this.openSessionTimelineEventModal(session));
+        setIcon(playersBtn.createSpan(), 'monitor');
+        playersBtn.createSpan({ text: 'Players' });
+        const shown = this.plugin.playerScreen.getState();
+        const showing = shown.pinned.length + shown.popups.length;
+        if (showing > 0) playersBtn.createSpan({ cls: 'storyteller-campaign-players-count', text: String(showing) });
+        playersBtn.addEventListener('click', event => this.openPlayersMenu(event));
+
+        const moreBtn = toolbar.createEl('button', { cls: 'storyteller-campaign-toolbar-btn', attr: { 'aria-label': 'More' } });
+        setIcon(moreBtn, 'more-horizontal');
+        moreBtn.addEventListener('click', event => {
+            const menu = new Menu();
+            if (this.currentScene?.filePath) {
+                menu.addItem(item => item.setTitle('Open scene note').setIcon('file-text').onClick(() => this.openSceneNote()));
+            }
+            menu.addItem(item => item.setTitle('Scene graph').setIcon('git-fork').onClick(() => {
+                void this.plugin.activateSceneGraphView();
+            }));
+            menu.addItem(item => item.setTitle('Record a timeline event').setIcon('calendar-plus').onClick(() => {
+                this.openSessionTimelineEventModal(session);
+            }));
+            if (session.filePath) {
+                menu.addItem(item => item.setTitle('Open session note').setIcon('scroll').onClick(() => {
+                    void this.plugin.app.workspace.openLinkText(session.filePath!, '', 'tab');
+                }));
+            }
+            menu.showAtMouseEvent(event);
+        });
 
         const endBtn = toolbar.createEl('button', { cls: 'storyteller-campaign-toolbar-btn mod-warning', text: 'End' });
         endBtn.addEventListener('click', () => { void (async () => {
@@ -618,88 +702,196 @@ export class CampaignView extends ItemView {
             this.currentScene = null;
             await this.render();
         })(); });
+    }
 
-        // â”€â”€ Layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        const main = root.createDiv('storyteller-campaign-main');
+    private openSceneNote(): void {
+        if (this.currentScene?.filePath) {
+            void this.plugin.app.workspace.openLinkText(this.currentScene.filePath, '', 'tab');
+        }
+    }
 
-        const scenePanel = main.createDiv('storyteller-campaign-scene-panel');
-        await this.renderScenePanel(scenePanel);
+    private openPlayersMenu(event: MouseEvent): void {
+        const menu = new Menu();
+        menu.addItem(item => item.setTitle('Open player screen').setIcon('monitor').onClick(() => {
+            void this.plugin.openPlayerScreen();
+        }));
+        const first = this.readSections.find(section => READ_ALOUD_HEADING.test(section.heading)) ?? this.readSections[0];
+        if (first) {
+            menu.addItem(item => item.setTitle(`Show "${first.heading}"`).setIcon('send').onClick(() => {
+                this.pushReadSection(first, 'popup');
+            }));
+        }
+        menu.addSeparator();
+        menu.addItem(item => item.setTitle('Clear player screen').setIcon('eraser').onClick(() => {
+            this.plugin.playerScreen.clear();
+            new Notice('Player screen cleared');
+            void this.render();
+        }));
+        menu.showAtMouseEvent(event);
+    }
 
-        const sidebar = main.createDiv('storyteller-campaign-sidebar');
-        await this.renderReadSidebar(sidebar, session);
-        this.renderPartySidebar(sidebar, session);
-        await this.renderInventorySidebar(sidebar, session);
-        this.renderProgressSidebar(sidebar, session);
-        await this.renderLoreSidebar(sidebar, session);
-        this.renderGroupStandingsSidebar(sidebar, session);
-        await this.renderLogSidebar(sidebar, session);
+    // ── Rail: Read, Party, Progress and World tabs ───────────────────────
+
+    private async renderRail(rail: HTMLElement, session: CampaignSession): Promise<void> {
+        rail.empty();
+        const tabs = rail.createDiv('storyteller-campaign-rail-tabs');
+        tabs.setAttribute('role', 'tablist');
+        const body = rail.createDiv('storyteller-campaign-rail-body');
+        for (const tab of RAIL_TABS) {
+            const button = tabs.createEl('button', {
+                cls: 'storyteller-campaign-rail-tab' + (tab.id === this.railTab ? ' is-active' : ''),
+                attr: { type: 'button', role: 'tab', 'aria-selected': String(tab.id === this.railTab) },
+            });
+            setIcon(button.createSpan(), tab.icon);
+            button.createSpan({ text: tab.label });
+            button.addEventListener('click', () => {
+                if (this.railTab === tab.id) return;
+                this.railTab = tab.id;
+                void this.renderRail(rail, session);
+            });
+        }
+
+        for (const part of ['read', 'party', 'progress', 'standings'] as const) this.sidebarPartEls.delete(part);
+        switch (this.railTab) {
+            case 'read':
+                await this.renderReadSidebar(body, session);
+                break;
+            case 'party':
+                this.renderPartySidebar(body, session);
+                await this.renderInventorySidebar(body, session);
+                break;
+            case 'progress':
+                this.renderProgressSidebar(body, session);
+                break;
+            case 'world':
+                this.renderGroupStandingsSidebar(body, session);
+                await this.renderLoreSidebar(body, session);
+                break;
+        }
+        if (!body.hasChildNodes()) {
+            body.createDiv({
+                cls: 'storyteller-campaign-empty-text storyteller-campaign-rail-empty',
+                text: this.railTab === 'world'
+                    ? 'No faction standings or lore yet. They appear here once a choice or item changes them.'
+                    : 'Nothing here yet.',
+            });
+        }
     }
 
     // â”€â”€ Scene panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private async renderScenePanel(panel: HTMLElement): Promise<void> {
         panel.empty();
+        panel.setAttribute('data-sts-part', 'stage');
 
         if (!this.currentScene) {
+            this.readSections = [];
             panel.createEl('p', { cls: 'storyteller-campaign-empty', text: 'No scene loaded.' });
             await this.renderScenePicker(panel);
             return;
         }
+        this.readSections = await this.loadReadSections(this.currentScene);
 
-        // Header
-        panel.createEl('h2', { text: this.currentScene.name });
+        const head = panel.createDiv('storyteller-campaign-stage-head');
+        const titleRow = head.createDiv('storyteller-campaign-stage-title');
+        titleRow.createEl('h2', { text: this.currentScene.name });
+        if (this.currentScene.filePath) {
+            const noteBtn = titleRow.createEl('button', {
+                cls: 'clickable-icon storyteller-campaign-open-note-btn',
+                attr: { type: 'button', 'aria-label': 'Open scene note' },
+            });
+            setIcon(noteBtn, 'file-text');
+            noteBtn.addEventListener('click', () => this.openSceneNote());
+        }
         if (this.currentScene.synopsis) {
-            panel.createEl('p', { cls: 'storyteller-campaign-synopsis', text: this.currentScene.synopsis });
+            head.createEl('p', { cls: 'storyteller-campaign-synopsis', text: this.currentScene.synopsis });
         }
 
-        // Open note button
-        const noteBtn = panel.createEl('button', { cls: 'storyteller-campaign-open-note-btn' });
-        setIcon(noteBtn.createSpan(), 'file-text');
-        noteBtn.createSpan({ text: ' Open note' });
-        noteBtn.addEventListener('click', () => {
-            if (this.currentScene?.filePath) {
-                void this.plugin.app.workspace.openLinkText(this.currentScene.filePath, '', 'tab');
-            }
-        });
-
-        await this.renderCampaignBoard(panel);
-
-        // Markdown scene body (branch/encounter blocks stripped)
-        if (this.sceneBody.trim()) {
-            const bodyEl = panel.createDiv('storyteller-campaign-scene-body');
-            const clean = this.sceneBody
-                .replace(/^```branch[\s\S]*?^```\n?/gm, '')
-                .replace(/^```encounter[\s\S]*?^```\n?/gm, '')
-                .trim();
+        // The map is the board. Without one, the scene's own text takes its place.
+        const hasBoard = await this.renderCampaignBoard(panel);
+        panel.toggleClass('has-board', hasBoard);
+        if (!hasBoard) {
+            const clean = stripPlayBlocks(this.sceneBody);
             if (clean) {
-                await MarkdownRenderer.render(
-                    this.plugin.app, clean, bodyEl,
-                    this.currentScene.filePath ?? '', this,
-                );
+                const bodyEl = panel.createDiv('storyteller-campaign-scene-body');
+                await MarkdownRenderer.render(this.plugin.app, clean, bodyEl, this.currentScene.filePath ?? '', this);
             }
         }
 
-        // Scene entity context: location badge, NPCs, items at scene
-        this.renderSceneEntityContext(panel);
+        // Choices and the encounter sit together under the board: a roll changes what can be chosen.
+        const playRow = panel.createDiv('storyteller-campaign-play-row');
+        this.renderPlayChoices(playRow, panel);
+        this.renderPlayEncounter(playRow);
+    }
 
-        // Encounter table: rolling it applies the row, logs it and offers its scene
-        this.renderPlayEncounter(panel);
+    /** The choices that are not hidden, in the order they are numbered on the board and in the list. */
+    private visibleBranches(): SceneBranch[] {
+        return this.branches.filter(branch => !branch.hidden);
+    }
 
-        // Choices
-        if (this.branches.length > 0) {
-            const branchHdr = panel.createDiv('storyteller-campaign-branch-header');
-            setIcon(branchHdr.createSpan(), 'git-branch');
-            branchHdr.createSpan({ text: ' Choices' });
-            const branchList = panel.createDiv('storyteller-campaign-branch-list');
-            for (const b of this.branches) {
-                if (b.hidden) continue;
-                this.renderPlayBranchCard(branchList, b, panel);
-            }
-        } else {
-            const dead = panel.createDiv('storyteller-campaign-dead-end');
+    private renderPlayChoices(row: HTMLElement, panel: HTMLElement): void {
+        const box = row.createDiv('storyteller-campaign-choices');
+        box.setAttribute('data-sts-part', 'choices');
+        const header = box.createDiv('storyteller-campaign-branch-header');
+        setIcon(header.createSpan(), 'git-branch');
+        header.createSpan({ text: 'Choices' });
+        const branches = this.visibleBranches();
+        if (branches.length === 0) {
+            const dead = box.createDiv('storyteller-campaign-dead-end');
             setIcon(dead.createSpan(), 'flag');
-            dead.createSpan({ text: ' End of scene.' });
+            dead.createSpan({ text: 'End of scene.' });
+            return;
         }
+        const list = box.createDiv('storyteller-campaign-branch-list');
+        branches.forEach((branch, i) => this.renderPlayBranchCard(list, branch, panel, i + 1));
+    }
+
+    /** The log docked under the board: the quick entry bar and the latest lines. */
+    private async renderLogDock(container: HTMLElement, session: CampaignSession): Promise<void> {
+        const dock = container.createDiv('storyteller-campaign-log-dock');
+        dock.setAttribute('data-sts-part', 'log-dock');
+        await this.fillLogDock(dock, session);
+        this.sidebarPartEls.set('log', dock);
+    }
+
+    private async fillLogDock(dock: HTMLElement, session: CampaignSession): Promise<void> {
+        dock.empty();
+        const hdr = dock.createDiv('storyteller-campaign-log-dock-hdr');
+        setIcon(hdr.createSpan(), 'scroll');
+        hdr.createSpan({ cls: 'storyteller-campaign-log-dock-title', text: 'Log' });
+        this.renderSceneKindControl(hdr);
+        const actions = hdr.createDiv('storyteller-campaign-progress-actions');
+        this.addLogHeaderButton(actions, 'file-text', 'Session header', () => { void this.openSessionHeaderModal(); });
+        this.addLogHeaderButton(actions, 'flag', 'End of session', () => { this.openSessionEndModal(); });
+        this.addLogHeaderButton(actions, 'hourglass', 'Interlude', () => { this.openInterludeModal(); });
+        this.addLogHeaderButton(
+            actions,
+            this.logDockExpanded ? 'chevron-down' : 'chevron-up',
+            this.logDockExpanded ? 'Show fewer lines' : 'Show more lines',
+            () => {
+                this.logDockExpanded = !this.logDockExpanded;
+                void this.refreshSidebarPart('log');
+            },
+        );
+
+        this.renderQuickEntry(dock, session);
+
+        const logList = dock.createDiv('storyteller-campaign-log-list' + (this.logDockExpanded ? ' is-expanded' : ''));
+        if (!session.filePath) {
+            logList.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'Not yet saved. The first entry creates the session note.' });
+            return;
+        }
+        let log = '';
+        try { log = await this.plugin.loadSessionLog(session.filePath); } catch { /* ignore */ }
+        if (!log.trim()) {
+            logList.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'No entries yet.' });
+            return;
+        }
+        const lines = log.split('\n').filter(Boolean).slice(this.logDockExpanded ? -25 : -2);
+        for (const line of lines) {
+            logList.createDiv({ cls: 'storyteller-campaign-log-entry', text: line.replace(/^- /, '') });
+        }
+        logList.scrollTop = logList.scrollHeight;
     }
 
     private renderSceneEntityContext(panel: HTMLElement): void {
@@ -763,40 +955,28 @@ export class CampaignView extends ItemView {
         }
     }
 
-    private async renderCampaignBoard(panel: HTMLElement): Promise<void> {
-        if (!this.session || !this.currentScene) return;
+    /** Draws the campaign board. Returns false when this scene has no board to show. */
+    private async renderCampaignBoard(panel: HTMLElement): Promise<boolean> {
+        if (!this.session || !this.currentScene) return false;
 
         const token = this.boardRenderToken;
         const maps = await this.plugin.listMaps().catch(() => [] as StoryMap[]);
         const boardMap = await this.resolveCampaignBoardMap(maps);
-        if (!boardMap) return;
-        if (token !== this.boardRenderToken) return;
+        if (!boardMap) return false;
+        if (token !== this.boardRenderToken) return true;
 
         const mapId = boardMap.id || boardMap.name;
         const boardEl = panel.createDiv('storyteller-campaign-board');
+        boardEl.setAttribute('data-sts-part', 'board');
 
         const header = boardEl.createDiv('storyteller-campaign-board-header');
-        const titleWrap = header.createDiv('storyteller-campaign-board-title-wrap');
-        titleWrap.createDiv({ cls: 'storyteller-campaign-board-kicker', text: 'Campaign board' });
-        titleWrap.createEl('h3', { cls: 'storyteller-campaign-board-title', text: boardMap.name });
+        setIcon(header.createSpan({ cls: 'storyteller-campaign-board-icon' }), 'map');
+        header.createSpan({ cls: 'storyteller-campaign-board-title', text: boardMap.name });
         const sceneOverride = this.mapReferenceMatches(this.currentScene.campaignBoardMapId, boardMap);
-        const autoSource = sceneOverride
-            ? 'Scene override'
-            : this.locationData
-                ? `From ${this.locationData.name}`
-                : 'Session board';
-        titleWrap.createDiv({ cls: 'storyteller-campaign-board-meta', text: autoSource });
-
-        const actions = header.createDiv('storyteller-campaign-board-actions');
-        if (boardMap.filePath) {
-            const noteBtn = actions.createEl('button', { cls: 'storyteller-campaign-btn', text: 'Open map' });
-            setIcon(noteBtn.createSpan(), 'map');
-            noteBtn.addEventListener('click', () => {
-                if (boardMap.filePath) {
-                    void this.plugin.app.workspace.openLinkText(boardMap.filePath, '', 'tab');
-                }
-            });
-        }
+        header.createSpan({
+            cls: 'storyteller-campaign-board-meta',
+            text: sceneOverride ? 'Scene board' : this.locationData ? `At ${this.locationData.name}` : 'Session board',
+        });
 
         const relatedMaps = [
             boardMap.parentMapId,
@@ -805,8 +985,7 @@ export class CampaignView extends ItemView {
             .map(id => this.findMapByRef(id, maps))
             .filter((candidate): candidate is StoryMap => Boolean(candidate));
         if (relatedMaps.length > 0) {
-            const nav = boardEl.createDiv('storyteller-campaign-board-nav');
-            nav.createSpan({ cls: 'storyteller-campaign-board-nav-label', text: 'Boards' });
+            const nav = header.createDiv('storyteller-campaign-board-nav');
             for (const relatedMap of relatedMaps) {
                 const targetId = relatedMap.id || relatedMap.name;
                 const button = nav.createEl('button', {
@@ -825,22 +1004,126 @@ export class CampaignView extends ItemView {
             }
         }
 
+        if (boardMap.filePath) {
+            const mapBtn = header.createEl('button', {
+                cls: 'clickable-icon storyteller-campaign-board-open',
+                attr: { type: 'button', 'aria-label': 'Open map note' },
+            });
+            setIcon(mapBtn, 'external-link');
+            mapBtn.addEventListener('click', () => {
+                if (boardMap.filePath) {
+                    void this.plugin.app.workspace.openLinkText(boardMap.filePath, '', 'tab');
+                }
+            });
+        }
+
         const imageUrl = this.getMapImageUrl(boardMap);
         if (!imageUrl) {
             boardEl.createDiv({
                 cls: 'storyteller-campaign-board-empty',
                 text: 'This board has no image yet. Add a background image to the map note to use it in Campaign mode.',
             });
-            return;
+            return false;
         }
 
         const locations = await this.collectBoardLocations(boardMap);
-        if (token !== this.boardRenderToken) return;
+        if (token !== this.boardRenderToken) return true;
         this.boardLocations = locations;
 
-        const mountedLeaflet = await this.renderLeafletCampaignBoard(boardEl, boardMap, imageUrl, locations, token);
+        const canvas = boardEl.createDiv('storyteller-campaign-board-canvas');
+        const mountedLeaflet = await this.renderLeafletCampaignBoard(canvas, boardMap, imageUrl, locations, token);
         if (!mountedLeaflet) {
-            await this.renderStaticCampaignBoard(boardEl, boardMap, imageUrl, locations);
+            await this.renderStaticCampaignBoard(canvas, boardMap, imageUrl, locations);
+        }
+        if (locations.length === 0) {
+            boardEl.createDiv({
+                cls: 'storyteller-campaign-board-caption',
+                text: 'No locations are placed on this board yet. Place them in the map view to move the party on it.',
+            });
+        }
+        return true;
+    }
+
+    /** Where a choice leads on the board: the location of its target scene, if that is on this board. */
+    private boardLocationForScene(sceneRef: string | undefined): CampaignBoardLocation | null {
+        if (!sceneRef) return null;
+        const scene = this.resolveSceneReference(sceneRef);
+        const name = this.normalizeName(scene?.name ?? sceneRef);
+        const byScene = this.boardLocations.find(entry => entry.scenes.some(candidate => this.normalizeName(candidate.name) === name));
+        if (byScene) return byScene;
+        const locationRef = scene?.linkedLocations?.[0];
+        return locationRef
+            ? this.boardLocations.find(entry => this.locationMatchesReference(entry.location, locationRef)) ?? null
+            : null;
+    }
+
+    /** The party's place on the board: the current scene's location. */
+    private currentBoardLocation(): CampaignBoardLocation | null {
+        if (!this.locationData) return null;
+        const key = this.getLocationKey(this.locationData);
+        return this.boardLocations.find(entry => this.getLocationKey(entry.location) === key) ?? null;
+    }
+
+    /** Short party initials for the token on the board. */
+    private partyTokenInitials(): string[] {
+        return (this.session?.partyCharacterNames ?? []).slice(0, 4).map(name => name.trim().charAt(0).toUpperCase() || '?');
+    }
+
+    /**
+     * Draws the party token and the choices on the Leaflet board: each choice that leads to a scene
+     * at another place on this board is a numbered dashed path from the party, matching its card.
+     */
+    private drawBoardPlay(map: L.Map): void {
+        const here = this.currentBoardLocation();
+        const panelEl = this.containerEl.querySelector<HTMLElement>('.storyteller-campaign-scene-panel');
+        if (here) {
+            const [y, x] = here.binding.coordinates;
+            // Own pane (styled as .leaflet-storyteller-choice-paths-pane), so the paths sit above the
+            // map image and its tiles whatever pane those use.
+            if (!map.getPane(BOARD_PATH_PANE)) map.createPane(BOARD_PATH_PANE);
+            this.visibleBranches().forEach((branch, i) => {
+                const resolved = this.resolveBranchReferences(branch);
+                const there = this.boardLocationForScene(resolved.target);
+                if (!there || there === here) return;
+                const blocked = !this.branchCheck(resolved).met;
+                const [ty, tx] = there.binding.coordinates;
+                L.polyline([[y, x], [ty, tx]], {
+                    className: 'storyteller-campaign-board-path' + (blocked ? ' is-blocked' : ''),
+                    pane: BOARD_PATH_PANE,
+                    dashArray: '10 8',
+                    weight: 4,
+                    opacity: 0.9,
+                    interactive: false,
+                }).addTo(map);
+                const badge = L.marker([y + (ty - y) * 0.6, x + (tx - x) * 0.6], {
+                    icon: L.divIcon({
+                        className: 'storyteller-campaign-board-choice' + (blocked ? ' is-blocked' : ''),
+                        html: `<span>${i + 1}</span>`,
+                        iconSize: [26, 26],
+                        iconAnchor: [13, 13],
+                    }),
+                    title: resolved.label,
+                    keyboard: false,
+                }).addTo(map);
+                badge.on('click', () => { if (panelEl) this.activateChoice(branch, panelEl); });
+            });
+
+            const initials = this.partyTokenInitials();
+            if (initials.length > 0) {
+                const html = initials.map(letter => `<span>${letter}</span>`).join('');
+                L.marker([y, x], {
+                    icon: L.divIcon({
+                        className: 'storyteller-campaign-board-party',
+                        html,
+                        iconSize: [initials.length * 22 + 6, 28],
+                        iconAnchor: [(initials.length * 22 + 6) / 2, 38],
+                    }),
+                    title: (this.session?.partyCharacterNames ?? []).join(', '),
+                    interactive: false,
+                    keyboard: false,
+                    zIndexOffset: 1000,
+                }).addTo(map);
+            }
         }
     }
 
@@ -897,16 +1180,11 @@ export class CampaignView extends ItemView {
             return true;
         }
         this.boardRenderer = renderer;
-
-        const caption = boardEl.createDiv('storyteller-campaign-board-caption');
-        caption.setText(
-            locations.length > 0
-                ? 'Click a mapped location to inspect it, jump scenes, or pull items straight into the party inventory.'
-                : 'No locations are bound to this board yet.'
-        );
+        const map = renderer.getMap();
+        if (map) this.drawBoardPlay(map);
 
         const selectedLocation = locations.find(entry => this.getLocationKey(entry.location) === selectedLocationKey);
-        if (selectedLocation) {
+        if (selectedLocation && this.boardInspectorOpen) {
             await this.renderBoardLocationInspector(boardEl, selectedLocation);
         }
         return true;
@@ -918,14 +1196,15 @@ export class CampaignView extends ItemView {
      */
     private async selectBoardLocationFromPin(location: Location): Promise<void> {
         const key = this.getLocationKey(location);
-        if (this.selectedBoardLocationId === key) {
+        if (this.selectedBoardLocationId === key && this.boardInspectorOpen) {
             this.focusBoardLocationInspector(key);
             return;
         }
         this.selectedBoardLocationId = key;
         this.boardRenderer?.setPinHighlight(this.getBoardPinHighlight(key));
 
-        const boardEl = this.containerEl.querySelector<HTMLElement>('.storyteller-campaign-board');
+        this.boardInspectorOpen = true;
+        const boardEl = this.containerEl.querySelector<HTMLElement>('.storyteller-campaign-board-canvas');
         const entry = this.boardLocations.find(candidate => this.getLocationKey(candidate.location) === key);
         if (!boardEl || !entry) return;
 
@@ -936,7 +1215,7 @@ export class CampaignView extends ItemView {
             inspector.remove();
             return;
         }
-        previous?.replaceWith(inspector);
+        if (previous) previous.replaceWith(inspector);
         this.focusBoardLocationInspector(key, inspector);
     }
 
@@ -988,6 +1267,17 @@ export class CampaignView extends ItemView {
             gridEl.style.setProperty('--storyteller-board-grid-y', `${(boardMap.gridSize! / Math.max(dimensions.height, 1)) * 100}%`);
         }
 
+        // Static boards cannot draw paths, so each pin lists the numbers of the choices that lead there.
+        const choiceNumbersByLocation = new Map<string, number[]>();
+        const here = this.currentBoardLocation();
+        this.visibleBranches().forEach((branch, i) => {
+            const there = this.boardLocationForScene(this.resolveBranchReferences(branch).target);
+            if (!there || there === here) return;
+            const key = this.getLocationKey(there.location);
+            choiceNumbersByLocation.set(key, [...(choiceNumbersByLocation.get(key) ?? []), i + 1]);
+        });
+        const partyInitials = this.partyTokenInitials();
+
         for (const entry of locations) {
             const [top, left] = entry.binding.coordinates;
             const topPercent = this.clampBoardPercent((top / Math.max(dimensions.height, 1)) * 100);
@@ -1005,9 +1295,18 @@ export class CampaignView extends ItemView {
             button.title = entry.location.name;
             button.createSpan({ cls: 'storyteller-campaign-board-pin-dot' });
             button.createSpan({ cls: 'storyteller-campaign-board-pin-label', text: entry.location.name });
+            const choiceNumbers = choiceNumbersByLocation.get(locationKey);
+            if (choiceNumbers) {
+                button.createSpan({ cls: 'storyteller-campaign-board-pin-choices', text: choiceNumbers.join(' ') });
+            }
+            if (this.isCurrentSceneLocation(entry.location) && partyInitials.length > 0) {
+                const party = button.createSpan({ cls: 'storyteller-campaign-board-party is-static' });
+                for (const letter of partyInitials) party.createSpan({ text: letter });
+            }
             button.addEventListener('click', () => { void (async () => {
-                const isSameLocation = this.selectedBoardLocationId === locationKey;
+                const isSameLocation = this.selectedBoardLocationId === locationKey && this.boardInspectorOpen;
                 this.selectedBoardLocationId = locationKey;
+                this.boardInspectorOpen = true;
                 if (isSameLocation) {
                     this.focusBoardLocationInspector(locationKey);
                     return;
@@ -1017,15 +1316,8 @@ export class CampaignView extends ItemView {
             })(); });
         }
 
-        const caption = boardEl.createDiv('storyteller-campaign-board-caption');
-        caption.setText(
-            locations.length > 0
-                ? 'Click a mapped location to inspect it, jump scenes, or pull items straight into the party inventory.'
-                : 'No locations are bound to this board yet.'
-        );
-
         const selectedLocation = locations.find(entry => this.getLocationKey(entry.location) === selectedLocationKey);
-        if (selectedLocation) {
+        if (selectedLocation && this.boardInspectorOpen) {
             const inspector = await this.renderBoardLocationInspector(boardEl, selectedLocation);
             if (this.pendingBoardFocusLocationId && this.pendingBoardFocusLocationId === selectedLocationKey) {
                 this.pendingBoardFocusLocationId = null;
@@ -1038,18 +1330,34 @@ export class CampaignView extends ItemView {
         const inspector = container.createDiv('storyteller-campaign-board-inspector');
         inspector.dataset.locationKey = this.getLocationKey(entry.location);
         const header = inspector.createDiv('storyteller-campaign-board-inspector-header');
-        header.createDiv({ cls: 'storyteller-campaign-board-inspector-kicker', text: 'Selected location' });
+        header.createDiv({
+            cls: 'storyteller-campaign-board-inspector-kicker',
+            text: this.isCurrentSceneLocation(entry.location) ? 'Party is here' : 'Location',
+        });
         header.createEl('h4', { text: entry.location.name });
 
         const actions = header.createDiv('storyteller-campaign-board-inspector-actions');
         if (entry.location.filePath) {
-            const noteBtn = actions.createEl('button', { cls: 'storyteller-campaign-btn', text: 'Open note' });
+            const noteBtn = actions.createEl('button', {
+                cls: 'clickable-icon',
+                attr: { type: 'button', 'aria-label': 'Open location note' },
+            });
+            setIcon(noteBtn, 'file-text');
             noteBtn.addEventListener('click', () => {
                 if (entry.location.filePath) {
                     void this.plugin.app.workspace.openLinkText(entry.location.filePath, '', 'tab');
                 }
             });
         }
+        const closeBtn = actions.createEl('button', {
+            cls: 'clickable-icon',
+            attr: { type: 'button', 'aria-label': 'Close' },
+        });
+        setIcon(closeBtn, 'x');
+        closeBtn.addEventListener('click', () => {
+            this.boardInspectorOpen = false;
+            inspector.remove();
+        });
 
         if (entry.location.description) {
             inspector.createDiv({
@@ -1382,7 +1690,23 @@ export class CampaignView extends ItemView {
         await this.render();
     }
 
-    private renderPlayBranchCard(container: HTMLElement, branch: SceneBranch, panelEl: HTMLElement): void {
+    /** Whether a choice can be taken now, and why not. */
+    private branchCheck(branch: SceneBranch): { met: boolean; unmet: string[] } {
+        return this.session
+            ? checkBranchConditions(branch, this.session, this.getBranchActorState(branch))
+            : { met: true, unmet: [] };
+    }
+
+    /** Takes a choice from its card or its number on the board. */
+    private activateChoice(branch: SceneBranch, panelEl: HTMLElement): void {
+        const resolved = this.resolveBranchReferences(branch);
+        const check = this.branchCheck(resolved);
+        if (!check.met) { new Notice(check.unmet.join(' | ')); return; }
+        if (resolved.dice) this.showDiceOverlay(resolved, panelEl);
+        else void this.executeChoice(resolved, 'success');
+    }
+
+    private renderPlayBranchCard(container: HTMLElement, branch: SceneBranch, panelEl: HTMLElement, number?: number): void {
         const resolvedBranch = this.resolveBranchReferences(branch);
         const actorState = this.getBranchActorState(resolvedBranch);
         const check = this.session
@@ -1390,9 +1714,13 @@ export class CampaignView extends ItemView {
             : { met: true, unmet: [] };
 
         const card = container.createDiv('storyteller-campaign-play-branch' + (!check.met ? ' is-blocked' : ''));
+        card.setAttribute('data-sts-part', 'choice-card');
 
         // Label + target
         const labelRow = card.createDiv('storyteller-campaign-play-branch-label');
+        if (number !== undefined) {
+            labelRow.createSpan({ cls: 'storyteller-campaign-choice-number', text: String(number) });
+        }
         labelRow.createSpan({ text: resolvedBranch.label });
         if (resolvedBranch.target) {
             labelRow.createSpan({ cls: 'storyteller-campaign-play-branch-target', text: `-> ${resolvedBranch.target}` });
@@ -1455,11 +1783,7 @@ export class CampaignView extends ItemView {
             }
         }
 
-        card.addEventListener('click', () => {
-            if (!check.met) { new Notice(check.unmet.join(' | ')); return; }
-            if (resolvedBranch.dice) { this.showDiceOverlay(resolvedBranch, panelEl); }
-            else { void this.executeChoice(resolvedBranch, 'success'); }
-        });
+        card.addEventListener('click', () => this.activateChoice(branch, panelEl));
     }
 
     // â”€â”€ Dice overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1962,6 +2286,7 @@ export class CampaignView extends ItemView {
         const scene = this.resolveSceneReference(sceneName);
         if (!scene) { new Notice(`Scene "${sceneName}" not found.`); return; }
 
+        this.boardInspectorOpen = false;
         if (pushHistory && this.currentScene) this.sceneHistory.push(this.currentScene.name);
 
         this.currentScene = scene;
@@ -2083,87 +2408,106 @@ export class CampaignView extends ItemView {
     }
 
     /** The scene note's sections, minus the ones with no text under them. */
+    /** The scene note's sections for the Read tab. */
     private async loadReadSections(scene: Scene | null): Promise<NoteSection[]> {
         if (!scene?.filePath) return [];
         const file = this.app.vault.getAbstractFileByPath(normalizePath(scene.filePath));
         if (!(file instanceof TFile)) return [];
         try {
-            const content = await this.app.vault.cachedRead(file);
-            return splitNoteSections(content).filter(section => section.markdown.trim().length > 0);
+            return readSectionsFor(await this.app.vault.cachedRead(file));
         } catch {
             return [];
         }
     }
 
+    /**
+     * The Read tab: who and what is in the scene, then the scene note by header. Clicking a
+     * header shows its text; each one can be shown to the players, pinned, or sent to one player.
+     */
     private async renderReadSidebar(sidebar: HTMLElement, session: CampaignSession): Promise<void> {
-        const sec = sidebar.createDiv('storyteller-campaign-sidebar-section');
+        const sec = sidebar.createDiv('storyteller-campaign-sidebar-section storyteller-campaign-read');
         sec.setAttribute('data-sts-part', 'read-panel');
         this.sidebarPartEls.set('read', sec);
-        const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
-        setIcon(hdr.createSpan(), 'book-open');
-        hdr.createSpan({ text: ' Read' });
-        const toggle = hdr.createEl('button', {
-            cls: 'storyteller-campaign-read-toggle',
-            attr: {
-                'aria-label': this.readCollapsed ? 'Show read sections' : 'Hide read sections',
-                'aria-expanded': String(!this.readCollapsed),
-            },
-        });
-        setIcon(toggle, this.readCollapsed ? 'chevron-right' : 'chevron-down');
-        toggle.addEventListener('click', () => {
-            this.readCollapsed = !this.readCollapsed;
-            void this.refreshSidebarPart('read');
-        });
-        if (this.readCollapsed) return;
 
-        const body = sec.createDiv('storyteller-campaign-sidebar-body');
         const scene = this.currentScene;
-        const sections = await this.loadReadSections(scene);
-        if (!scene || sections.length === 0) {
-            body.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'No headers in this scene note.' });
+        if (!scene) {
+            sec.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'No scene loaded.' });
+            return;
+        }
+        this.renderSceneEntityContext(sec);
+
+        const sections = this.readSections.length ? this.readSections : await this.loadReadSections(scene);
+        if (sections.length === 0) {
+            sec.createDiv({
+                cls: 'storyteller-campaign-empty-text',
+                text: 'Nothing to read yet. Add headers like "Read aloud" to the scene note.',
+            });
             return;
         }
 
-        // A new scene starts on its first "read" header (Read-aloud, Read aloud), else the first header.
+        // A new scene opens on its read-aloud text, else the first section.
         const key = this.readSceneKey(scene);
         if (!this.readSelection.has(key)) {
-            const firstRead = sections.findIndex(section => /\bread/i.test(section.heading));
+            const firstRead = sections.findIndex(section => READ_ALOUD_HEADING.test(section.heading));
             this.readSelection.set(key, firstRead >= 0 ? firstRead : 0);
         }
         const stored = this.readSelection.get(key) ?? null;
         const selected = stored !== null && stored < sections.length ? stored : null;
+        const onScreen = new Set(
+            this.plugin.playerScreen.getState().pinned
+                .filter(push => push.sourceName === scene.name)
+                .map(push => push.heading),
+        );
 
-        const list = body.createDiv('storyteller-campaign-read-list');
+        const list = sec.createDiv('storyteller-campaign-read-list');
         sections.forEach((section, i) => {
-            const row = list.createDiv('storyteller-campaign-read-heading');
+            const row = list.createDiv('storyteller-campaign-read-heading' + (i === selected ? ' is-selected' : ''));
             row.setAttribute('data-sts-part', 'read-heading');
-            row.setCssStyles({ paddingLeft: `${Math.max(0, section.level - 1) * 0.75}rem` });
-            if (i === selected) row.addClass('is-selected');
+            row.setCssStyles({ paddingLeft: `${0.4 + Math.max(0, section.level - 2) * 0.75}rem` });
 
             const title = row.createEl('button', {
                 cls: 'storyteller-campaign-read-title',
-                text: section.heading,
-                attr: { 'aria-expanded': String(i === selected) },
+                attr: { type: 'button', 'aria-expanded': String(i === selected) },
             });
+            setIcon(title.createSpan(), i === selected ? 'chevron-down' : 'chevron-right');
+            title.createSpan({ text: section.heading });
             title.addEventListener('click', () => {
                 this.readSelection.set(key, i === selected ? null : i);
                 void this.refreshSidebarPart('read');
             });
+            if (onScreen.has(section.heading)) {
+                row.createSpan({ cls: 'storyteller-campaign-read-on-screen', text: 'Pinned' });
+            }
 
             const push = row.createEl('button', {
                 cls: 'storyteller-campaign-read-push',
-                attr: { 'aria-label': 'Push to players' },
+                attr: { type: 'button', 'aria-label': `Show "${section.heading}" to players` },
             });
-            setIcon(push, 'send');
+            setIcon(push.createSpan(), 'send');
+            push.createSpan({ text: 'Show' });
             push.addEventListener('click', event => {
                 this.openReadPushMenu(event, section, session);
             });
-        });
 
-        if (selected !== null) {
-            const detail = body.createDiv('storyteller-campaign-read-detail');
-            void MarkdownRenderer.render(this.app, sections[selected].markdown, detail, scene.filePath ?? '', this);
-        }
+            if (i !== selected) return;
+            const detail = list.createDiv('storyteller-campaign-read-detail');
+            void MarkdownRenderer.render(this.app, section.markdown, detail.createDiv(), scene.filePath ?? '', this);
+            const bar = detail.createDiv('storyteller-campaign-read-push-bar');
+            const show = bar.createEl('button', { cls: 'mod-cta', attr: { type: 'button' } });
+            setIcon(show.createSpan(), 'send');
+            show.createSpan({ text: 'Show players' });
+            show.addEventListener('click', () => this.pushReadSection(section, 'popup'));
+            const pin = bar.createEl('button', { attr: { type: 'button' } });
+            setIcon(pin.createSpan(), 'pin');
+            pin.createSpan({ text: 'Pin' });
+            pin.addEventListener('click', () => this.pushReadSection(section, 'pinned'));
+            if ((session.partyCharacterNames ?? []).length > 0) {
+                const one = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'Send to one player' } });
+                setIcon(one.createSpan(), 'user');
+                one.createSpan({ text: 'One player' });
+                one.addEventListener('click', event => this.openOnePlayerMenu(event, section, session));
+            }
+        });
     }
 
     private openReadPushMenu(event: MouseEvent, section: NoteSection, session: CampaignSession): void {
@@ -2176,13 +2520,26 @@ export class CampaignView extends ItemView {
             .setTitle('Pin for players')
             .setIcon('pin')
             .onClick(() => { this.pushReadSection(section, 'pinned'); }));
-        for (const name of session.partyCharacterNames ?? []) {
+        this.addOnePlayerItems(menu, section, session);
+        menu.showAtMouseEvent(event);
+    }
+
+    private openOnePlayerMenu(event: MouseEvent, section: NoteSection, session: CampaignSession): void {
+        const menu = new Menu();
+        this.addOnePlayerItems(menu, section, session);
+        menu.showAtMouseEvent(event);
+    }
+
+    private addOnePlayerItems(menu: Menu, section: NoteSection, session: CampaignSession): void {
+        const names = session.partyCharacterNames ?? [];
+        if (names.length === 0) return;
+        menu.addSeparator();
+        for (const name of names) {
             menu.addItem(item => item
                 .setTitle(`Send to ${name}`)
                 .setIcon('user')
                 .onClick(() => { this.pushReadSection(section, 'popup', name); }));
         }
-        menu.showAtMouseEvent(event);
     }
 
     private pushReadSection(section: NoteSection, mode: PlayerPushMode, target?: string): void {
@@ -2195,8 +2552,24 @@ export class CampaignView extends ItemView {
             mode,
             ...(target ? { target } : {}),
         });
-        new Notice(target ? `Pushed to ${target}` : 'Pushed to players');
-        void this.autosave(`Shown to players: ${section.heading}`);
+        const opened = this.app.workspace.getLeavesOfType(VIEW_TYPE_PLAYER_SCREEN).length > 0;
+        new Notice(
+            (target ? `Sent to ${target}` : mode === 'pinned' ? 'Pinned for players' : 'Shown to players') +
+            (opened ? '' : '. Open the player screen from the Players button to see it.'),
+        );
+        void this.autosave(`${target ? `Shown to ${target}` : 'Shown to players'}: ${section.heading}`);
+        void this.refreshSidebarPart('read');
+        this.refreshPlayersButton();
+    }
+
+    /** Updates the count on the Players button without redrawing the board. */
+    private refreshPlayersButton(): void {
+        const button = this.containerEl.querySelector<HTMLElement>('.storyteller-campaign-players-btn');
+        if (!button) return;
+        const state = this.plugin.playerScreen.getState();
+        const showing = state.pinned.length + state.popups.length;
+        button.querySelector('.storyteller-campaign-players-count')?.remove();
+        if (showing > 0) button.createSpan({ cls: 'storyteller-campaign-players-count', text: String(showing) });
     }
 
     private renderPartySidebar(sidebar: HTMLElement, session: CampaignSession): void {
@@ -2427,39 +2800,6 @@ export class CampaignView extends ItemView {
             for (const flag of session.flags) {
                 flagList.createSpan({ cls: 'storyteller-branch-tag is-flag', text: `Flag: ${flag}` });
             }
-        }
-    }
-
-    private async renderLogSidebar(sidebar: HTMLElement, session: CampaignSession): Promise<void> {
-        const sec = sidebar.createDiv('storyteller-campaign-sidebar-section');
-        this.sidebarPartEls.set('log', sec);
-        const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
-        setIcon(hdr.createSpan(), 'scroll');
-        hdr.createSpan({ text: ' Session Log' });
-        const logActions = hdr.createDiv('storyteller-campaign-progress-actions');
-        this.addLogHeaderButton(logActions, 'file-text', 'Session header', () => { void this.openSessionHeaderModal(); });
-        this.addLogHeaderButton(logActions, 'flag', 'End of session', () => { this.openSessionEndModal(); });
-        this.addLogHeaderButton(logActions, 'hourglass', 'Interlude', () => { this.openInterludeModal(); });
-        const body = sec.createDiv('storyteller-campaign-sidebar-body');
-        this.renderQuickEntry(body, session);
-
-        if (!session.filePath) {
-            body.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'Not yet saved. The first entry creates the session note.' });
-            return;
-        }
-
-        let log = '';
-        try { log = await this.plugin.loadSessionLog(session.filePath); } catch { /* ignore */ }
-
-        const logList = body.createDiv('storyteller-campaign-log-list');
-        if (!log.trim()) {
-            logList.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'No entries yet.' });
-        } else {
-            const lines = log.split('\n').filter(Boolean).slice(-25);
-            for (const line of lines) {
-                logList.createDiv({ cls: 'storyteller-campaign-log-entry', text: line.replace(/^- /, '') });
-            }
-            logList.scrollTop = logList.scrollHeight;
         }
     }
 
@@ -3596,9 +3936,20 @@ export class CampaignView extends ItemView {
     /** Re-renders one sidebar section in place. Falls back to a full render if it is not on screen. */
     private async refreshSidebarPart(part: SidebarPart): Promise<void> {
         const session = this.session;
-        const old = this.sidebarPartEls.get(part);
-        if (!session || !old?.parentElement) {
+        if (!session) {
             await this.render();
+            return;
+        }
+        // A part on a rail tab that is not showing is drawn fresh when its tab opens.
+        const tab = PART_TAB[part];
+        if (tab && tab !== this.railTab) return;
+        const old = this.sidebarPartEls.get(part);
+        if (!old?.parentElement) {
+            await this.render();
+            return;
+        }
+        if (part === 'log') {
+            await this.fillLogDock(old, session);
             return;
         }
         const holder = activeDocument.createElement('div');
@@ -3614,9 +3965,6 @@ export class CampaignView extends ItemView {
                 break;
             case 'standings':
                 this.renderGroupStandingsSidebar(holder, session);
-                break;
-            case 'log':
-                await this.renderLogSidebar(holder, session);
                 break;
         }
         const fresh = holder.firstElementChild;

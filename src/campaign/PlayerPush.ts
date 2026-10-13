@@ -11,6 +11,9 @@
  * network, so nothing here may hold a reference into the vault.
  */
 
+/** View type of the player screen window. Lives here so the DM view can find it without importing the view. */
+export const VIEW_TYPE_PLAYER_SCREEN = 'storyteller-player-screen';
+
 export type PlayerPushMode = 'popup' | 'pinned';
 
 export interface PlayerPush {

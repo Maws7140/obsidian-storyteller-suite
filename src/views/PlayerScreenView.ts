@@ -6,11 +6,12 @@
  */
 import { ItemView, MarkdownRenderer, WorkspaceLeaf, setIcon } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
+import { VIEW_TYPE_PLAYER_SCREEN } from '../campaign/PlayerPush';
 import type { PlayerPush, PlayerScreenState } from '../campaign/PlayerPush';
 import { VIEW_TYPE_CAMPAIGN } from './CampaignView';
 import type { CampaignView } from './CampaignView';
 
-export const VIEW_TYPE_PLAYER_SCREEN = 'storyteller-player-screen';
+export { VIEW_TYPE_PLAYER_SCREEN };
 
 function cardTitle(push: PlayerPush): string {
 	return push.target ? `For ${push.target}: ${push.heading}` : push.heading;

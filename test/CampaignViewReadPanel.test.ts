@@ -14,7 +14,7 @@ vi.mock('obsidian', async (importOriginal) => {
     });
 });
 
-const { CampaignView } = await import('../src/views/CampaignView');
+const { CampaignView, readSectionsFor, stripPlayBlocks } = await import('../src/views/CampaignView');
 const { TFile } = await import('obsidian');
 (globalThis as any).window = globalThis;
 
@@ -40,7 +40,12 @@ function makeView(content: string | null = NOTE) {
         playerScreen: new PlayerScreenBus(),
     };
     const view: any = new (CampaignView as any)({}, plugin);
-    view.app = { vault: { getAbstractFileByPath: plugin.app.vault.getAbstractFileByPath, cachedRead: async () => content ?? '' } };
+    view.app = {
+        vault: { getAbstractFileByPath: plugin.app.vault.getAbstractFileByPath, cachedRead: async () => content ?? '' },
+        workspace: { getLeavesOfType: () => [] },
+    };
+    view.containerEl = { querySelector: () => null };
+    view.refreshSidebarPart = async () => {};
     view.session = { name: 'S', filePath: 'Sessions/S.md', partyCharacterNames: ['Mira', 'Tomas'] };
     view.currentScene = { name: 'Hall', filePath: 'Scenes/Hall.md' };
     const logged: string[] = [];
@@ -93,5 +98,34 @@ describe('pushing a Read section', () => {
         const { view, plugin } = makeView();
         view.pushReadSection({ heading: 'Read-aloud', level: 2, markdown: 'Text.' }, 'popup', 'Mira');
         expect(plugin.playerScreen.getState().popups[0].target).toBe('Mira');
+    });
+});
+
+describe('readSectionsFor', () => {
+    it('keeps text before the first header as an Opening section', () => {
+        const sections = readSectionsFor('---\ntype: scene\n---\nThe hall is dark.\n## Read aloud\nDoom, doom.');
+        expect(sections.map(s => s.heading)).toEqual(['Opening', 'Read aloud']);
+        expect(sections[0].markdown).toBe('The hall is dark.');
+    });
+
+    it('drops branch and encounter blocks, and sections left empty by that', () => {
+        const note = [
+            '## Choices',
+            '```branch',
+            'label: Run',
+            '```',
+            '## Read aloud',
+            'Doom.',
+            '```encounter',
+            'dice: d6',
+            '```',
+        ].join('\n');
+        const sections = readSectionsFor(note);
+        expect(sections.map(s => s.heading)).toEqual(['Read aloud']);
+        expect(sections[0].markdown).toBe('Doom.');
+    });
+
+    it('strips play blocks from a whole scene body', () => {
+        expect(stripPlayBlocks('Hi\n```branch\nlabel: x\n```\nThere')).toBe('Hi\nThere');
     });
 });

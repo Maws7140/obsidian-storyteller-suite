@@ -9677,16 +9677,6 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-sidebar { width: clamp(280px, 24vw, 340px); min-height: 0; border-left: 1px solid var(--background-modifier-border); overflow-y: auto; display: flex; flex-direction: column; flex-shrink: 0; background: color-mix(in srgb, var(--background-secondary) 58%, transparent); }
 .storyteller-campaign-sidebar-section { padding: 0.9rem; border-bottom: 1px solid var(--background-modifier-border); background: color-mix(in srgb, var(--background-primary) 82%, transparent); }
 .storyteller-campaign-sidebar-section h4 { margin: 0 0 0.5rem; font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; }
-.storyteller-campaign-read-toggle { margin-left: auto; display: inline-flex; padding: 0.1rem; background: none; box-shadow: none; color: var(--text-muted); cursor: pointer; }
-.storyteller-campaign-read-toggle:hover { color: var(--text-normal); }
-.storyteller-campaign-read-list { display: flex; flex-direction: column; gap: 0.1rem; }
-.storyteller-campaign-read-heading { display: flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.3rem; border-radius: 4px; }
-.storyteller-campaign-read-heading:hover { background: var(--background-modifier-hover); }
-.storyteller-campaign-read-heading.is-selected .storyteller-campaign-read-title { color: var(--interactive-accent); font-weight: 700; }
-.storyteller-campaign-read-title { flex: 1; min-width: 0; padding: 0; background: none; box-shadow: none; border: none; color: var(--text-normal); font-size: 0.84rem; text-align: left; word-break: break-word; cursor: pointer; }
-.storyteller-campaign-read-push { flex-shrink: 0; display: inline-flex; padding: 0.15rem; background: none; box-shadow: none; color: var(--text-muted); cursor: pointer; }
-.storyteller-campaign-read-push:hover { color: var(--interactive-accent); }
-.storyteller-campaign-read-detail { margin-top: 0.4rem; padding-top: 0.4rem; border-top: 1px solid var(--background-modifier-border); font-size: 0.86rem; }
 .storyteller-campaign-empty { color: var(--text-muted); font-style: italic; font-size: 0.875rem; }
 .storyteller-campaign-note-link { cursor: pointer; color: var(--link-color); font-size: 0.875rem; }
 .storyteller-campaign-cta { margin-bottom: 1rem; }
@@ -15311,4 +15301,142 @@ img.storyteller-timeline-calendar-icon {
   .storyteller-player-screen-popup {
     padding: 20px;
   }
+}
+
+/* ── Campaign play: the map is the board ─────────────────────────────────
+   Board, choices and encounter on the left with the log docked under them;
+   one rail with Read, Party, Progress and World tabs on the right. Parts carry
+   data-sts-part names so snippets can restyle them. */
+.storyteller-campaign-view .storyteller-campaign-main { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.storyteller-campaign-stage-col { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.storyteller-campaign-view .storyteller-campaign-scene-panel { flex: 1; min-height: 0; overflow-y: auto; padding: 0.75rem 1rem 1rem; display: flex; flex-direction: column; align-items: stretch; gap: 0.75rem; }
+.storyteller-campaign-view .storyteller-campaign-scene-panel > :not(.storyteller-dice-overlay) { width: 100%; }
+
+/* Top bar */
+.storyteller-campaign-view .storyteller-campaign-toolbar { gap: 0.4rem; padding: 0.45rem 0.75rem; flex-wrap: wrap; }
+.storyteller-campaign-trail { display: flex; align-items: center; gap: 0.3rem; min-width: 0; flex-wrap: wrap; }
+.storyteller-campaign-trail-step { background: none; box-shadow: none; border: none; padding: 0.1rem 0.2rem; color: var(--text-muted); font-size: 0.85rem; cursor: pointer; }
+.storyteller-campaign-trail-step:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.storyteller-campaign-trail-sep { color: var(--text-faint); }
+.storyteller-campaign-toolbar-btn { display: inline-flex; align-items: center; gap: 0.35rem; }
+.storyteller-campaign-players-count { min-width: 1.2rem; padding: 0 0.3rem; border-radius: 999px; background: var(--interactive-accent); color: var(--text-on-accent); font-size: 0.7rem; font-weight: 700; text-align: center; }
+
+/* Stage heading */
+.storyteller-campaign-stage-head { display: flex; flex-direction: column; gap: 0.15rem; }
+.storyteller-campaign-stage-title { display: flex; align-items: center; gap: 0.4rem; }
+.storyteller-campaign-stage-title h2 { margin: 0; font-size: 1.3rem; line-height: 1.2; }
+.storyteller-campaign-view .storyteller-campaign-open-note-btn { padding: 0.2rem; color: var(--text-muted); }
+.storyteller-campaign-stage-head .storyteller-campaign-synopsis { margin: 0; color: var(--text-muted); font-size: 0.88rem; }
+
+/* The board */
+.storyteller-campaign-view .storyteller-campaign-board { margin: 0; padding: 0; gap: 0.35rem; border: none; border-radius: 0; background: none; box-shadow: none; }
+.storyteller-campaign-view .storyteller-campaign-board-header { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; font-size: 0.82rem; }
+.storyteller-campaign-board-icon { display: inline-flex; color: var(--text-muted); }
+.storyteller-campaign-view .storyteller-campaign-board-title { font-size: 0.9rem; font-weight: 700; margin: 0; }
+.storyteller-campaign-view .storyteller-campaign-board-meta { color: var(--text-muted); font-size: 0.8rem; }
+.storyteller-campaign-view .storyteller-campaign-board-nav { display: inline-flex; gap: 0.3rem; flex-wrap: wrap; }
+.storyteller-campaign-board-open { margin-left: auto; padding: 0.2rem; color: var(--text-muted); }
+.storyteller-campaign-board-canvas { position: relative; }
+.storyteller-campaign-view .storyteller-campaign-board-map { height: clamp(420px, 62vh, 1100px); max-height: none; border-radius: 10px; }
+/* With a board, the stage does not scroll: the map takes the room left after the heading and the choices. */
+.storyteller-campaign-view .storyteller-campaign-scene-panel.has-board { overflow: hidden; padding-bottom: 0.6rem; }
+.storyteller-campaign-scene-panel.has-board > .storyteller-campaign-board { flex: 1 1 0; min-height: 280px; display: flex; flex-direction: column; }
+.storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-canvas { flex: 1 1 0; min-height: 0; overflow: auto; border-radius: 10px; }
+.storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-map { position: absolute; inset: 0; height: auto; min-height: 0; }
+.storyteller-campaign-scene-panel.has-board > .storyteller-campaign-play-row { flex: 0 1 auto; max-height: 42%; overflow-y: auto; }
+.storyteller-campaign-view .storyteller-campaign-board-frame { border-radius: 10px; }
+.storyteller-campaign-view .storyteller-campaign-board-caption { font-size: 0.78rem; color: var(--text-muted); }
+.storyteller-campaign-view .storyteller-campaign-board-inspector { position: absolute; top: 0.6rem; right: 0.6rem; z-index: 1000; width: min(320px, calc(100% - 1.2rem)); max-height: calc(100% - 1.2rem); overflow-y: auto; margin: 0; background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 10px; box-shadow: var(--shadow-s); }
+.storyteller-campaign-view .storyteller-campaign-board-inspector-actions { display: flex; gap: 0.15rem; }
+
+/* Choices and the party on the board */
+.storyteller-campaign-board-map .leaflet-storyteller-choice-paths-pane { z-index: 450; pointer-events: none; }
+.storyteller-campaign-board-map .storyteller-campaign-board-path { stroke: var(--color-green); }
+.storyteller-campaign-board-map .storyteller-campaign-board-path.is-blocked { stroke: var(--text-faint); }
+.storyteller-campaign-board-choice { background: none; border: none; }
+.storyteller-campaign-board-choice span,
+.storyteller-campaign-choice-number { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; flex-shrink: 0; border-radius: 50%; background: var(--color-green); color: var(--text-on-accent); font-size: 0.8rem; font-weight: 700; }
+.storyteller-campaign-board-choice span { width: 26px; height: 26px; border: 2px solid var(--background-primary); box-shadow: var(--shadow-s); cursor: pointer; }
+.storyteller-campaign-board-choice.is-blocked span,
+.storyteller-campaign-play-branch.is-blocked .storyteller-campaign-choice-number { background: var(--text-faint); }
+.storyteller-campaign-board-party { display: flex; gap: 2px; background: none; border: none; }
+.storyteller-campaign-board-party span { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--interactive-accent); color: var(--text-on-accent); border: 2px solid var(--background-primary); box-shadow: var(--shadow-s); font-size: 0.7rem; font-weight: 700; }
+.storyteller-campaign-board-party.is-static { position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); pointer-events: none; }
+.storyteller-campaign-board-pin-choices { position: absolute; top: -0.4rem; right: -0.6rem; padding: 0 0.3rem; border-radius: 999px; background: var(--color-green); color: var(--text-on-accent); font-size: 0.68rem; font-weight: 700; }
+
+/* Choices and encounter under the board */
+.storyteller-campaign-play-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.75rem; align-items: start; }
+.storyteller-campaign-choices { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+.storyteller-campaign-view .storyteller-campaign-branch-header { display: flex; align-items: center; gap: 0.35rem; margin: 0; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.storyteller-campaign-view .storyteller-campaign-branch-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0.45rem; }
+.storyteller-campaign-view .storyteller-campaign-play-branch-label { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; font-weight: 600; }
+.storyteller-campaign-view .storyteller-campaign-play-row .storyteller-campaign-encounter { margin: 0; }
+.storyteller-campaign-view .storyteller-campaign-dead-end { display: flex; align-items: center; gap: 0.35rem; color: var(--text-muted); }
+
+/* Compact cards so the board keeps the room */
+.storyteller-campaign-view .storyteller-campaign-play-row { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.6rem; }
+.storyteller-campaign-view .storyteller-campaign-play-branch { padding: 0.4rem 0.6rem; gap: 0.2rem; }
+.storyteller-campaign-view .storyteller-campaign-play-branch-label { font-size: 0.9rem; gap: 0.35rem; }
+.storyteller-campaign-view .storyteller-campaign-play-branch-label .storyteller-campaign-play-branch-target { font-weight: 400; }
+.storyteller-campaign-view .storyteller-campaign-choice-number { width: 1.35rem; height: 1.35rem; font-size: 0.72rem; }
+.storyteller-campaign-view .storyteller-campaign-play-branch-tags:empty { display: none; }
+.storyteller-campaign-view .storyteller-campaign-play-row .storyteller-campaign-encounter { padding: 0.5rem 0.6rem; gap: 0.3rem; font-size: 0.88rem; }
+.storyteller-campaign-view .storyteller-campaign-encounter-row { padding: 0.2rem 0.4rem; gap: 0.5rem; }
+.storyteller-campaign-view .storyteller-campaign-encounter-range { min-width: 2rem; }
+.storyteller-campaign-view .storyteller-campaign-stage-title h2 { font-size: 1.15rem; }
+.storyteller-campaign-view .storyteller-campaign-scene-panel { gap: 0.5rem; }
+
+/* Log docked under the board */
+.storyteller-campaign-log-dock { flex-shrink: 0; max-height: 45%; overflow-y: auto; display: flex; flex-direction: column; gap: 0.3rem; padding: 0.35rem 1rem 0.45rem; border-top: 1px solid var(--background-modifier-border); background: color-mix(in srgb, var(--background-secondary) 70%, transparent); }
+.storyteller-campaign-log-dock-hdr { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--text-muted); }
+.storyteller-campaign-log-dock-title { font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.72rem; }
+.storyteller-campaign-log-dock-hdr .storyteller-campaign-progress-actions { margin-left: auto; }
+.storyteller-campaign-log-dock-hdr .storyteller-campaign-scene-kind { max-width: none; width: auto; font-size: 0.78rem; padding: 1px 6px; }
+.storyteller-campaign-log-dock:not(:focus-within) .storyteller-campaign-quick { flex-direction: row; align-items: center; flex-wrap: wrap; }
+.storyteller-campaign-log-dock:not(:focus-within) .storyteller-campaign-quick-line { flex: 1; min-width: 240px; }
+.storyteller-campaign-log-dock .storyteller-campaign-quick { margin: 0; padding: 0.35rem 0.5rem; }
+/* Until the DM clicks into it, the quick entry is one line: the kinds and the text box. */
+.storyteller-campaign-log-dock:not(:focus-within) .storyteller-campaign-quick > :is(.storyteller-campaign-quick-actors, .storyteller-campaign-quick-npc, .storyteller-campaign-quick-tags, .storyteller-campaign-quick-preview) { display: none; }
+.storyteller-campaign-log-dock .storyteller-campaign-log-list { max-height: 3.2rem; }
+.storyteller-campaign-log-dock .storyteller-campaign-log-list.is-expanded { max-height: 16rem; }
+
+/* Rail */
+.storyteller-campaign-view .storyteller-campaign-rail { width: clamp(300px, 27vw, 400px); overflow: hidden; }
+.storyteller-campaign-rail-tabs { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--background-modifier-border); background: var(--background-primary); }
+.storyteller-campaign-rail-tab { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; padding: 0.55rem 0.3rem; background: none; box-shadow: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted); font-size: 0.8rem; cursor: pointer; }
+.storyteller-campaign-rail-tab:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.storyteller-campaign-rail-tab.is-active { color: var(--text-normal); font-weight: 700; border-bottom-color: var(--interactive-accent); }
+.storyteller-campaign-rail-body { flex: 1; min-height: 0; overflow-y: auto; }
+.storyteller-campaign-rail-empty { padding: 1rem; }
+
+/* Read tab */
+.storyteller-campaign-read { display: flex; flex-direction: column; gap: 0.6rem; }
+.storyteller-campaign-read .storyteller-campaign-scene-context { margin: 0; }
+.storyteller-campaign-read-list { display: flex; flex-direction: column; gap: 0.15rem; }
+.storyteller-campaign-read-heading { display: flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.3rem; border-radius: 6px; }
+.storyteller-campaign-read-heading:hover { background: var(--background-modifier-hover); }
+.storyteller-campaign-read-title { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 0.3rem; padding: 0; background: none; box-shadow: none; border: none; color: var(--text-normal); font-size: 0.88rem; font-weight: 600; text-align: left; cursor: pointer; }
+.storyteller-campaign-read-title .svg-icon { color: var(--text-faint); flex-shrink: 0; }
+.storyteller-campaign-read-heading.is-selected .storyteller-campaign-read-title { color: var(--interactive-accent); }
+.storyteller-campaign-read-on-screen { font-size: 0.68rem; padding: 1px 6px; border-radius: 999px; background: color-mix(in srgb, var(--interactive-accent) 18%, transparent); color: var(--interactive-accent); }
+.storyteller-campaign-read-push { flex-shrink: 0; display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); box-shadow: none; color: var(--text-muted); font-size: 0.75rem; cursor: pointer; }
+.storyteller-campaign-read-push:hover { color: var(--interactive-accent); border-color: var(--interactive-accent); }
+.storyteller-campaign-read-detail { margin: 0.1rem 0 0.4rem; padding: 0.6rem 0.75rem; border-left: 3px solid var(--interactive-accent); border-radius: 0 8px 8px 0; background: var(--background-primary); font-size: 0.92rem; line-height: 1.55; }
+.storyteller-campaign-read-detail p:first-child { margin-top: 0; }
+.storyteller-campaign-read-push-bar { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.6rem; }
+.storyteller-campaign-read-push-bar button { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; }
+
+@media (max-width: 1060px) {
+    .storyteller-campaign-view .storyteller-campaign-main { flex-direction: column; overflow-y: auto; }
+    .storyteller-campaign-stage-col { flex: 0 0 auto; }
+    .storyteller-campaign-view .storyteller-campaign-scene-panel { overflow: visible; }
+    .storyteller-campaign-log-dock { max-height: none; }
+    .storyteller-campaign-view .storyteller-campaign-rail { width: 100%; overflow: visible; }
+    .storyteller-campaign-rail-body { overflow: visible; }
+    .storyteller-campaign-view .storyteller-campaign-board-map { height: clamp(320px, 55vh, 700px); }
+    .storyteller-campaign-view .storyteller-campaign-scene-panel.has-board { overflow: visible; }
+    .storyteller-campaign-scene-panel.has-board > .storyteller-campaign-board { flex: 0 0 auto; }
+    .storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-canvas { flex: 0 0 auto; overflow: visible; }
+    .storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-map { position: relative; inset: auto; height: clamp(320px, 55vh, 700px); }
+    .storyteller-campaign-scene-panel.has-board > .storyteller-campaign-play-row { max-height: none; overflow: visible; }
 }
