@@ -79,6 +79,7 @@ import { MapView, VIEW_TYPE_MAP } from './views/MapView';
 import { WritingPanelView, VIEW_TYPE_WRITING_PANEL } from './views/WritingPanelView';
 import { CampaignView, VIEW_TYPE_CAMPAIGN } from './views/CampaignView';
 import { LoreDashboardView, VIEW_TYPE_LORE_DASHBOARD } from './views/LoreDashboardView';
+import { PlayerScreenView, VIEW_TYPE_PLAYER_SCREEN } from './views/PlayerScreenView';
 import { SceneGraphView, VIEW_TYPE_SCENE_GRAPH } from './views/SceneGraphView';
 import { StorytellerGuideModal } from './modals/StorytellerGuideModal';
 // DEPRECATED: Map functionality has been deprecated
@@ -1746,6 +1747,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		this.registerView(VIEW_TYPE_CAMPAIGN, (leaf) => new CampaignView(leaf, this));
 		this.registerView(VIEW_TYPE_SCENE_GRAPH, (leaf) => new SceneGraphView(leaf, this));
 		this.registerView(VIEW_TYPE_LORE_DASHBOARD, (leaf) => new LoreDashboardView(leaf, this));
+		this.registerView(VIEW_TYPE_PLAYER_SCREEN, (leaf) => new PlayerScreenView(leaf, this));
 
 		// DEPRECATED: Map functionality has been deprecated
 		// Register the map editor view for full-screen map editing
@@ -2555,6 +2557,22 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'Open campaign session manager',
 			callback: async () => {
 				await this.openCampaignSessionManager();
+			}
+		});
+
+		this.addCommand({
+			id: 'open-player-screen',
+			name: 'Open player screen',
+			callback: () => {
+				void this.openPlayerScreen();
+			}
+		});
+
+		this.addCommand({
+			id: 'clear-player-screen',
+			name: 'Clear player screen',
+			callback: () => {
+				this.playerScreen.clear();
 			}
 		});
 
@@ -3794,6 +3812,19 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (leaf) await leaf.setViewState({ type: VIEW_TYPE_LORE_DASHBOARD, active: true });
         }
         if (!leaf) return;
+        void workspace.revealLeaf(leaf);
+    }
+
+    /** Opens the player screen in a pop-out window, or reveals the one already open. */
+    async openPlayerScreen(): Promise<void> {
+        const { workspace } = this.app;
+        const existing = workspace.getLeavesOfType(VIEW_TYPE_PLAYER_SCREEN)[0];
+        if (existing) {
+            void workspace.revealLeaf(existing);
+            return;
+        }
+        const leaf = workspace.getLeaf('window');
+        await leaf.setViewState({ type: VIEW_TYPE_PLAYER_SCREEN, active: true });
         void workspace.revealLeaf(leaf);
     }
 
