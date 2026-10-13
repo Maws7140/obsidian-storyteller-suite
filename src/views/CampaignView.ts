@@ -2072,6 +2072,8 @@ export class CampaignView extends ItemView {
         const frame = boardEl.createDiv('storyteller-campaign-board-frame');
         const stage = frame.createDiv('storyteller-campaign-board-stage');
         stage.setCssStyles({ aspectRatio: `${dimensions.width} / ${dimensions.height}` });
+        // On the tabletop the image covers the whole stage, like the zoomable board does.
+        stage.setCssProps({ '--sts-board-ratio': String(dimensions.width / Math.max(dimensions.height, 1)) });
         const imageEl = stage.createEl('img', {
             cls: 'storyteller-campaign-board-image',
             attr: { src: imageUrl, alt: boardMap.name },

@@ -15580,3 +15580,12 @@ img.storyteller-timeline-calendar-icon {
   .storyteller-campaign-float { width: calc(100% - 24px); }
   .storyteller-campaign-float.is-combat { width: calc(100% - 24px); }
 }
+
+/* The plain-image board covers the stage too: the frame is a size container and the image is
+   at least as wide and as tall as it, centred, with the overflow scrollable. */
+.storyteller-campaign-stage-col .storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-frame { position: absolute; inset: 0; min-height: 0; overflow: auto; container-type: size; }
+.storyteller-campaign-stage-col .storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-stage {
+  min-height: 0;
+  width: max(100cqw, calc(100cqh * var(--sts-board-ratio, 1.5)));
+  max-width: none;
+}
