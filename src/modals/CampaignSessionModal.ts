@@ -151,7 +151,7 @@ export class CampaignSessionModal extends ResponsiveModal {
 
         const calendar = new CalendarRegistry(this.plugin).getActiveCalendar();
         const existingSessions = await this.plugin.listSessions().catch(() => [] as CampaignSession[]);
-        const campaigns = knownCampaigns(existingSessions, this.plugin.getTimelineForks());
+        const campaigns = knownCampaigns(existingSessions, this.plugin.getTimelineForks(), this.plugin.getTimelineTracks());
         const setup = defaultCampaignSetup(campaigns, this.plugin.getActiveStory()?.name);
         renderCampaignSetupFields(form, setup, campaigns, calendar);
 

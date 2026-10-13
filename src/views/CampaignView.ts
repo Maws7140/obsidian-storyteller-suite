@@ -515,7 +515,7 @@ export class CampaignView extends ItemView {
         // Campaign: which timeline fork play records into, the in-world date, and whether time moves.
         const calendar = new CalendarRegistry(this.plugin).getActiveCalendar();
         const existingSessions = await this.plugin.listSessions().catch(() => [] as CampaignSession[]);
-        const campaigns = knownCampaigns(existingSessions, this.plugin.getTimelineForks());
+        const campaigns = knownCampaigns(existingSessions, this.plugin.getTimelineForks(), this.plugin.getTimelineTracks());
         const setup = defaultCampaignSetup(campaigns, this.plugin.getActiveStory()?.name);
         renderCampaignSetupFields(form, setup, campaigns, calendar);
 
@@ -1753,7 +1753,7 @@ export class CampaignView extends ItemView {
     }
 
     /**
-     * When the campaign records to a fork: close the event of the scene the party is leaving
+     * When the campaign records to its fork or track: close the event of the scene the party is leaving
      * (its end date, and the choices not taken), then open a dated event for the scene entered.
      * Re-entering the scene that is already open, as a resumed session does, records nothing.
      */
@@ -1761,7 +1761,7 @@ export class CampaignView extends ItemView {
         const session = this.session;
         const pathsNotTaken = this.pendingPathsNotTaken;
         this.pendingPathsNotTaken = [];
-        if (!session?.campaignForkId || !session.inWorldDate) return;
+        if ((!session?.campaignForkId && !session?.campaignTag) || !session.inWorldDate) return;
         try {
             const events = await this.plugin.listEvents();
             const open = session.sceneEventId ? events.find(event => event.id === session.sceneEventId) : undefined;
@@ -1788,9 +1788,11 @@ export class CampaignView extends ItemView {
                 sessionId: session.id,
                 sessionName: session.name,
                 branches: session.campaignForkName ? [session.campaignForkName] : [],
+                // On the main timeline, the campaign's tag is what puts the event on its track.
+                tags: session.campaignTag ? [session.campaignTag] : undefined,
             };
             await this.plugin.saveEvent(event);
-            await this.plugin.addEventToFork(session.campaignForkId, event.id!, { quiet: true });
+            if (session.campaignForkId) await this.plugin.addEventToFork(session.campaignForkId, event.id!, { quiet: true });
             session.sceneEventId = event.id;
             session.sceneEventStart = session.inWorldDate;
         } catch (error) {
@@ -3061,6 +3063,9 @@ export class CampaignView extends ItemView {
                 event.dateTime = this.session!.inWorldDate;
                 if (this.session?.campaignForkName && !(event.branches ?? []).includes(this.session.campaignForkName)) {
                     event.branches = [...(event.branches ?? []), this.session.campaignForkName];
+                }
+                if (this.session?.campaignTag && !(event.tags ?? []).includes(this.session.campaignTag)) {
+                    event.tags = [...(event.tags ?? []), this.session.campaignTag];
                 }
                 changed = true;
             }

@@ -263,7 +263,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'sessionNumber', 'date', 'duration', 'players', 'scribe', 'absent',
     'recap', 'goals', 'mood', 'hook', 'endNotes',
     'collectedBoardItemKeys',
-    'campaignForkId', 'campaignForkName', 'inWorldDate', 'timeMoves', 'sceneEventId', 'sceneEventStart',
+    'campaignForkId', 'campaignForkName', 'campaignTrackId', 'campaignTag', 'inWorldDate', 'timeMoves', 'sceneEventId', 'sceneEventStart',
     'status', 'created', 'modified'
   ]),
   timelineEra: new Set([

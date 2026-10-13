@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { GREGORIAN_CALENDAR } from '../../src/calendar/builtins';
 import {
     applyCampaignSetup,
+    campaignTrackTag,
     campaignSetupProblem,
     defaultCampaignSetup,
     knownCampaigns,
@@ -21,7 +22,7 @@ describe('known campaigns', () => {
 
     it('lists each campaign once with its newest session, newest first, skipping deleted forks', () => {
         const campaigns = knownCampaigns(sessions, forks);
-        expect(campaigns.map(c => [c.fork.name, c.latest.name])).toEqual([['Fellowship', 'S2'], ['Shire', 'Other']]);
+        expect(campaigns.map(c => [c.kind, c.name, c.latest.name])).toEqual([['fork', 'Fellowship', 'S2'], ['fork', 'Shire', 'Other']]);
     });
 
     it('continues the newest campaign where it left off', () => {
@@ -67,5 +68,42 @@ describe('applying the setup to a session', () => {
         await applyCampaignSetup(plugin, { recording: { kind: 'none' }, startDate: '', timeMoves: false }, loose, GREGORIAN_CALENDAR);
         expect(loose.campaignForkId).toBeUndefined();
         expect(loose.inWorldDate).toBeUndefined();
+    });
+});
+
+describe('campaigns on the main timeline', () => {
+    it('lists track campaigns beside fork campaigns', () => {
+        const sessions = [
+            { name: 'T1', storyId: 'x', campaignTrackId: 't1', campaignTag: 'campaign-red-hand', modified: '2026-10-10' },
+            { name: 'F1', storyId: 'x', campaignForkId: 'f1', modified: '2026-10-01' },
+        ];
+        const tracks = [{ id: 't1', name: 'Red Hand', type: 'custom' as const, filterCriteria: { tags: ['campaign-red-hand'] } }];
+        const campaigns = knownCampaigns(sessions, [fork('f1', 'Fellowship')], tracks);
+        expect(campaigns.map(c => [c.kind, c.name])).toEqual([['track', 'Red Hand'], ['fork', 'Fellowship']]);
+        expect(defaultCampaignSetup(campaigns, 'X').recording).toEqual({ kind: 'track', trackId: 't1' });
+    });
+
+    it('makes a tag from the campaign name', () => {
+        expect(campaignTrackTag('The Red Hand of Doom!')).toBe('campaign-the-red-hand-of-doom');
+        expect(campaignTrackTag('???')).toBe('campaign-play');
+    });
+
+    it('creates a custom track that matches the campaign tag, and no fork', async () => {
+        const plugin: any = { getActiveStory: () => ({ id: 'story1' }), createTimelineTrack: vi.fn(async () => {}), createTimelineFork: vi.fn() };
+        const session: any = { name: 'S1', storyId: 'x' };
+        await applyCampaignSetup(plugin, { recording: { kind: 'new-track', name: 'Red Hand' }, startDate: '3019-01-13', timeMoves: false }, session, GREGORIAN_CALENDAR);
+        const track = plugin.createTimelineTrack.mock.calls[0][0];
+        expect(track).toMatchObject({ name: 'Red Hand', type: 'custom', storyId: 'story1', filterCriteria: { tags: ['campaign-red-hand'] } });
+        expect(session).toMatchObject({ campaignTrackId: track.id, campaignTag: 'campaign-red-hand' });
+        expect(session.campaignForkId).toBeUndefined();
+        expect(plugin.createTimelineFork).not.toHaveBeenCalled();
+    });
+
+    it('joins an existing track by its tag', async () => {
+        const plugin: any = { getTimelineTrack: () => ({ id: 't1', name: 'Red Hand', type: 'custom', filterCriteria: { tags: ['campaign-red-hand'] } }) };
+        const session: any = { name: 'S2', storyId: 'x', campaignForkId: 'old' };
+        await applyCampaignSetup(plugin, { recording: { kind: 'track', trackId: 't1' }, startDate: '3019-01-14', timeMoves: false }, session, GREGORIAN_CALENDAR);
+        expect(session).toMatchObject({ campaignTrackId: 't1', campaignTag: 'campaign-red-hand' });
+        expect(session.campaignForkId).toBeUndefined();
     });
 });

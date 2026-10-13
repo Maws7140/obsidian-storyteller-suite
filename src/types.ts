@@ -814,6 +814,12 @@ export interface CampaignSession {
      */
     campaignForkId?: string;
     campaignForkName?: string;
+    /**
+     * Or the track on the main timeline it records into, and the tag that puts
+     * an event on that track. Set instead of the fork, never with it.
+     */
+    campaignTrackId?: string;
+    campaignTag?: string;
     /** The party's current in-world date, written in the story's calendar. */
     inWorldDate?: string;
     /** When true, choices, encounters and scenes move the in-world date forward. */

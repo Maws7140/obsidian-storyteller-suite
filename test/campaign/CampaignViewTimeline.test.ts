@@ -119,6 +119,13 @@ describe('recording scenes on the campaign fork', () => {
         expect(events.map(event => event.name)).toEqual(['Session 2: Moria', 'Session 2: Bridge', 'Session 2: Moria (2)']);
     });
 
+    it('records onto a track on the main timeline with the campaign tag and no fork', async () => {
+        const { view, plugin, events } = makeView({ campaignForkId: undefined, campaignForkName: undefined, campaignTrackId: 't1', campaignTag: 'campaign-red-hand' });
+        await view.recordSceneOnTimeline(view.currentScene);
+        expect(events[0]).toMatchObject({ name: 'Session 2: Moria', tags: ['campaign-red-hand'], branches: [] });
+        expect(plugin.addEventToFork).not.toHaveBeenCalled();
+    });
+
     it('records nothing for a campaign that is not on the timeline', async () => {
         const { view, events } = makeView({ campaignForkId: undefined, campaignForkName: undefined });
         await view.recordSceneOnTimeline(view.currentScene);
