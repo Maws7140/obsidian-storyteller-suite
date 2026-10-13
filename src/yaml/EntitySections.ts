@@ -262,7 +262,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'partyResources', 'loot', 'advancements', 'interludes',
     'sessionNumber', 'date', 'duration', 'players', 'scribe', 'absent',
     'recap', 'goals', 'mood', 'hook', 'endNotes',
-    'collectedBoardItemKeys', 'revealedLocations',
+    'collectedBoardItemKeys', 'revealedLocations', 'partyLocation', 'combat',
     'campaignForkId', 'campaignForkName', 'campaignTrackId', 'campaignTag', 'inWorldDate', 'timeMoves', 'sceneEventId', 'sceneEventStart',
     'status', 'created', 'modified'
   ]),

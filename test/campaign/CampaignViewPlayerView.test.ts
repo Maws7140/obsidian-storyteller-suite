@@ -95,6 +95,33 @@ describe('player screen snapshot', () => {
     });
 });
 
+describe('player screen turn order', () => {
+    it('leaves hidden combatants out and gives monsters a health word, not numbers', async () => {
+        const { view } = makeView();
+        view.session.combat = {
+            round: 3, turn: 1,
+            combatants: [
+                { id: 'a', name: 'Mira', initiative: 20, isPlayer: true },
+                { id: 'b', name: 'Ogre', initiative: 15, isPlayer: false, hp: 20, maxHp: 59 },
+                { id: 'c', name: 'Assassin', initiative: 10, isPlayer: false, hidden: true, hp: 30, maxHp: 30 },
+            ],
+        };
+        const { initiative } = await view.buildPlayerView();
+        expect(initiative.round).toBe(3);
+        expect(initiative.order).toEqual([
+            { name: 'Mira', isPlayer: true, acting: false, out: false, health: undefined },
+            { name: 'Ogre', isPlayer: false, acting: true, out: false, health: 'Bloodied' },
+        ]);
+    });
+
+    it('shows the party token where the DM moved it', async () => {
+        const { view } = makeView();
+        view.session.partyLocation = 'Bridge';
+        const snapshot = await view.buildPlayerView();
+        expect(snapshot.board.places.find((p: { name: string }) => p.name === 'Bridge').current).toBe(true);
+    });
+});
+
 describe('boardPinPercent', () => {
     it('counts the stored height up from the bottom of the image', () => {
         expect(boardPinPercent([900, 100], 1000, 1000)).toEqual({ x: 10, y: 10 });

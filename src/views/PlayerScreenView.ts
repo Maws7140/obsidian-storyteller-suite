@@ -17,6 +17,8 @@ import type { PlayerPush, PlayerScreenState, PlayerView } from '../campaign/Play
 export { VIEW_TYPE_PLAYER_SCREEN };
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+/** How long a ping pulses on the player screen. */
+const PING_MS = 3200;
 
 function cardTitle(push: PlayerPush): string {
 	return push.target ? `For ${push.target}: ${push.heading}` : push.heading;
@@ -146,6 +148,15 @@ export class PlayerScreenView extends ItemView {
 			}
 		}
 
+		// The DM's ping: a pulse for a few seconds after it was sent.
+		if (view.ping && Date.now() - view.ping.at < PING_MS) {
+			const ping = canvas.createDiv('storyteller-player-screen-ping');
+			ping.createSpan();
+			ping.createSpan();
+			ping.setCssStyles({ left: `${view.ping.x}%`, top: `${view.ping.y}%` });
+			window.setTimeout(() => ping.remove(), PING_MS);
+		}
+
 		for (const place of board.places) {
 			const pin = canvas.createDiv('storyteller-player-screen-place' + (place.current ? ' is-current' : ''));
 			pin.setCssStyles({ left: `${place.x}%`, top: `${place.y}%` });
@@ -165,6 +176,19 @@ export class PlayerScreenView extends ItemView {
 			const row = card.createDiv('storyteller-player-screen-roll-row');
 			row.createSpan({ cls: 'storyteller-player-screen-roll-total', text: String(view.roll.total) });
 			row.createSpan({ cls: 'storyteller-player-screen-roll-result', text: view.roll.result });
+		}
+
+		if (view.initiative) {
+			const block = side.createDiv({ cls: 'storyteller-player-screen-block storyteller-player-screen-initiative', attr: { 'data-sts-part': 'player-initiative' } });
+			block.createDiv({ cls: 'storyteller-player-screen-section-label', text: `Round ${view.initiative.round}` });
+			for (const entry of view.initiative.order) {
+				const row = block.createDiv('storyteller-player-screen-turn'
+					+ (entry.acting ? ' is-acting' : '')
+					+ (entry.isPlayer ? ' is-player' : '')
+					+ (entry.out ? ' is-out' : ''));
+				row.createSpan({ cls: 'storyteller-player-screen-turn-name', text: entry.name });
+				if (entry.health) row.createSpan({ cls: `storyteller-player-screen-turn-health is-${entry.health.toLowerCase()}`, text: entry.health });
+			}
 		}
 
 		if (view.choices && view.choices.length > 0) {

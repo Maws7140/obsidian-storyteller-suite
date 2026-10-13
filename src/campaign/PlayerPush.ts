@@ -109,6 +109,13 @@ export interface PlayerView {
     choices?: PlayerChoice[];
     /** The latest roll the DM chose to show. */
     roll?: { title: string; total: number; result: string; at: number };
+    /** Turn order while a fight is on. Monsters show a health word, never numbers; hidden ones are left out. */
+    initiative?: {
+        round: number;
+        order: Array<{ name: string; isPlayer: boolean; acting: boolean; out: boolean; health?: string }>;
+    };
+    /** The DM's latest ping on the board, in percent of the map. */
+    ping?: { x: number; y: number; at: number };
 }
 
 export interface PlayerScreenState {

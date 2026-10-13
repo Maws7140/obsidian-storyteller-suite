@@ -800,6 +800,10 @@ export interface CampaignSession {
     collectedBoardItemKeys?: string[];
     /** Board places the players have seen (location pin keys). The rest of the player board is fog. */
     revealedLocations?: string[];
+    /** Where the DM moved the party token without changing scene (a location pin key). Cleared on entering a scene. */
+    partyLocation?: string;
+    /** The fight in progress, if any (see campaign/Combat.ts). */
+    combat?: import('./campaign/Combat').CombatState;
     /** Session-local faction standing changes. */
     groupStandings?: CampaignGroupStanding[];
     /** Segmented countdowns and progress trackers used during play. */
