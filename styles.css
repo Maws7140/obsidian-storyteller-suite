@@ -15460,8 +15460,8 @@ img.storyteller-timeline-calendar-icon {
 /* Heads-up display */
 .storyteller-campaign-hud { position: absolute; z-index: 600; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
 .storyteller-campaign-hud > * { pointer-events: auto; }
-.storyteller-campaign-hud.is-left { top: 12px; left: 12px; max-width: calc(100% - 320px); align-items: flex-start; }
-.storyteller-campaign-hud.is-right { top: 12px; right: 12px; flex-direction: row; align-items: center; }
+.storyteller-campaign-hud.is-left { top: 16px; left: 12px; max-width: calc(100% - 320px); align-items: flex-start; }
+.storyteller-campaign-hud.is-right { top: 16px; right: 12px; flex-direction: row; align-items: center; }
 .storyteller-campaign-hud-row { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 4px 8px; border-radius: var(--sts-hud-radius); background: var(--sts-hud-bg); backdrop-filter: blur(8px); border: 1px solid var(--sts-hud-border); box-shadow: var(--sts-hud-shadow); }
 .storyteller-campaign-hud-row.is-meta { padding: 3px 6px; }
 .storyteller-campaign-hud-row.is-meta:empty { display: none; }
@@ -15472,7 +15472,15 @@ img.storyteller-timeline-calendar-icon {
 .storyteller-campaign-hud-btn:disabled { opacity: 0.4; cursor: default; }
 .storyteller-campaign-hud-row .storyteller-campaign-hud-btn { padding: 3px 6px; background: none; border: none; box-shadow: none; backdrop-filter: none; }
 .storyteller-campaign-hud-btn.is-quiet { color: var(--text-muted); }
-.storyteller-campaign-hud-btn.mod-warning { color: var(--color-red); font-weight: 700; }
+/* Button rules out-rank Obsidian's and theme button styles, which otherwise paint mod-warning red under red text. */
+.storyteller-campaign-view button.storyteller-campaign-hud-btn { background: var(--sts-hud-bg); color: var(--text-normal); border: 1px solid var(--sts-hud-border); box-shadow: var(--sts-hud-shadow); }
+.storyteller-campaign-view button.storyteller-campaign-hud-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.storyteller-campaign-view button.storyteller-campaign-hud-btn svg { color: currentColor; }
+.storyteller-campaign-view .storyteller-campaign-hud-row button.storyteller-campaign-hud-btn { background: none; border: none; box-shadow: none; }
+.storyteller-campaign-view .storyteller-campaign-hud-row button.storyteller-campaign-hud-btn:hover { background: var(--background-modifier-hover); }
+.storyteller-campaign-view button.storyteller-campaign-hud-btn.is-quiet { color: var(--text-muted); }
+.storyteller-campaign-view button.storyteller-campaign-hud-btn.mod-warning { background: var(--sts-hud-bg); color: var(--text-error, var(--color-red)); font-weight: 700; }
+.storyteller-campaign-view button.storyteller-campaign-hud-btn.mod-warning:hover { background: var(--background-modifier-error); color: var(--text-on-accent); }
 .storyteller-campaign-hud .storyteller-campaign-toolbar-btn { padding: 2px 8px; background: none; border: none; box-shadow: none; }
 .storyteller-campaign-hud .storyteller-campaign-actor-control { border: none; background: none; padding: 0 4px; }
 .storyteller-campaign-hud .storyteller-campaign-actor-select { min-width: 0; }
@@ -15510,6 +15518,13 @@ img.storyteller-timeline-calendar-icon {
 /* Rail: icons over labels, folds to an icon column */
 .storyteller-campaign-view .storyteller-campaign-rail { transition: width 0.15s ease; }
 .storyteller-campaign-view .storyteller-campaign-rail-tab { flex-direction: column; gap: 2px; padding: 0.45rem 0.15rem 0.35rem; font-size: 0.68rem; }
+.storyteller-campaign-view .storyteller-campaign-rail-tabs { padding-top: 8px; }
+.storyteller-campaign-view button.storyteller-campaign-rail-tab { background: none; box-shadow: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted); }
+.storyteller-campaign-view button.storyteller-campaign-rail-tab:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.storyteller-campaign-view button.storyteller-campaign-rail-tab.is-active { color: var(--text-normal); border-bottom-color: var(--interactive-accent); }
+.storyteller-campaign-view .storyteller-campaign-rail.is-collapsed button.storyteller-campaign-rail-tab { border-bottom: none; }
+.storyteller-campaign-view button.storyteller-campaign-rail-fold { background: none; border: none; box-shadow: none; color: var(--text-muted); }
+.storyteller-campaign-view button.storyteller-campaign-rail-fold:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 .storyteller-campaign-rail-fold { flex: 0 0 34px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: none; box-shadow: none; color: var(--text-muted); cursor: pointer; }
 .storyteller-campaign-rail-fold:hover { color: var(--text-normal); }
 .storyteller-campaign-view .storyteller-campaign-rail.is-collapsed { width: 48px; }
