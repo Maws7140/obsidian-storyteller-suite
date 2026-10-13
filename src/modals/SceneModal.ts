@@ -1,4 +1,6 @@
+import { CalendarRegistry } from '../calendar/CalendarRegistry';
  
+import { durationProblem } from '../campaign/CampaignTime';
 import { App, Notice, Setting, TextAreaComponent, ButtonComponent, TFile, parseYaml } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
@@ -26,6 +28,8 @@ export type SceneModalDeleteCallback = (sc: Scene) => Promise<void>;
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+
+const SCENE_LENGTH_HELP = 'In-world time a campaign spends here before moving on, when its time moves. A choice can set its own.';
 
 export class SceneModal extends ResponsiveModal {
     plugin: StorytellerSuitePlugin;
@@ -501,16 +505,31 @@ export class SceneModal extends ResponsiveModal {
         }
 
         // --- Campaign ---
-        const campaignSection = this.shows('campaignBoardMapId')
+        const campaignSection = this.shows('campaignBoardMapId') || this.shows('playDuration')
             ? createCollapsibleModalSection(contentEl, {
                 title: 'Campaign',
-                description: 'Which map Campaign mode opens for this scene',
+                description: 'How Campaign mode plays this scene',
                 icon: 'clapperboard',
-                open: Boolean(this.scene.campaignBoardMapId),
+                open: Boolean(this.scene.campaignBoardMapId || this.scene.playDuration),
             })
             : null;
 
-        if (campaignSection) {
+        if (campaignSection && this.shows('playDuration')) {
+            const calendar = new CalendarRegistry(this.plugin).getActiveCalendar();
+            const lengthSetting = new Setting(campaignSection)
+                .setName('Scene length')
+                .setDesc(SCENE_LENGTH_HELP);
+            lengthSetting.addText(text => {
+                text.setPlaceholder('Like 2 hours')
+                    .setValue(this.scene.playDuration || '')
+                    .onChange(value => {
+                        this.scene.playDuration = value.trim() || undefined;
+                        lengthSetting.descEl.setText(durationProblem(value, calendar) ?? SCENE_LENGTH_HELP);
+                    });
+            });
+        }
+
+        if (campaignSection && this.shows('campaignBoardMapId')) {
             const campaignBoardSetting = new Setting(campaignSection)
                 .setName('Campaign board map')
                 .setDesc('Optional image map override for campaign mode. Leave empty to use the scene location map.');

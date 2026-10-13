@@ -2,7 +2,7 @@ import type { SceneBranch, SceneOutcomeFields } from '../types';
 
 /** One effect shown as a chip: `kind` picks the colour (`is-grant`, `is-remove`, ...). */
 export interface OutcomeChip {
-    kind: 'grant' | 'remove' | 'flag' | 'event' | 'standing' | 'lore' | 'tags' | 'encounter';
+    kind: 'grant' | 'remove' | 'flag' | 'event' | 'standing' | 'lore' | 'tags' | 'encounter' | 'time';
     text: string;
 }
 
@@ -28,5 +28,6 @@ export function outcomeChips(fields: SceneOutcomeFields & Pick<SceneBranch, 'rol
         chips.push({ kind: 'event', text: `Event: ${fields.triggersEvent ?? fields.triggersEventId}` });
     }
     if (fields.tags?.trim()) chips.push({ kind: 'tags', text: fields.tags.trim() });
+    if (fields.advances?.trim()) chips.push({ kind: 'time', text: `Takes ${fields.advances.trim()}` });
     return chips;
 }

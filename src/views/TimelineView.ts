@@ -91,6 +91,8 @@ export class TimelineView extends ItemView {
     private advancedFiltersExpanded = false;
     private resizeObserver: ResizeObserver | null = null;
     private showScenes = false;
+    /** Choices a campaign did not take; hidden unless asked for. */
+    private showPathsNotTaken = false;
     private showWatchedNotes = false;
     /** Branch list the toolbar was last built against. */
     private lastBranchSignature = '';
@@ -222,6 +224,8 @@ export class TimelineView extends ItemView {
         this.controlsBuilder.createDisplayMenu(display, {
             getShowScenes: () => this.showScenes,
             setShowScenes: value => { this.showScenes = value; this.renderer?.setShowScenes(value); },
+            getShowPathsNotTaken: () => this.showPathsNotTaken,
+            setShowPathsNotTaken: value => { this.showPathsNotTaken = value; this.renderer?.setShowPathsNotTaken(value); },
             getShowWatchedNotes: () => this.showWatchedNotes,
             setShowWatchedNotes: value => { this.showWatchedNotes = value; this.renderer?.setShowWatchedNotes(value); },
             onManageEras: () => this.openEraManager()
@@ -523,6 +527,7 @@ export class TimelineView extends ItemView {
             // Layers are not constructor options, so a fresh renderer starts
             // with both off no matter what the Show menu says.
             if (this.showScenes) renderer.setShowScenes(true);
+            if (this.showPathsNotTaken) renderer.setShowPathsNotTaken(true);
             if (this.showWatchedNotes) renderer.setShowWatchedNotes(true);
             renderer.applyFilters(this.currentState.filters);
             this.scheduleTimelineRedraw();
@@ -940,6 +945,7 @@ export class TimelineView extends ItemView {
             // Layers live on the view rather than in TimelineUIState, but they
             // are toolbar state all the same.
             showScenes: this.showScenes,
+            showPathsNotTaken: this.showPathsNotTaken,
             showWatchedNotes: this.showWatchedNotes,
             filters: {
                 milestonesOnly: this.currentState.filters.milestonesOnly,
@@ -1001,6 +1007,7 @@ export class TimelineView extends ItemView {
             };
             Object.assign(this.currentState, restored);
             this.showScenes = state.showScenes === true;
+            this.showPathsNotTaken = state.showPathsNotTaken === true;
             this.showWatchedNotes = state.showWatchedNotes === true;
 
             // A restore can land after onOpen has already drawn the toolbar off

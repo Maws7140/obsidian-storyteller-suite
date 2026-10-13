@@ -424,6 +424,8 @@ export interface Scene {
 
     /** Optional campaign board map override for this scene. */
     campaignBoardMapId?: string;
+    /** In-world time a campaign spends here before moving on, unless the choice says otherwise. */
+    playDuration?: string;
 
     // Manuscript/Compile fields (Longform-inspired)
     /** Cached word count of scene content */
@@ -615,6 +617,8 @@ export interface SceneOutcomeFields {
     triggersEvent?: string;        // story Event entity name to link in the session log
     triggersEventId?: string;      // stable Event id
     clearsFlag?: string;           // session flag to remove
+    /** In-world time this takes when the campaign's time moves, e.g. "2 hours", "3 days". */
+    advances?: string;
     /** Partylog tags applied to the session, e.g. "[Clock:Alarm +1] [PC:Boromir|HP-5]" */
     tags?: string;
 }
@@ -804,6 +808,19 @@ export interface CampaignSession {
     loot?: CampaignLootItem[];
     /** Characters who advanced during this session. */
     advancements?: CampaignAdvancement[];
+    /**
+     * Timeline fork this campaign records into. Unset means play is not
+     * recorded on the timeline. Sessions of one campaign share the fork.
+     */
+    campaignForkId?: string;
+    campaignForkName?: string;
+    /** The party's current in-world date, written in the story's calendar. */
+    inWorldDate?: string;
+    /** When true, choices, encounters and scenes move the in-world date forward. */
+    timeMoves?: boolean;
+    /** The timeline event recording the scene the party is in, and when they entered it. */
+    sceneEventId?: string;
+    sceneEventStart?: string;
     /** Session header metadata (Partylog §5.2). */
     sessionNumber?: number;
     date?: string;
@@ -1105,6 +1122,9 @@ export interface Event {
 
     /** Readable name of the session, kept alongside the id the way chapters do */
     sessionName?: string;
+
+    /** Choices offered in a played scene that the party did not take. Shown on the timeline only on request. */
+    pathsNotTaken?: string[];
 
     /** ID of the map where this event is primarily displayed */
     mapId?: string;

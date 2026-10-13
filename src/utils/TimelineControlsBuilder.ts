@@ -48,6 +48,8 @@ export function timelineViewMode(state: Pick<TimelineUIState, 'ganttMode' | 'tim
 export interface DisplayMenuExtras {
     getShowScenes: () => boolean;
     setShowScenes: (value: boolean) => void;
+    getShowPathsNotTaken: () => boolean;
+    setShowPathsNotTaken: (value: boolean) => void;
     getShowWatchedNotes: () => boolean;
     setShowWatchedNotes: (value: boolean) => void;
     /** Era management lives beside the era layer rather than in an overflow. */
@@ -704,6 +706,7 @@ export class TimelineControlsBuilder {
             { name: 'Era backgrounds', on: this.state.showEras },
             { name: 'Presence bands', on: this.state.showPresence === true },
             { name: 'Scenes', on: extras.getShowScenes() },
+            { name: 'Paths not taken', on: extras.getShowPathsNotTaken() },
             { name: 'Vault notes', on: extras.getShowWatchedNotes() }
         ];
 
@@ -746,6 +749,8 @@ export class TimelineControlsBuilder {
                     this.callbacks.onStateChange();
                 }));
             check('Scenes', extras.getShowScenes(), () => extras.setShowScenes(!extras.getShowScenes()));
+            // Choices a campaign passed over, from Campaign mode's scene events.
+            check('Paths not taken', extras.getShowPathsNotTaken(), () => extras.setShowPathsNotTaken(!extras.getShowPathsNotTaken()));
             check('Vault notes', extras.getShowWatchedNotes(), () => extras.setShowWatchedNotes(!extras.getShowWatchedNotes()));
             menu.addItem(item => item.setTitle('Manage eras…').setIcon('calendar-range')
                 .onClick(() => extras.onManageEras()));

@@ -245,6 +245,7 @@ export const SCENE_MODAL_FIELDS: ModalFieldDef[] = [
     { key: 'chapterId', label: 'Chapter', group: 'Placement' },
     { key: 'date', label: 'Date', group: 'Placement' },
     { key: 'campaignBoardMapId', label: 'Campaign board map', group: 'Placement' },
+    { key: 'playDuration', label: 'Scene length (campaign time)', group: 'Placement' },
     { key: 'status', label: 'Status', group: 'Writing' },
     { key: 'priority', label: 'Priority in chapter', group: 'Writing' },
     { key: 'povCharacter', label: 'POV character', group: 'Writing' },

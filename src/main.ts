@@ -5743,7 +5743,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async saveEvent(event: Event): Promise<void> {
 		// Scenes and watched notes reach the timeline as event-shaped objects that carry their
 		// own file path. Writing one here would move that note into the Events folder.
-		if (event.tags?.includes('scene') || event.tags?.includes('watched-note')) {
+		if (event.tags?.includes('scene') || event.tags?.includes('watched-note') || event.tags?.includes('path-not-taken')) {
 			new Notice('Scenes and watched notes cannot be saved as events. Edit them in their own note.');
 			return;
 		}
@@ -8308,11 +8308,11 @@ export default class StorytellerSuitePlugin extends Plugin {
      * Update an existing timeline fork
      * @param fork - Updated fork object
      */
-    async updateTimelineFork(fork: TimelineFork): Promise<void> {
+    async updateTimelineFork(fork: TimelineFork, options: { quiet?: boolean } = {}): Promise<void> {
         if (this.timelineEntities.migrated) {
             await this.timelineEntities.save('branch', fork);
             this.refreshTimelineViews();
-            new Notice(`Timeline fork "${fork.name}" updated`);
+            if (!options.quiet) new Notice(`Timeline fork "${fork.name}" updated`);
             return;
         }
         const index = this.settings.timelineForks?.findIndex(f => f.id === fork.id);
@@ -8320,7 +8320,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             this.settings.timelineForks![index] = this.stampTimelineEntry(fork);
             await this.saveSettings();
             this.refreshTimelineViews();
-            new Notice(`Timeline fork "${fork.name}" updated`);
+            if (!options.quiet) new Notice(`Timeline fork "${fork.name}" updated`);
         } else {
             new Notice(`Error: Timeline fork not found`);
         }
@@ -8348,10 +8348,10 @@ export default class StorytellerSuitePlugin extends Plugin {
      * @param forkId - ID of the fork
      * @param eventId - ID or name of the event to add
      */
-    async addEventToFork(forkId: string, eventId: string): Promise<void> {
+    async addEventToFork(forkId: string, eventId: string, options: { quiet?: boolean } = {}): Promise<void> {
         const fork = this.getTimelineFork(forkId);
         if (!fork) {
-            new Notice(`Error: Timeline fork not found`);
+            if (!options.quiet) new Notice(`Error: Timeline fork not found`);
             return;
         }
 
@@ -8361,7 +8361,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         if (!fork.linkedEvents.includes(eventId)) {
             fork.linkedEvents.push(eventId);
-            await this.updateTimelineFork(fork);
+            await this.updateTimelineFork(fork, options);
             await this.setEventBranchMembership(eventId, fork.name, true);
         }
     }

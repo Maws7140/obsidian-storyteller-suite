@@ -172,7 +172,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'isMilestone', 'dependencies', 'progress', 'tags', 'narrativeMarkers', 'narrativeSequence',
     'linkedChapters', 'linkedScenes', 'compendiumEntries', 'branches', 'causes', 'causedBy',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
-    'certainty', 'sources', 'claimedBy', 'disputedBy', 'sessionId', 'sessionName'
+    'certainty', 'sources', 'claimedBy', 'disputedBy', 'sessionId', 'sessionName', 'pathsNotTaken'
   ]),
   item: new Set([
     // currentOwner is deliberately absent — it is the legacy scalar that owners
@@ -201,7 +201,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
     'campaignBoardMapId', 'povCharacter', 'emotion', 'intensity', 'setupScenes', 'payoffScenes',
-    'synopsis', 'wordCount', 'targetWordCount', 'includeInCompile', 'date',
+    'synopsis', 'wordCount', 'targetWordCount', 'includeInCompile', 'date', 'playDuration',
     'beats', 'content'
   ]),
   map: new Set([
@@ -263,6 +263,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'sessionNumber', 'date', 'duration', 'players', 'scribe', 'absent',
     'recap', 'goals', 'mood', 'hook', 'endNotes',
     'collectedBoardItemKeys',
+    'campaignForkId', 'campaignForkName', 'inWorldDate', 'timeMoves', 'sceneEventId', 'sceneEventStart',
     'status', 'created', 'modified'
   ]),
   timelineEra: new Set([

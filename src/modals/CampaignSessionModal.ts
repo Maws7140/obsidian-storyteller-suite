@@ -4,6 +4,8 @@
  */
 
 import { App, Notice, Setting } from 'obsidian';
+import { CalendarRegistry } from '../calendar/CalendarRegistry';
+import { applyCampaignSetup, campaignSetupProblem, defaultCampaignSetup, knownCampaigns, renderCampaignSetupFields } from '../campaign/CampaignSetup';
 import { CampaignSession } from '../types';
 import StorytellerSuitePlugin from '../main';
 import { ResponsiveModal } from './ResponsiveModal';
@@ -147,6 +149,12 @@ export class CampaignSessionModal extends ResponsiveModal {
         };
         renderParty();
 
+        const calendar = new CalendarRegistry(this.plugin).getActiveCalendar();
+        const existingSessions = await this.plugin.listSessions().catch(() => [] as CampaignSession[]);
+        const campaigns = knownCampaigns(existingSessions, this.plugin.getTimelineForks());
+        const setup = defaultCampaignSetup(campaigns, this.plugin.getActiveStory()?.name);
+        renderCampaignSetupFields(form, setup, campaigns, calendar);
+
         // Footer buttons
         const footer = form.createDiv('storyteller-modal-footer');
         const cancelBtn = footer.createEl('button', { cls: 'storyteller-modal-btn', text: 'Cancel' });
@@ -161,6 +169,11 @@ export class CampaignSessionModal extends ResponsiveModal {
             const activeStory = this.plugin.getActiveStory();
             if (!activeStory) {
                 new Notice('No active story. Please select a story first.');
+                return;
+            }
+            const setupProblem = campaignSetupProblem(setup, calendar);
+            if (setupProblem) {
+                new Notice(setupProblem);
                 return;
             }
 
@@ -191,6 +204,7 @@ export class CampaignSessionModal extends ResponsiveModal {
                 status: 'active',
             };
 
+            await applyCampaignSetup(this.plugin, setup, session, calendar);
             await this.plugin.saveSession(session);
             new Notice(`Session "${session.name}" created.`);
             this.close();

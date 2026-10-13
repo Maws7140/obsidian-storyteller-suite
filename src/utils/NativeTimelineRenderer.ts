@@ -14,6 +14,7 @@ import { daysInYear, fromAbsolute, monthsInYear, normalYearLength, toAbsolute } 
 import type { CalendarSystem } from '../calendar/types';
 import { chooseSnapResolution, generateTicks, snapDay, snapSlots, stepDay } from '../calendar/TimelineAxis';
 import { daySpanOf, holidayOccurrencesInYear, monthOfDay, monthStartDay, shiftMonth } from './TimelineCalendarGrid';
+import { PATH_NOT_TAKEN_TAG, pathsNotTakenEvents } from './PathsNotTaken';
 import { calendarImageMonths, MAX_EXPORT_MONTHS, paintCalendarImage, type CalendarImageChip } from './TimelineCalendarImage';
 import type { CalendarMonthRef } from './TimelineCalendarGrid';
 import { TimelineCalendarPanel } from './TimelineCalendarPanel';
@@ -334,6 +335,8 @@ export class NativeTimelineRenderer {
     private scenes: Scene[] = [];
     private watchedNotes: Array<{ name: string; date: string; filePath: string }> = [];
     private showScenes = false;
+    /** Choices a campaign passed over, drawn faded beside the scene they were offered in. */
+    private showPathsNotTaken = false;
     private showWatchedNotes = false;
     private root: HTMLElement | null = null;
     private canvas: HTMLCanvasElement | null = null;
@@ -503,6 +506,7 @@ export class NativeTimelineRenderer {
     setIconMode(value: TimelineIconMode): void { this.options.iconMode = value; this.scheduleDraw(); }
     setMinimal(value: boolean): void { this.options.minimal = value; this.iconSourceMemo.clear(); this.hideTooltip(); this.scheduleDraw(); }
     setShowScenes(value: boolean): void { this.showScenes = value; this.rebuild(false); }
+    setShowPathsNotTaken(value: boolean): void { this.showPathsNotTaken = value; this.rebuild(false); }
     setShowWatchedNotes(value: boolean): void { this.showWatchedNotes = value; this.rebuild(false); }
     setStackEnabled(value: boolean): void { this.options.stackEnabled = value; this.rebuild(false); }
     setDensity(value: number): void { this.options.density = Math.max(0, Math.min(100, value)); this.rebuild(false); }
@@ -1066,10 +1070,22 @@ export class NativeTimelineRenderer {
         return candidates.find(item => item.laneId === previous.laneId) ?? candidates[0] ?? null;
     }
 
-    private eventIdentity(event: Event): string { return event.filePath || this.eventKey(event); }
+    private eventIdentity(event: Event): string {
+        // A path not taken shares its scene event's note, so it needs its own id to be told apart.
+        if (event.tags?.includes(PATH_NOT_TAKEN_TAG)) return event.id ?? this.eventKey(event);
+        return event.filePath || this.eventKey(event);
+    }
 
     private collectEvents(): Event[] {
         const result = this.events.filter(event => this.shouldInclude(event) && this.matchesFork(event)).slice();
+        if (this.showPathsNotTaken) {
+            // Derived from events already on this branch, so they follow it without a fork check of their own.
+            result.slice().forEach(event => {
+                for (const ghost of pathsNotTakenEvents(event)) {
+                    if (this.shouldInclude(ghost)) result.push(ghost);
+                }
+            });
+        }
         if (this.showScenes) {
             this.scenes.forEach(scene => {
                 if (!scene.date) return;
@@ -1232,6 +1248,7 @@ export class NativeTimelineRenderer {
      * it, and an event nobody can read is worse than one nobody has confirmed.
      */
     private certaintyAlpha(event: Event): number {
+        if (event.tags?.includes(PATH_NOT_TAKEN_TAG)) return 0.45;
         switch (event.certainty) {
             case 'reported': return 0.8;
             case 'disputed': return 0.62;
@@ -2925,7 +2942,7 @@ export class NativeTimelineRenderer {
     private isDraggable(item: NativeItem): boolean {
         if (item.approximate || !Number.isFinite(item.start)) return false;
         const tags = item.event.tags;
-        return !tags?.includes('scene') && !tags?.includes('watched-note');
+        return !tags?.includes('scene') && !tags?.includes('watched-note') && !tags?.includes(PATH_NOT_TAKEN_TAG);
     }
 
     /** The axis marker under the pointer, nearest first. */
@@ -4326,6 +4343,11 @@ export class NativeTimelineRenderer {
     /** Open the event behind a chip in the editor, the same way for mouse, touch and keyboard. */
     private async openItem(item: NativeItem): Promise<void> {
         if (item.event.tags?.includes('watched-note')) return;
+        // A path not taken lives inside the event of the scene it was offered in; open that note.
+        if (item.event.tags?.includes(PATH_NOT_TAKEN_TAG)) {
+            if (item.event.filePath) void this.app.workspace.openLinkText(item.event.filePath, '', false);
+            return;
+        }
         // A scene is not an event. Editing one here would hand EventModal a
         // synthetic object and saveEvent would write it out as a new event note,
         // so open the scene itself instead.

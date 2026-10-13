@@ -8,6 +8,12 @@
 import { App, Modal, Notice, Setting, TFile, normalizePath, setIcon } from 'obsidian';
 import { SceneBranch, SceneOutcomeFields, EncounterTable, Scene, Character, Event, Group, CompendiumEntry } from '../types';
 import { encounterFlag } from '../utils/DiceRoller';
+import { CalendarRegistry } from '../calendar/CalendarRegistry';
+import type { CalendarSystem } from '../calendar/types';
+import { durationProblem } from '../campaign/CampaignTime';
+
+const SCENE_LENGTH_HELP = 'In-world time a campaign spends here before moving on, when its time moves.';
+const TIME_TAKEN_HELP = 'In-world time this takes when the campaign\'s time moves. A choice uses it in place of the scene length; an encounter adds it.';
 import {
     serializeBranches, serializeEncounterTable,
     extractBranchesFromMarkdown, extractEncounterTableFromMarkdown
@@ -30,6 +36,12 @@ export class BranchEditorModal extends Modal {
     private encounterTable: EncounterTable | null = null;
 
     private activeTab: 'choices' | 'encounter' = 'choices';
+    /** The scene's own length, kept in its frontmatter as `playDuration`. */
+    private sceneLength: string | undefined;
+    private savedSceneLength: string | undefined;
+    private get calendar(): CalendarSystem {
+        return new CalendarRegistry(this.plugin).getActiveCalendar();
+    }
     private sceneOptions: Scene[] = [];
     private characterOptions: Character[] = [];
     private eventOptions: Event[] = [];
@@ -55,6 +67,9 @@ export class BranchEditorModal extends Modal {
             const content = await this.app.vault.cachedRead(file);
             this.branches = extractBranchesFromMarkdown(content);
             this.encounterTable = extractEncounterTableFromMarkdown(content);
+            const length: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter?.playDuration;
+            this.sceneLength = typeof length === 'string' && length.trim() ? length.trim() : undefined;
+            this.savedSceneLength = this.sceneLength;
         }
 
         const [scenes, characters, events, compendiumEntries] = await Promise.allSettled([
@@ -107,6 +122,17 @@ export class BranchEditorModal extends Modal {
     // ─── Choices Tab ──────────────────────────────────────────────────────────
 
     private renderChoicesTab(container: HTMLElement): void {
+        const lengthSetting = new Setting(container)
+            .setName('Scene length')
+            .setDesc(SCENE_LENGTH_HELP);
+        lengthSetting.addText(text => text
+            .setPlaceholder('Like 2 hours')
+            .setValue(this.sceneLength ?? '')
+            .onChange(value => {
+                this.sceneLength = value.trim() || undefined;
+                lengthSetting.descEl.setText(durationProblem(value, this.calendar) ?? SCENE_LENGTH_HELP);
+            }));
+
         if (this.branches.length === 0) {
             container.createEl('p', { cls: 'storyteller-modal-list-empty', text: 'No choices yet. Click "add choice" to begin.' });
         }
@@ -381,7 +407,7 @@ export class BranchEditorModal extends Modal {
         outcomeToggle.createEl('summary', { text: summary });
         if (
             branch.grantsItem || branch.removesItem || branch.grantsCharacter || branch.removesCharacter ||
-            branch.setsFlag || branch.clearsFlag || branch.tags || branch.triggersEvent || branch.changesGroupStanding ||
+            branch.setsFlag || branch.clearsFlag || branch.tags || branch.advances || branch.triggersEvent || branch.changesGroupStanding ||
             branch.revealsCompendiumEntry || branch.groupStandingDelta != null
         ) {
             outcomeToggle.setAttribute('open', '');
@@ -473,6 +499,16 @@ export class BranchEditorModal extends Modal {
                     if (event) branch.triggersEvent = event.name;
                 });
             });
+        const timeSetting = new Setting(outcomeFields)
+            .setName('Time taken')
+            .setDesc(TIME_TAKEN_HELP);
+        timeSetting.addText(t => t
+            .setValue(branch.advances ?? '')
+            .setPlaceholder('Like 3 days')
+            .onChange(v => {
+                branch.advances = v.trim() || undefined;
+                timeSetting.descEl.setText(durationProblem(v, this.calendar) ?? TIME_TAKEN_HELP);
+            }));
         new Setting(outcomeFields)
             .setName('Partylog tags')
             .setDesc('Partylog tags applied to the session, for clocks, party resources and threads.')
@@ -588,6 +624,14 @@ export class BranchEditorModal extends Modal {
 
             return updated;
         });
+
+        if (this.sceneLength !== this.savedSceneLength) {
+            await this.app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
+                if (this.sceneLength) frontmatter.playDuration = this.sceneLength;
+                else delete frontmatter.playDuration;
+            });
+            this.savedSceneLength = this.sceneLength;
+        }
 
         this.onSaved();
         new Notice('Branches saved.');

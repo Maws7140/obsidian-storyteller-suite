@@ -33,6 +33,7 @@ const OUTCOME_FIELDS: ReadonlyArray<FieldSpec<SceneOutcomeFields>> = [
     field('triggersEvent', 'triggers-event'),
     field('triggersEventId', 'triggers-event-id'),
     field('tags', 'tags'),
+    field('advances', 'advances'),
 ];
 
 /** Choice fields before the shared outcomes, in the order they are written. */

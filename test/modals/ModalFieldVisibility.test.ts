@@ -64,7 +64,7 @@ const ENTITY_PROPERTIES: Record<string, readonly string[]> = {
     ],
     reference: ['category', 'tags', 'profileImagePath', 'content', 'customFields'],
     scene: [
-        'chapterId', 'date', 'campaignBoardMapId', 'status', 'priority', 'povCharacter', 'emotion', 'intensity',
+        'chapterId', 'date', 'campaignBoardMapId', 'playDuration', 'status', 'priority', 'povCharacter', 'emotion', 'intensity',
         'synopsis', 'tags', 'profileImagePath', 'icon', 'iconColor', 'content', 'beats', 'linkedCharacters', 'linkedLocations',
         'linkedEvents', 'linkedItems', 'linkedGroups', 'setupScenes', 'payoffScenes', 'filePath',
     ],
@@ -167,7 +167,7 @@ const FIELD_COVERAGE: Record<string, Record<string, readonly string[]>> = {
         customFields: ['customFields'],
     },
     scene: {
-        chapterId: ['chapterId'], date: ['date'], campaignBoardMapId: ['campaignBoardMapId'],
+        chapterId: ['chapterId'], date: ['date'], campaignBoardMapId: ['campaignBoardMapId'], playDuration: ['playDuration'],
         status: ['status'], priority: ['priority'], povCharacter: ['povCharacter'], emotion: ['emotion'],
         intensity: ['intensity'], synopsis: ['synopsis'], tags: ['tags'], icon: ['icon', 'iconColor'],
         profileImage: ['profileImagePath'], content: ['content'], beats: ['beats'],

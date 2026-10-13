@@ -46,6 +46,7 @@ import {
     PlotItem,
     CompendiumEntry,
     StoryMap,
+    Event as StoryEvent,
 } from '../types';
 import {
     extractBranchesFromMarkdown,
@@ -64,6 +65,25 @@ import {
 } from '../utils/DiceRoller';
 import { getOwners, getPartyOwner, setPartyOwner } from '../utils/ItemOwnership';
 import { renderOutcomeChips } from '../extensions/BranchBlockExtension';
+import { CalendarRegistry } from '../calendar/CalendarRegistry';
+import type { CalendarSystem } from '../calendar/types';
+import { parseInCalendar } from '../calendar/CalendarDateText';
+import {
+    advanceCampaignDate,
+    calendarKeepsTime,
+    campaignDateRange,
+    durationProblem,
+    formatCampaignDuration,
+    isZeroDuration,
+    parseCampaignDuration,
+} from '../campaign/CampaignTime';
+import {
+    applyCampaignSetup,
+    campaignSetupProblem,
+    defaultCampaignSetup,
+    knownCampaigns,
+    renderCampaignSetupFields,
+} from '../campaign/CampaignSetup';
 import { outcomeChips } from '../utils/SceneOutcomeSummary';
 import {
     addCampaignAdvancement,
@@ -311,6 +331,8 @@ export class CampaignView extends ItemView {
     private partyAmountDrafts = new Map<string, string>();
     /** Last dice result from a branch roll, used to prefill the Roll entry. */
     private lastDiceResult: { expression: string; outcome: string } | null = null;
+    /** Choices the party passed over when it left the last scene, written onto that scene's event. */
+    private pendingPathsNotTaken: string[] = [];
     /** Latest encounter roll, shown on the scene until the party moves on. */
     private lastEncounter: { sceneName: string; total: number; row: EncounterTableRow } | null = null;
     private tagNameCache: TagNameCache | null = null;
@@ -490,10 +512,19 @@ export class CampaignView extends ItemView {
             }
         } catch { /* no story loaded */ }
 
+        // Campaign: which timeline fork play records into, the in-world date, and whether time moves.
+        const calendar = new CalendarRegistry(this.plugin).getActiveCalendar();
+        const existingSessions = await this.plugin.listSessions().catch(() => [] as CampaignSession[]);
+        const campaigns = knownCampaigns(existingSessions, this.plugin.getTimelineForks());
+        const setup = defaultCampaignSetup(campaigns, this.plugin.getActiveStory()?.name);
+        renderCampaignSetupFields(form, setup, campaigns, calendar);
+
         const startBtn = form.createEl('button', { cls: 'storyteller-campaign-btn is-primary', text: 'Start session' });
         startBtn.addEventListener('click', () => { void (async () => {
             const name = nameInput.value.trim();
             if (!name) { new Notice('Session name is required.'); return; }
+            const setupProblem = campaignSetupProblem(setup, calendar);
+            if (setupProblem) { new Notice(setupProblem); return; }
             const story = this.plugin.getActiveStory();
 
             // Seed partyItems from each selected character's ownedItems
@@ -521,6 +552,7 @@ export class CampaignView extends ItemView {
                 groupStandings: [],
                 status: 'active',
             };
+            await applyCampaignSetup(this.plugin, setup, newSession, calendar);
             await this.plugin.saveSession(newSession);
             await this.loadSession(newSession);
             await this.render();
@@ -549,6 +581,7 @@ export class CampaignView extends ItemView {
             text: this.currentScene?.name ?? 'No scene',
         });
         this.renderSceneKindControl(toolbar);
+        this.renderCampaignClock(toolbar, session);
         this.renderActorSelector(toolbar, session);
         toolbar.createDiv({ cls: 'storyteller-campaign-toolbar-spacer' });
 
@@ -1664,6 +1697,10 @@ export class CampaignView extends ItemView {
             ...effectLines,
         ];
 
+        // The choice's own time, or else the time this scene takes.
+        const timeLine = this.passCampaignTime(branch.advances ?? this.currentScene?.playDuration);
+        if (timeLine) logEntries.push(timeLine);
+
         // A choice that rolls the encounter table: a row with its own scene wins over the choice's target.
         if (branch.rollsEncounter && outcome === 'success') {
             const encounter = await this.rollSceneEncounter('choice');
@@ -1683,10 +1720,139 @@ export class CampaignView extends ItemView {
 
         await this.autosave(logEntries);
         if (target && target !== 'continue') {
+            // The scene's other choices are kept on its timeline event as the paths not taken.
+            this.pendingPathsNotTaken = this.branches
+                .filter(candidate => !candidate.hidden && candidate.id !== branch.id)
+                .map(candidate => candidate.label)
+                .filter(label => label.trim().length > 0);
             await this.doNavigate(target, true);
         } else {
             await this.render();
         }
+    }
+
+    // ── Campaign time and timeline ────────────────────────────────────────────
+
+    private campaignCalendar(): CalendarSystem {
+        return new CalendarRegistry(this.plugin).getActiveCalendar();
+    }
+
+    /**
+     * Move the in-world date forward by a duration when the campaign's time moves. Returns the
+     * log line saying so, or null when nothing moved.
+     */
+    private passCampaignTime(durationText: string | undefined, forced = false): string | null {
+        const session = this.session;
+        if (!session?.inWorldDate || (!session.timeMoves && !forced)) return null;
+        const duration = parseCampaignDuration(durationText);
+        if (!duration || isZeroDuration(duration)) return null;
+        const next = advanceCampaignDate(session.inWorldDate, duration, this.campaignCalendar());
+        if (!next || next === session.inWorldDate) return null;
+        session.inWorldDate = next;
+        return formatMeta({ type: 'note', text: `Time passes: ${formatCampaignDuration(duration)}. Now ${next}` });
+    }
+
+    /**
+     * When the campaign records to a fork: close the event of the scene the party is leaving
+     * (its end date, and the choices not taken), then open a dated event for the scene entered.
+     * Re-entering the scene that is already open, as a resumed session does, records nothing.
+     */
+    private async recordSceneOnTimeline(scene: Scene): Promise<void> {
+        const session = this.session;
+        const pathsNotTaken = this.pendingPathsNotTaken;
+        this.pendingPathsNotTaken = [];
+        if (!session?.campaignForkId || !session.inWorldDate) return;
+        try {
+            const events = await this.plugin.listEvents();
+            const open = session.sceneEventId ? events.find(event => event.id === session.sceneEventId) : undefined;
+            if (open && (open.linkedScenes ?? []).some(name => this.normalizeName(name) === this.normalizeName(scene.name))) return;
+            if (open) {
+                open.dateTime = campaignDateRange(session.sceneEventStart ?? open.dateTime ?? session.inWorldDate, session.inWorldDate);
+                if (pathsNotTaken.length) open.pathsNotTaken = pathsNotTaken;
+                await this.plugin.saveEvent(open);
+            }
+
+            const taken = new Set(events.map(event => this.normalizeName(event.name)));
+            const base = `${session.name}: ${scene.name}`;
+            let name = base;
+            for (let count = 2; taken.has(this.normalizeName(name)); count++) name = `${base} (${count})`;
+            const event: StoryEvent = {
+                id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+                name,
+                dateTime: session.inWorldDate,
+                description: `Played in ${session.name}.`,
+                status: 'Occurred',
+                characters: [...(session.partyCharacterNames ?? [])],
+                location: scene.linkedLocations?.[0],
+                linkedScenes: [scene.name],
+                sessionId: session.id,
+                sessionName: session.name,
+                branches: session.campaignForkName ? [session.campaignForkName] : [],
+            };
+            await this.plugin.saveEvent(event);
+            await this.plugin.addEventToFork(session.campaignForkId, event.id!, { quiet: true });
+            session.sceneEventId = event.id;
+            session.sceneEventStart = session.inWorldDate;
+        } catch (error) {
+            this.notifySaveFailure(error, 'The scene was not recorded on the timeline');
+        }
+    }
+
+    /** The in-world date and the ways to move it, in the toolbar. */
+    private renderCampaignClock(toolbar: HTMLElement, session: CampaignSession): void {
+        if (!session.inWorldDate) return;
+        const clock = toolbar.createEl('button', {
+            cls: 'storyteller-campaign-toolbar-btn storyteller-campaign-clock',
+            attr: { 'aria-label': 'In-world date. Click to pass time or change it.' },
+        });
+        setIcon(clock.createSpan(), session.timeMoves ? 'calendar-clock' : 'calendar');
+        clock.createSpan({ text: ` ${session.inWorldDate}` });
+        clock.addEventListener('click', event => {
+            const menu = new Menu();
+            const pass = (duration: string) => {
+                const line = this.passCampaignTime(duration, true);
+                if (!line) return;
+                void (async () => { await this.autosave(line); await this.render(); })();
+            };
+            if (calendarKeepsTime(this.campaignCalendar())) {
+                menu.addItem(item => item.setTitle('Pass 1 hour').setIcon('clock').onClick(() => pass('1 hour')));
+            }
+            menu.addItem(item => item.setTitle('Pass 1 day').setIcon('sun').onClick(() => pass('1 day')));
+            menu.addItem(item => item.setTitle('Pass 1 week').setIcon('calendar-range').onClick(() => pass('1 week')));
+            menu.addItem(item => item.setTitle('Pass time...').setIcon('hourglass').onClick(() => {
+                new PromptModal(this.app, {
+                    title: 'Pass time',
+                    label: 'How long',
+                    defaultValue: '8 hours',
+                    validator: value => durationProblem(value, this.campaignCalendar()) ?? (value.trim() ? null : 'Type how long, like 3 days.'),
+                    onSubmit: value => pass(value),
+                }).open();
+            }));
+            menu.addSeparator();
+            menu.addItem(item => item.setTitle('Set the date...').setIcon('pencil').onClick(() => {
+                new PromptModal(this.app, {
+                    title: 'Set the in-world date',
+                    label: 'Date',
+                    defaultValue: session.inWorldDate ?? '',
+                    validator: value => parseInCalendar(value, this.campaignCalendar()) ? null : 'That is not a date in this story\'s calendar.',
+                    onSubmit: value => {
+                        session.inWorldDate = value.trim();
+                        void (async () => {
+                            await this.autosave(formatMeta({ type: 'note', text: `Date set to ${session.inWorldDate}` }));
+                            await this.render();
+                        })();
+                    },
+                }).open();
+            }));
+            menu.addItem(item => item
+                .setTitle(session.timeMoves ? 'Stop choices moving time' : 'Let choices move time')
+                .setIcon(session.timeMoves ? 'pause' : 'play')
+                .onClick(() => {
+                    session.timeMoves = !session.timeMoves || undefined;
+                    void (async () => { await this.autosave(); await this.render(); })();
+                }));
+            menu.showAtMouseEvent(event);
+        });
     }
 
     /**
@@ -1748,7 +1914,8 @@ export class CampaignView extends ItemView {
             tags,
         });
         this.lastEncounter = { sceneName: this.currentScene?.name ?? '', total, row };
-        return { total, row, logLines: [line, ...effectLines] };
+        const timeLine = this.passCampaignTime(row.advances);
+        return { total, row, logLines: [line, ...effectLines, ...(timeLine ? [timeLine] : [])] };
     }
 
     // â”€â”€ Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1796,6 +1963,7 @@ export class CampaignView extends ItemView {
         this.session.currentSceneName = scene.name;
         this.session.currentSceneId   = scene.id;
         await this.logSceneHeader(scene);
+        await this.recordSceneOnTimeline(scene);
         await this.autosave(`Entered *${scene.name}*`);
 
         // On-enter encounter auto-roll
@@ -1829,6 +1997,7 @@ export class CampaignView extends ItemView {
             this.session.currentSceneName = scene.name;
             this.session.currentSceneId = scene.id;
             await this.logSceneHeader(scene);
+            await this.recordSceneOnTimeline(scene);
             await this.autosave(`Back to *${scene.name}*`);
             await this.render();
         } finally {
@@ -2885,8 +3054,22 @@ export class CampaignView extends ItemView {
                 changed = true;
             }
 
+            // An event prepared for the campaign, with no date yet, happens now and on the campaign's fork.
+            // A dated event is part of the story already and keeps its date and branches.
+            const datedNow = !event.dateTime && Boolean(this.session?.inWorldDate);
+            if (datedNow) {
+                event.dateTime = this.session!.inWorldDate;
+                if (this.session?.campaignForkName && !(event.branches ?? []).includes(this.session.campaignForkName)) {
+                    event.branches = [...(event.branches ?? []), this.session.campaignForkName];
+                }
+                changed = true;
+            }
+
             if (changed) {
                 await this.plugin.saveEvent(event);
+            }
+            if (datedNow && this.session?.campaignForkId && event.id) {
+                await this.plugin.addEventToFork(this.session.campaignForkId, event.id, { quiet: true });
             }
 
             return `Triggered event: *${event.name}*`;
