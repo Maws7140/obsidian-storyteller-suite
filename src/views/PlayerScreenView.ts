@@ -3,7 +3,7 @@
  *
  * It draws only what the DM view publishes on the player screen bus, which is already cut down
  * to what players may see (revealed places, opened votes, shared clocks). The board shows the
- * map under drifting clouds with clearings at the places the party has seen (CloudFog.ts), the party token where the party is,
+ * map under fog of war: unexplored land hidden, seen places greyed, the party's surroundings clear (FogOfWar.ts), the party token where the party is,
  * and, while a vote is open, each choice as a numbered path; a choice into unseen country ends
  * in the fog with a question mark. Pushed text shows as popups and a pinned Story strip.
  * Everything is drawn inside this view's own container, so it also works in a pop-out window.
@@ -11,7 +11,7 @@
 import { ItemView, MarkdownRenderer, WorkspaceLeaf, setIcon } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import { VIEW_TYPE_PLAYER_SCREEN } from '../campaign/PlayerPush';
-import { CloudFogLayer } from '../campaign/CloudFog';
+import { FogOfWarLayer } from '../campaign/FogOfWar';
 import type { PlayerPush, PlayerScreenState, PlayerView } from '../campaign/PlayerPush';
 
 export { VIEW_TYPE_PLAYER_SCREEN };
@@ -30,7 +30,7 @@ function initials(names: string[]): string[] {
 export class PlayerScreenView extends ItemView {
 	private plugin: StorytellerSuitePlugin;
 	private unsubscribe: (() => void) | null = null;
-	private fog: CloudFogLayer | null = null;
+	private fog: FogOfWarLayer | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: StorytellerSuitePlugin) {
 		super(leaf);
@@ -111,10 +111,11 @@ export class PlayerScreenView extends ItemView {
 		const img = canvas.createEl('img', { cls: 'storyteller-player-screen-board-image', attr: { src: board.imageUrl, alt: board.name } });
 		img.draggable = false;
 
-		// Clouds over the map, cleared around every place the party has seen.
+		// Fog of war: unexplored land dark and unreadable, seen places greyed under thin mist,
+		// and the party's surroundings clear.
 		const fogCanvas = canvas.createEl('canvas', { cls: 'storyteller-player-screen-fog' });
-		this.fog = new CloudFogLayer(fogCanvas);
-		this.fog.setClearings(board.places.map(place => ({ key: place.key, x: place.x, y: place.y })));
+		this.fog = new FogOfWarLayer(fogCanvas, img);
+		this.fog.setPlaces(board.places.map(place => ({ key: place.key, x: place.x, y: place.y, current: place.current })));
 		this.fog.start();
 
 		const here = board.places.find(place => place.current);
