@@ -130,6 +130,7 @@ import { registerTimelineBlockProcessor } from './extensions/TimelineBlockExtens
 import { CampaignSession } from './types';
 import { LONELOG_NAME } from './campaign/PartylogImport';
 import { PARTYLOG_NAME } from './campaign/PartylogExport';
+import { PlayerScreenBus } from './campaign/PlayerPush';
 import { LORELOG_NAME } from './lore/WorldLog';
 import { buildCampaignSessionFrontmatter, normalizeCampaignSessionData } from './utils/CampaignModel';
 import { isSafeFrontmatterKey, readIconFromFrontmatter, resolveIconPropertyKeys, writeIconToFrontmatter } from './utils/EntityIcon';
@@ -643,6 +644,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
  * a unified dashboard interface for story management
  */
 export default class StorytellerSuitePlugin extends Plugin {
+    /** What the DM has pushed to the player screen this run. */
+    playerScreen = new PlayerScreenBus();
     /** Quick guard to ensure an active story exists before creation actions. */
     private ensureActiveStoryOrGuide(): boolean {
         if (!this.getActiveStory()) {
