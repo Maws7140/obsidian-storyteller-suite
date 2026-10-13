@@ -3,7 +3,7 @@
  *
  * It draws only what the DM view publishes on the player screen bus, which is already cut down
  * to what players may see (revealed places, opened votes, shared clocks). The board shows the
- * map under fog with holes at the places the party has seen, the party token where the party is,
+ * map under drifting clouds with clearings at the places the party has seen (CloudFog.ts), the party token where the party is,
  * and, while a vote is open, each choice as a numbered path; a choice into unseen country ends
  * in the fog with a question mark. Pushed text shows as popups and a pinned Story strip.
  * Everything is drawn inside this view's own container, so it also works in a pop-out window.
@@ -11,12 +11,11 @@
 import { ItemView, MarkdownRenderer, WorkspaceLeaf, setIcon } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import { VIEW_TYPE_PLAYER_SCREEN } from '../campaign/PlayerPush';
+import { CloudFogLayer } from '../campaign/CloudFog';
 import type { PlayerPush, PlayerScreenState, PlayerView } from '../campaign/PlayerPush';
 
 export { VIEW_TYPE_PLAYER_SCREEN };
 
-/** Radius of the clear area around each seen place, in percent of the board width. */
-const FOG_CLEAR_RADIUS = 9;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 function cardTitle(push: PlayerPush): string {
@@ -31,6 +30,7 @@ function initials(names: string[]): string[] {
 export class PlayerScreenView extends ItemView {
 	private plugin: StorytellerSuitePlugin;
 	private unsubscribe: (() => void) | null = null;
+	private fog: CloudFogLayer | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: StorytellerSuitePlugin) {
 		super(leaf);
@@ -57,12 +57,16 @@ export class PlayerScreenView extends ItemView {
 	}
 
 	onClose(): Promise<void> {
+		this.fog?.stop();
+		this.fog = null;
 		this.unsubscribe?.();
 		this.unsubscribe = null;
 		return Promise.resolve();
 	}
 
 	private draw(state: PlayerScreenState): void {
+		this.fog?.stop();
+		this.fog = null;
 		const root = this.contentEl;
 		root.empty();
 		root.addClass('storyteller-player-screen-host');
@@ -107,16 +111,11 @@ export class PlayerScreenView extends ItemView {
 		const img = canvas.createEl('img', { cls: 'storyteller-player-screen-board-image', attr: { src: board.imageUrl, alt: board.name } });
 		img.draggable = false;
 
-		// Fog: a dark layer with a clear circle at every seen place.
-		const fog = canvas.createDiv('storyteller-player-screen-fog');
-		const ratio = board.width / Math.max(board.height, 1);
-		const holes = board.places.map(place =>
-			`radial-gradient(ellipse ${FOG_CLEAR_RADIUS}% ${FOG_CLEAR_RADIUS * ratio}% at ${place.x}% ${place.y}%, transparent 60%, #000 100%)`
-		);
-		if (holes.length > 0) {
-			fog.setCssProps({ '--sts-fog-mask': holes.join(', ') });
-			fog.addClass('has-holes');
-		}
+		// Clouds over the map, cleared around every place the party has seen.
+		const fogCanvas = canvas.createEl('canvas', { cls: 'storyteller-player-screen-fog' });
+		this.fog = new CloudFogLayer(fogCanvas);
+		this.fog.setClearings(board.places.map(place => ({ key: place.key, x: place.x, y: place.y })));
+		this.fog.start();
 
 		const here = board.places.find(place => place.current);
 		const choices = view.choices ?? [];

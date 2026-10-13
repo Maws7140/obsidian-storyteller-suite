@@ -15190,7 +15190,6 @@ img.storyteller-timeline-calendar-icon {
 .storyteller-player-screen {
   --sts-player-accent: var(--interactive-accent);
   --sts-player-path: var(--color-green);
-  --sts-player-fog: rgba(10, 12, 16, 0.92);
   position: relative;
   height: 100%;
   box-sizing: border-box;
@@ -15220,8 +15219,7 @@ img.storyteller-timeline-calendar-icon {
 .storyteller-player-screen-board { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
 .storyteller-player-screen-board-canvas { position: relative; max-width: 100%; max-height: 100%; width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
 .storyteller-player-screen-board-image { display: block; width: 100%; height: 100%; object-fit: cover; user-select: none; pointer-events: none; }
-.storyteller-player-screen-fog { position: absolute; inset: 0; background: var(--sts-player-fog); pointer-events: none; }
-.storyteller-player-screen-fog.has-holes { -webkit-mask-image: var(--sts-fog-mask); mask-image: var(--sts-fog-mask); -webkit-mask-composite: source-in; mask-composite: intersect; }
+.storyteller-player-screen-fog { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .storyteller-player-screen-paths { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .storyteller-player-screen-path { stroke: var(--sts-player-path); stroke-width: 4px; stroke-dasharray: 12 9; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .storyteller-player-screen-path.is-into-fog { stroke-dasharray: 4 9; opacity: 0.8; }
