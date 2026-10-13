@@ -1,5 +1,95 @@
 import { parseYaml, stringifyYaml } from 'obsidian';
-import { SceneBranch, EncounterTable, EncounterTableRow } from '../types';
+import { SceneBranch, SceneOutcomeFields, EncounterTable, EncounterTableRow } from '../types';
+
+type FieldKind = 'string' | 'number' | 'boolean';
+
+/** One optional YAML field: the camelCase key on the object and the kebab-case key written to the block. */
+interface FieldSpec<T> {
+    key: keyof T & string;
+    yaml: string;
+    kind: FieldKind;
+}
+
+const field = <T>(key: keyof T & string, yaml: string, kind: FieldKind = 'string'): FieldSpec<T> => ({ key, yaml, kind });
+
+/** Effects shared by choices and encounter rows, in the order they are written. */
+const OUTCOME_FIELDS: ReadonlyArray<FieldSpec<SceneOutcomeFields>> = [
+    field('grantsItem', 'grants-item'),
+    field('removesItem', 'removes-item'),
+    field('grantsCharacter', 'grants-character'),
+    field('removesCharacter', 'removes-character'),
+    field('setsFlag', 'sets-flag'),
+    field('clearsFlag', 'clears-flag'),
+    field('changesGroupStanding', 'changes-group-standing'),
+    field('changesGroupStandingId', 'changes-group-standing-id'),
+    field('groupStandingDelta', 'group-standing-delta', 'number'),
+    field('revealsCompendiumEntry', 'reveals-compendium-entry'),
+    field('revealsCompendiumEntryId', 'reveals-compendium-entry-id'),
+    field('triggersEvent', 'triggers-event'),
+    field('triggersEventId', 'triggers-event-id'),
+    field('tags', 'tags'),
+];
+
+/** Choice fields before the shared outcomes, in the order they are written. */
+const BRANCH_FIELDS: ReadonlyArray<FieldSpec<SceneBranch>> = [
+    field('target', 'target'),
+    field('targetSceneId', 'target-scene-id'),
+    field('fail', 'fail'),
+    field('failSceneId', 'fail-scene-id'),
+    field('failMode', 'fail-mode'),
+    field('dice', 'dice'),
+    field('stat', 'stat'),
+    field('threshold', 'threshold', 'number'),
+    field('requiresItem', 'requires-item'),
+    field('requiresCharacter', 'requires-character'),
+    field('requiresCharacterId', 'requires-character-id'),
+    field('requiresFlag', 'requires-flag'),
+    field('requiresNoFlag', 'requires-no-flag'),
+    field('requiresStatMin', 'requires-stat-min', 'number'),
+    field('requiresGroupStanding', 'requires-group-standing'),
+    field('requiresGroupStandingId', 'requires-group-standing-id'),
+    field('requiresGroupStandingMin', 'requires-group-standing-min', 'number'),
+    field('requiresCompendiumEntry', 'requires-compendium-entry'),
+    field('requiresCompendiumEntryId', 'requires-compendium-entry-id'),
+];
+
+/** Choice fields after the shared outcomes. */
+const BRANCH_TAIL_FIELDS: ReadonlyArray<FieldSpec<SceneBranch>> = [
+    field('rollsEncounter', 'rolls-encounter', 'boolean'),
+    field('hidden', 'hidden', 'boolean'),
+];
+
+/** Reads each field from its kebab-case or camelCase key; camelCase wins when both are present. */
+function readFields<T>(item: Record<string, unknown>, specs: ReadonlyArray<FieldSpec<T>>, out: T): void {
+    const target = out as Record<string, unknown>;
+    for (const spec of specs) {
+        for (const key of [spec.yaml, spec.key]) {
+            const value = item[key];
+            if (spec.kind === 'string') {
+                if (value) target[spec.key] = String(value);
+            } else if (spec.kind === 'number') {
+                if (value != null) target[spec.key] = Number(value);
+            } else if (value != null) {
+                target[spec.key] = Boolean(value);
+            }
+        }
+    }
+}
+
+/** Writes set fields under their kebab-case keys. Booleans are written only when true. */
+function writeFields<T>(src: T, specs: ReadonlyArray<FieldSpec<T>>, item: Record<string, unknown>): void {
+    const source = src as Record<string, unknown>;
+    for (const spec of specs) {
+        const value = source[spec.key];
+        if (spec.kind === 'string') {
+            if (value) item[spec.yaml] = value;
+        } else if (spec.kind === 'number') {
+            if (value != null) item[spec.yaml] = value;
+        } else if (value) {
+            item[spec.yaml] = true;
+        }
+    }
+}
 
 /**
  * Parse a raw `branch` code block body (YAML list) into SceneBranch objects.
@@ -19,62 +109,9 @@ export function parseBranches(source: string): SceneBranch[] {
             id: String(item['id'] ?? `branch-${i}`),
             label: String(item['label'] ?? ''),
         };
-        if (item['target'])        b.target        = String(item['target']);
-        if (item['target-scene-id']) b.targetSceneId = String(item['target-scene-id']);
-        if (item['targetSceneId'])   b.targetSceneId = String(item['targetSceneId']);
-        if (item['fail'])          b.fail          = String(item['fail']);
-        if (item['fail-scene-id']) b.failSceneId   = String(item['fail-scene-id']);
-        if (item['failSceneId'])   b.failSceneId   = String(item['failSceneId']);
-        if (item['fail-mode'])     b.failMode      = item['fail-mode'] as SceneBranch['failMode'];
-        if (item['failMode'])      b.failMode      = item['failMode'] as SceneBranch['failMode'];
-        if (item['dice'])          b.dice          = item['dice'] as SceneBranch['dice'];
-        if (item['stat'])          b.stat          = String(item['stat']) as SceneBranch['stat'];
-        if (item['threshold'] != null) b.threshold = Number(item['threshold']);
-        if (item['requires-item'])      b.requiresItem      = String(item['requires-item']);
-        if (item['requiresItem'])       b.requiresItem      = String(item['requiresItem']);
-        if (item['requires-character']) b.requiresCharacter = String(item['requires-character']);
-        if (item['requiresCharacter'])  b.requiresCharacter = String(item['requiresCharacter']);
-        if (item['requires-character-id']) b.requiresCharacterId = String(item['requires-character-id']);
-        if (item['requiresCharacterId'])   b.requiresCharacterId = String(item['requiresCharacterId']);
-        if (item['requires-flag'])      b.requiresFlag      = String(item['requires-flag']);
-        if (item['requiresFlag'])       b.requiresFlag      = String(item['requiresFlag']);
-        if (item['requires-stat-min'] != null) b.requiresStatMin = Number(item['requires-stat-min']);
-        if (item['requiresStatMin'] != null)   b.requiresStatMin = Number(item['requiresStatMin']);
-        if (item['requires-group-standing'])   b.requiresGroupStanding = String(item['requires-group-standing']);
-        if (item['requiresGroupStanding'])     b.requiresGroupStanding = String(item['requiresGroupStanding']);
-        if (item['requires-group-standing-id']) b.requiresGroupStandingId = String(item['requires-group-standing-id']);
-        if (item['requiresGroupStandingId'])    b.requiresGroupStandingId = String(item['requiresGroupStandingId']);
-        if (item['requires-group-standing-min'] != null) b.requiresGroupStandingMin = Number(item['requires-group-standing-min']);
-        if (item['requiresGroupStandingMin'] != null)   b.requiresGroupStandingMin = Number(item['requiresGroupStandingMin']);
-        if (item['requires-compendium-entry'])  b.requiresCompendiumEntry = String(item['requires-compendium-entry']);
-        if (item['requiresCompendiumEntry'])    b.requiresCompendiumEntry = String(item['requiresCompendiumEntry']);
-        if (item['requires-compendium-entry-id']) b.requiresCompendiumEntryId = String(item['requires-compendium-entry-id']);
-        if (item['requiresCompendiumEntryId'])    b.requiresCompendiumEntryId = String(item['requiresCompendiumEntryId']);
-        if (item['grants-item'])        b.grantsItem        = String(item['grants-item']);
-        if (item['grantsItem'])         b.grantsItem        = String(item['grantsItem']);
-        if (item['removes-item'])       b.removesItem       = String(item['removes-item']);
-        if (item['removesItem'])        b.removesItem       = String(item['removesItem']);
-        if (item['grants-character'])   b.grantsCharacter   = String(item['grants-character']);
-        if (item['grantsCharacter'])    b.grantsCharacter   = String(item['grantsCharacter']);
-        if (item['removes-character'])  b.removesCharacter  = String(item['removes-character']);
-        if (item['removesCharacter'])   b.removesCharacter  = String(item['removesCharacter']);
-        if (item['sets-flag'])          b.setsFlag          = String(item['sets-flag']);
-        if (item['setsFlag'])           b.setsFlag          = String(item['setsFlag']);
-        if (item['changes-group-standing'])    b.changesGroupStanding = String(item['changes-group-standing']);
-        if (item['changesGroupStanding'])      b.changesGroupStanding = String(item['changesGroupStanding']);
-        if (item['changes-group-standing-id']) b.changesGroupStandingId = String(item['changes-group-standing-id']);
-        if (item['changesGroupStandingId'])    b.changesGroupStandingId = String(item['changesGroupStandingId']);
-        if (item['group-standing-delta'] != null) b.groupStandingDelta = Number(item['group-standing-delta']);
-        if (item['groupStandingDelta'] != null)   b.groupStandingDelta = Number(item['groupStandingDelta']);
-        if (item['reveals-compendium-entry'])  b.revealsCompendiumEntry = String(item['reveals-compendium-entry']);
-        if (item['revealsCompendiumEntry'])    b.revealsCompendiumEntry = String(item['revealsCompendiumEntry']);
-        if (item['reveals-compendium-entry-id']) b.revealsCompendiumEntryId = String(item['reveals-compendium-entry-id']);
-        if (item['revealsCompendiumEntryId'])    b.revealsCompendiumEntryId = String(item['revealsCompendiumEntryId']);
-        if (item['triggers-event'])     b.triggersEvent     = String(item['triggers-event']);
-        if (item['triggersEvent'])      b.triggersEvent     = String(item['triggersEvent']);
-        if (item['triggers-event-id'])  b.triggersEventId   = String(item['triggers-event-id']);
-        if (item['triggersEventId'])    b.triggersEventId   = String(item['triggersEventId']);
-        if (item['hidden'] != null)     b.hidden            = Boolean(item['hidden']);
+        readFields(item, BRANCH_FIELDS, b);
+        readFields(item, OUTCOME_FIELDS, b);
+        readFields(item, BRANCH_TAIL_FIELDS, b);
         return b;
     });
 }
@@ -95,12 +132,15 @@ export function parseEncounterTable(source: string): EncounterTable | null {
     const rows: EncounterTableRow[] = [];
     if (Array.isArray(obj['rows'])) {
         for (const r of obj['rows'] as Record<string, unknown>[]) {
-            rows.push({
+            const row: EncounterTableRow = {
                 min:    Number(r['min'] ?? 1),
                 max:    Number(r['max'] ?? 1),
                 label:  String(r['label'] ?? ''),
                 target: String(r['target'] ?? 'continue'),
-            });
+            };
+            if (r['id']) row.id = String(r['id']);
+            readFields(r, OUTCOME_FIELDS, row);
+            rows.push(row);
         }
     }
     return {
@@ -116,37 +156,9 @@ export function parseEncounterTable(source: string): EncounterTable | null {
 export function serializeBranches(branches: SceneBranch[]): string {
     const list = branches.map(b => {
         const item: Record<string, unknown> = { label: b.label };
-        if (b.target)       item['target']        = b.target;
-        if (b.targetSceneId) item['target-scene-id'] = b.targetSceneId;
-        if (b.fail)         item['fail']           = b.fail;
-        if (b.failSceneId)  item['fail-scene-id']  = b.failSceneId;
-        if (b.failMode)     item['fail-mode']      = b.failMode;
-        if (b.dice)         item['dice']           = b.dice;
-        if (b.stat)         item['stat']           = b.stat;
-        if (b.threshold != null)    item['threshold']         = b.threshold;
-        if (b.requiresItem)         item['requires-item']     = b.requiresItem;
-        if (b.requiresCharacter)    item['requires-character']= b.requiresCharacter;
-        if (b.requiresCharacterId)  item['requires-character-id'] = b.requiresCharacterId;
-        if (b.requiresFlag)         item['requires-flag']     = b.requiresFlag;
-        if (b.requiresStatMin != null) item['requires-stat-min'] = b.requiresStatMin;
-        if (b.requiresGroupStanding) item['requires-group-standing'] = b.requiresGroupStanding;
-        if (b.requiresGroupStandingId) item['requires-group-standing-id'] = b.requiresGroupStandingId;
-        if (b.requiresGroupStandingMin != null) item['requires-group-standing-min'] = b.requiresGroupStandingMin;
-        if (b.requiresCompendiumEntry) item['requires-compendium-entry'] = b.requiresCompendiumEntry;
-        if (b.requiresCompendiumEntryId) item['requires-compendium-entry-id'] = b.requiresCompendiumEntryId;
-        if (b.grantsItem)           item['grants-item']       = b.grantsItem;
-        if (b.removesItem)          item['removes-item']      = b.removesItem;
-        if (b.grantsCharacter)      item['grants-character']  = b.grantsCharacter;
-        if (b.removesCharacter)     item['removes-character'] = b.removesCharacter;
-        if (b.setsFlag)             item['sets-flag']         = b.setsFlag;
-        if (b.changesGroupStanding) item['changes-group-standing'] = b.changesGroupStanding;
-        if (b.changesGroupStandingId) item['changes-group-standing-id'] = b.changesGroupStandingId;
-        if (b.groupStandingDelta != null) item['group-standing-delta'] = b.groupStandingDelta;
-        if (b.revealsCompendiumEntry) item['reveals-compendium-entry'] = b.revealsCompendiumEntry;
-        if (b.revealsCompendiumEntryId) item['reveals-compendium-entry-id'] = b.revealsCompendiumEntryId;
-        if (b.triggersEvent)        item['triggers-event']    = b.triggersEvent;
-        if (b.triggersEventId)      item['triggers-event-id'] = b.triggersEventId;
-        if (b.hidden)               item['hidden']            = true;
+        writeFields(b, BRANCH_FIELDS, item);
+        writeFields(b, OUTCOME_FIELDS, item);
+        writeFields(b, BRANCH_TAIL_FIELDS, item);
         return item;
     });
     return stringifyYaml(list).trimEnd();
@@ -159,7 +171,12 @@ export function serializeEncounterTable(table: EncounterTable): string {
     const obj = {
         dice:    table.dice,
         trigger: table.trigger,
-        rows:    table.rows.map(r => ({ min: r.min, max: r.max, label: r.label, target: r.target })),
+        rows:    table.rows.map(r => {
+            const item: Record<string, unknown> = { min: r.min, max: r.max, label: r.label, target: r.target };
+            if (r.id) item['id'] = r.id;
+            writeFields(r, OUTCOME_FIELDS, item);
+            return item;
+        }),
     };
     return stringifyYaml(obj).trimEnd();
 }

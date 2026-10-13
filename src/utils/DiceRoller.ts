@@ -1,4 +1,4 @@
-import { SceneBranch, EncounterTable, EncounterTableRow, CampaignSession } from '../types';
+import { SceneBranch, SceneOutcomeFields, EncounterTable, EncounterTableRow, CampaignSession } from '../types';
 
 export type DiceType = 'd4' | 'd6' | 'd8' | 'd10' | 'd12' | 'd20' | 'd100';
 
@@ -84,6 +84,12 @@ export function checkBranchConditions(
         }
     }
 
+    if (branch.requiresNoFlag) {
+        if ((session.flags ?? []).includes(branch.requiresNoFlag)) {
+            unmet.push(`Flag is set: ${branch.requiresNoFlag}`);
+        }
+    }
+
     if (branch.requiresCompendiumEntry || branch.requiresCompendiumEntryId) {
         const revealed = (session.revealedCompendiumEntryIds ?? []).map(entry => normalize(entry));
         const targetId = branch.requiresCompendiumEntryId ? normalize(branch.requiresCompendiumEntryId) : '';
@@ -138,6 +144,17 @@ export function applyBranchOutcomes(
     branch: SceneBranch,
     session: CampaignSession
 ): CampaignSession {
+    return applyOutcomeFields(branch, session);
+}
+
+/**
+ * Apply the effects shared by choices and encounter rows, returning a mutated copy.
+ * Partylog `tags` and `triggersEvent` are left to the caller, since they need the vault.
+ */
+export function applyOutcomeFields(
+    branch: SceneOutcomeFields,
+    session: CampaignSession
+): CampaignSession {
     const next = { ...session };
     const normalize = (value: string): string => value.trim().toLowerCase();
 
@@ -159,6 +176,9 @@ export function applyBranchOutcomes(
         next.partyCharacterNames = (next.partyCharacterNames ?? []).filter(
             n => n.toLowerCase() !== branch.removesCharacter!.toLowerCase()
         );
+    }
+    if (branch.clearsFlag) {
+        next.flags = (next.flags ?? []).filter(flag => flag !== branch.clearsFlag);
     }
     if (branch.setsFlag) {
         const flags = next.flags ?? [];
@@ -205,4 +225,38 @@ export function applyBranchOutcomes(
     }
 
     return next;
+}
+
+/** Prefix of the flag that records the latest encounter result, e.g. `encounter:wolves`. */
+export const ENCOUNTER_FLAG_PREFIX = 'encounter:';
+
+/** The key used in a row's `encounter:<key>` flag: its `id`, or a slug of its label. */
+export function encounterRowKey(row: Pick<EncounterTableRow, 'id' | 'label'>): string {
+    const base = (row.id ?? row.label).trim().toLowerCase();
+    const slug = base.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
+    return slug || 'result';
+}
+
+/** The flag set while this row is the latest encounter result. */
+export function encounterFlag(row: Pick<EncounterTableRow, 'id' | 'label'>): string {
+    return ENCOUNTER_FLAG_PREFIX + encounterRowKey(row);
+}
+
+/**
+ * Apply a rolled encounter row to the session, returning a mutated copy: the row's own
+ * outcomes, plus an `encounter:<key>` flag that replaces the previous encounter's flag so
+ * choices can react to what was just rolled (`requires-flag: encounter:wolves`).
+ */
+export function applyEncounterResult(
+    row: EncounterTableRow,
+    session: CampaignSession
+): CampaignSession {
+    const flags = (session.flags ?? []).filter(flag => !flag.startsWith(ENCOUNTER_FLAG_PREFIX));
+    return applyOutcomeFields(row, { ...session, flags: [...flags, encounterFlag(row)] });
+}
+
+/** True when a table row leads to another scene. */
+export function encounterLeadsToScene(row: Pick<EncounterTableRow, 'target'>): boolean {
+    const target = row.target?.trim();
+    return Boolean(target) && target.toLowerCase() !== 'continue';
 }

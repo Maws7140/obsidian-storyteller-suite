@@ -598,10 +598,32 @@ export interface Character {
 }
 
 /**
+ * Effects shared by scene choices and encounter table rows, applied when the
+ * choice is taken or the row is rolled.
+ */
+export interface SceneOutcomeFields {
+    grantsItem?: string;           // item name added to party inventory
+    removesItem?: string;          // item name removed from party inventory (consumed)
+    grantsCharacter?: string;      // character name added to party
+    removesCharacter?: string;     // character name removed from party
+    setsFlag?: string;             // session flag to set
+    changesGroupStanding?: string;     // group/faction name to modify
+    changesGroupStandingId?: string;   // stable group id
+    groupStandingDelta?: number;       // amount to add/subtract from standing
+    revealsCompendiumEntry?: string;   // compendium entry to reveal
+    revealsCompendiumEntryId?: string; // stable compendium id
+    triggersEvent?: string;        // story Event entity name to link in the session log
+    triggersEventId?: string;      // stable Event id
+    clearsFlag?: string;           // session flag to remove
+    /** Partylog tags applied to the session, e.g. "[Clock:Alarm +1] [PC:Boromir|HP-5]" */
+    tags?: string;
+}
+
+/**
  * A single branch/choice in a scene's interactive flowchart.
  * Stored in the ## Choices section as a ```branch code block — NOT in frontmatter.
  */
-export interface SceneBranch {
+export interface SceneBranch extends SceneOutcomeFields {
     id: string;
     label: string;
     target?: string;               // target scene name
@@ -620,6 +642,7 @@ export interface SceneBranch {
     requiresCharacter?: string;    // named character must be in the party
     requiresCharacterId?: string;  // stable character id
     requiresFlag?: string;         // session flag must be set
+    requiresNoFlag?: string;       // session flag must NOT be set
     requiresStatMin?: number;      // passive stat threshold (no dice roll) — use with stat
     requiresGroupStanding?: string;    // named group/faction whose standing is checked
     requiresGroupStandingId?: string;  // stable group id
@@ -627,24 +650,15 @@ export interface SceneBranch {
     requiresCompendiumEntry?: string;  // revealed compendium entry name required
     requiresCompendiumEntryId?: string;// stable compendium entry id
 
-    // ── Outcomes (applied when branch is taken) ───────────────────────────────
-    grantsItem?: string;           // item name added to party inventory
-    removesItem?: string;          // item name removed from party inventory (consumed)
-    grantsCharacter?: string;      // character name added to party
-    removesCharacter?: string;     // character name removed from party
-    setsFlag?: string;             // session flag to set
-    changesGroupStanding?: string;     // group/faction name to modify
-    changesGroupStandingId?: string;   // stable group id
-    groupStandingDelta?: number;       // amount to add/subtract from standing
-    revealsCompendiumEntry?: string;   // compendium entry to reveal
-    revealsCompendiumEntryId?: string; // stable compendium id
-    triggersEvent?: string;        // story Event entity name to link in the session log
-    triggersEventId?: string;      // stable Event id
+    // ── Encounters ────────────────────────────────────────────────────────────
+    rollsEncounter?: boolean;      // roll this scene's encounter table when taken; a row with a target scene overrides `target`
     hidden?: boolean;              // DM-hidden branch; not shown to players until revealed
 }
 
 /** A single row in an encounter table. */
-export interface EncounterTableRow {
+export interface EncounterTableRow extends SceneOutcomeFields {
+    /** Short key for the row's `encounter:<id>` flag. Defaults to a slug of the label. */
+    id?: string;
     min: number;
     max: number;
     label: string;
