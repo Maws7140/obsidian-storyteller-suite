@@ -37,7 +37,7 @@ function makePlugin() {
 }
 
 function el(): any {
-  const node: any = { setCssStyles() {}, createDiv: () => el(), empty() {} };
+  const node: any = { setCssStyles() {}, createDiv: () => el(), createEl: () => el(), createSpan: () => el(), addEventListener() {}, empty() {} };
   return node;
 }
 

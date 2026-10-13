@@ -591,6 +591,8 @@ export class NativeTimelineRenderer {
     }
 
     getVisibleRange(): { start: Date; end: Date } { return { start: new Date(this.viewStart), end: new Date(this.viewEnd) }; }
+    /** The middle of the visible range, snapped and written the way a dragged event's date is stored. */
+    getCenterDateText(): string { return this.formatEditDate(this.snap((this.viewStart + this.viewEnd) / 2)); }
     getEventCount(): number { return this.events.filter(event => this.shouldInclude(event) && this.matchesFork(event)).length; }
 
     /**
@@ -4218,7 +4220,7 @@ export class NativeTimelineRenderer {
         const tag = (this.plugin.settings.timelineWatchTag || 'timeline').replace(/^#/, '');
         this.app.vault.getMarkdownFiles().forEach(file => {
             const cache = this.app.metadataCache.getFileCache(file);
-            const frontmatter = cache?.frontmatter as Record<string, unknown> | undefined;
+            const frontmatter: Record<string, unknown> | undefined = cache?.frontmatter;
             const value = frontmatter?.[property];
             const tagged = cache?.tags?.some(candidate => candidate.tag === `#${tag}`);
             const fallback = frontmatter?.date;
@@ -4460,7 +4462,7 @@ export class NativeTimelineRenderer {
     private roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number): void { const r = Math.min(radius, width / 2, height / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.lineTo(x + width - r, y); ctx.quadraticCurveTo(x + width, y, x + width, y + r); ctx.lineTo(x + width, y + height - r); ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height); ctx.lineTo(x + r, y + height); ctx.quadraticCurveTo(x, y + height, x, y + height - r); ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath(); }
     private curve(ctx: CanvasRenderingContext2D, source: DOMRect, target: DOMRect): void { ctx.save(); ctx.setLineDash([5, 4]); this.connector(ctx, source, target); ctx.restore(); }
     private resizeCanvas(): void { if (!this.canvas || !this.root || !this.ctx) return; const ratio = Math.max(1, window.devicePixelRatio || 1); const width = Math.max(1, this.root.clientWidth); const height = Math.max(1, this.root.clientHeight); this.canvas.width = Math.round(width * ratio); this.canvas.height = Math.round(height * ratio); this.canvas.style.width = `${width}px`; this.canvas.style.height = `${height}px`; this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0); }
-    private toCsv(): string { const escape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`; return ['Name,Date,Status,Location,Characters,Description', ...this.getVisibleEvents().map(event => [event.name, event.dateTime, event.status, event.location, (event.characters || []).join('; '), event.description].map(escape).join(','))].join('\n'); }
+    private toCsv(): string { const escape = (value: string | number | undefined) => `"${String(value ?? '').replace(/"/g, '""')}"`; return ['Name,Date,Status,Location,Characters,Description', ...this.getVisibleEvents().map(event => [event.name, event.dateTime, event.status, event.location, (event.characters || []).join('; '), event.description].map(escape).join(','))].join('\n'); }
     private async writeExport(extension: string, content: string): Promise<void> { const path = `StorytellerSuite/Exports/timeline-${new Date().toISOString().slice(0, 10)}.${extension}`; const existing = this.app.vault.getAbstractFileByPath(path); if (existing instanceof TFile) await this.app.vault.modify(existing, content); else { const folder = 'StorytellerSuite/Exports'; if (!this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder); await this.app.vault.create(path, content); } new Notice(`Timeline exported to ${path}`); }
 }
 

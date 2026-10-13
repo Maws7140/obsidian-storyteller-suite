@@ -11,6 +11,7 @@ import { ConflictViewModal } from '../modals/ConflictViewModal';
 import { TagTimelineModal } from '../modals/TagTimelineModal';
 import { ConflictDetector } from './ConflictDetector';
 import { defaultTimelineIconMode, parseTimelineIconMode } from './TimelineIconLayout';
+import { openNewEventModal } from './OpenNewEventModal';
 
 /**
  * Callbacks for control state changes
@@ -24,6 +25,8 @@ export interface TimelineControlCallbacks {
     getRenderer: () => TimelineRenderer | null;
     /** Get current events (for filter population) */
     getEvents: () => Event[] | Promise<Event[]>;
+    /** Redraw after the New event button saved one. Defaults to refreshing the renderer. */
+    onEventCreated?: () => void | Promise<void>;
 }
 
 /** The three top-level views. Horizontal/vertical are orientations of Timeline. */
@@ -415,6 +418,31 @@ export class TimelineControlsBuilder {
             this.callbacks.getRenderer()?.setShowEras(this.state.showEras);
         });
 
+        return btn;
+    }
+
+    /**
+     * New event, dated to the middle of whatever is on screen. Every view mode
+     * shares this toolbar, so every mode gets the button.
+     */
+    createNewEventButton(container: HTMLElement): HTMLButtonElement {
+        const btn = container.createEl('button', {
+            cls: 'storyteller-toolbar-btn-labelled',
+            attr: { 'aria-label': 'Create a new event', 'title': 'Create a new event' }
+        });
+        setIcon(btn.createSpan('storyteller-toolbar-btn-icon'), 'calendar-plus');
+        btn.createSpan({ cls: 'storyteller-toolbar-btn-text', text: 'New event' });
+        btn.addEventListener('click', () => {
+            const renderer = this.callbacks.getRenderer();
+            void openNewEventModal(this.plugin, {
+                seed: renderer ? { dateTime: renderer.getCenterDateText() } : undefined,
+                onCreated: async () => {
+                    if (this.callbacks.onEventCreated) await this.callbacks.onEventCreated();
+                    else await this.callbacks.getRenderer()?.refresh();
+                    this.callbacks.onStateChange();
+                }
+            });
+        });
         return btn;
     }
 
