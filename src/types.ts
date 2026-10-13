@@ -724,6 +724,8 @@ export interface CampaignClock {
     current: number;
     segments: number;
     kind?: CampaignTrackerKind;
+    /** Shown on the player screen. Clocks start DM only. */
+    shown?: boolean;
 }
 
 /** Thread-like records: plot threads, party goals and quests. */
@@ -796,6 +798,8 @@ export interface CampaignSession {
     revealedCompendiumEntryNames?: string[];
     /** Session-local record of board pickups so map items do not respawn after being taken. */
     collectedBoardItemKeys?: string[];
+    /** Board places the players have seen (location pin keys). The rest of the player board is fog. */
+    revealedLocations?: string[];
     /** Session-local faction standing changes. */
     groupStandings?: CampaignGroupStanding[];
     /** Segmented countdowns and progress trackers used during play. */

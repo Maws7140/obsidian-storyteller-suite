@@ -58,7 +58,33 @@ describe('PlayerScreenBus', () => {
         bus.push(popupInput);
         bus.push(pinnedInput);
         bus.clear();
-        expect(bus.getState()).toEqual({ popups: [], pinned: [] });
+        expect(bus.getState()).toMatchObject({ popups: [], pinned: [] });
+    });
+
+    it('clear keeps the game view and the controls', () => {
+        const bus = new PlayerScreenBus();
+        bus.setControls({ voteOpen: true });
+        bus.setView({ sessionName: 'S', party: [], clocks: [] });
+        bus.push(popupInput);
+        bus.clear();
+        expect(bus.getState().view?.sessionName).toBe('S');
+        expect(bus.getState().controls.voteOpen).toBe(true);
+    });
+
+    it('starts on the board, with no vote and rolls shown', () => {
+        expect(new PlayerScreenBus().getState().controls).toEqual({ mode: 'board', voteOpen: false, showRolls: true });
+    });
+
+    it('setView skips listeners when the view did not change', () => {
+        const bus = new PlayerScreenBus();
+        const listener = vi.fn();
+        bus.subscribe(listener);
+        listener.mockClear();
+        bus.setView({ sessionName: 'S', party: [], clocks: [] });
+        bus.setView({ sessionName: 'S', party: [], clocks: [] });
+        expect(listener).toHaveBeenCalledTimes(1);
+        bus.setView(null);
+        expect(listener).toHaveBeenCalledTimes(2);
     });
 
     it('subscribe calls the listener immediately with the current state', () => {

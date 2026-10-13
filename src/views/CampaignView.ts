@@ -86,7 +86,7 @@ import {
 } from '../campaign/CampaignSetup';
 import { outcomeChips } from '../utils/SceneOutcomeSummary';
 import { splitNoteSections, VIEW_TYPE_PLAYER_SCREEN } from '../campaign/PlayerPush';
-import type { NoteSection, PlayerPushMode } from '../campaign/PlayerPush';
+import type { NoteSection, PlayerChoice, PlayerPushMode, PlayerScreenControls, PlayerScreenMode, PlayerView } from '../campaign/PlayerPush';
 import {
     addCampaignAdvancement,
     addCampaignClock,
@@ -274,6 +274,19 @@ const THREAD_GROUPS: ReadonlyArray<{ kind: CampaignThreadKind; label: string }> 
     { kind: 'quest', label: 'Quests' },
 ];
 
+/**
+ * Where a pin sits on an image board, in percent from the left and from the top. Image maps store
+ * pins as Leaflet [lat, lng] in image pixels with lat counted up from the bottom edge (see the
+ * tiled CRS in leaflet/renderer.ts), so the top offset is the image height minus lat.
+ */
+export function boardPinPercent(coordinates: [number, number], width: number, height: number): { x: number; y: number } {
+    const clamp = (value: number) => Math.max(2, Math.min(98, value));
+    return {
+        x: clamp((coordinates[1] / Math.max(width, 1)) * 100),
+        y: clamp(((height - coordinates[0]) / Math.max(height, 1)) * 100),
+    };
+}
+
 /** A scene's text without its branch and encounter blocks, which the play screen draws itself. */
 export function stripPlayBlocks(markdown: string): string {
     return (markdown ?? '')
@@ -363,6 +376,17 @@ export class CampaignView extends ItemView {
     private sidebarPartEls = new Map<SidebarPart, HTMLElement>();
     /** Per scene: index of the selected header in the Read panel, or null when collapsed on it. */
     private readSelection = new Map<string, number | null>();
+    /** The board drawn for this scene, kept so the player screen can draw the same map. */
+    private boardInfo: { map: StoryMap; imageUrl: string } | null = null;
+    /** Board image sizes, by image URL, so the player view does not load the image on every publish. */
+    private boardSizeCache = new Map<string, { width: number; height: number } | null>();
+    /** The latest roll to show on the player screen when the DM lets players see rolls. */
+    private lastPlayerRoll: { title: string; total: number; result: string; at: number } | null = null;
+    /** Counts renders, so a slow render that a newer one overtook throws its copy away. */
+    private renderGeneration = 0;
+    /** The view root on screen, and the hidden one being drawn (see render). */
+    private viewRoot: HTMLElement | null = null;
+    private buildingRoot: HTMLElement | null = null;
     /** The rail tab showing on the right of the play screen. */
     private railTab: RailTab = 'read';
     /** The current scene note split by header, for the Read tab and the players menu. */
@@ -449,16 +473,55 @@ export class CampaignView extends ItemView {
         }
     }
 
+    /**
+     * Draws the view into a hidden copy and swaps it in once everything, the board map included,
+     * has loaded. Until then the previous screen stays up, so the DM never sees a half-drawn view
+     * and the map does not blank on every choice. A newer render makes an older one throw its copy away.
+     */
     async render(): Promise<void> {
-        this.destroyCampaignBoardRenderer();
-        const root = this.containerEl.children[1] as HTMLElement;
-        root.empty();
-        root.className = 'storyteller-campaign-view';
-        if (!this.session) {
-            await this.renderSessionSelect(root);
-        } else {
-            await this.renderPlay(root);
+        const generation = ++this.renderGeneration;
+        const host = this.containerEl.children[1] as HTMLElement;
+        host.addClass('storyteller-campaign-host');
+
+        // Keep the live map on screen while the new one starts; it is unloaded after the swap.
+        const previousRenderer = this.boardRenderer;
+        this.boardRenderer = null;
+        this.boardRenderToken++;
+        this.boardLocations = [];
+
+        const next = host.createDiv('storyteller-campaign-view is-building');
+        this.buildingRoot = next;
+        try {
+            if (!this.session) {
+                await this.renderSessionSelect(next);
+            } else {
+                await this.renderPlay(next);
+            }
+        } catch (error) {
+            console.error('Storyteller Suite: campaign view failed to draw', error);
+            next.empty();
+            next.createDiv({ cls: 'storyteller-campaign-empty', text: 'The campaign view could not draw. See the developer console for details.' });
         }
+
+        if (generation !== this.renderGeneration) {
+            // A newer render started while this one loaded; it owns the screen.
+            next.remove();
+            previousRenderer?.unload();
+            return;
+        }
+        for (const child of Array.from(host.children)) {
+            if (child !== next) child.remove();
+        }
+        next.removeClass('is-building');
+        this.viewRoot = next;
+        this.buildingRoot = null;
+        previousRenderer?.unload();
+        this.publishPlayerView();
+    }
+
+    /** The root being drawn, or the one on screen: where lookups for this render's elements go. */
+    private currentRoot(): HTMLElement | null {
+        return this.buildingRoot ?? this.viewRoot;
     }
 
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -625,6 +688,7 @@ export class CampaignView extends ItemView {
         this.ensureActiveActor(session);
         await this.ensurePartyCharacterStats(session);
         this.sidebarPartEls.clear();
+        this.boardInfo = null;
 
         this.renderPlayTopBar(root, session);
 
@@ -668,10 +732,8 @@ export class CampaignView extends ItemView {
         });
         setIcon(playersBtn.createSpan(), 'monitor');
         playersBtn.createSpan({ text: 'Players' });
-        const shown = this.plugin.playerScreen.getState();
-        const showing = shown.pinned.length + shown.popups.length;
-        if (showing > 0) playersBtn.createSpan({ cls: 'storyteller-campaign-players-count', text: String(showing) });
         playersBtn.addEventListener('click', event => this.openPlayersMenu(event));
+        this.decoratePlayersButton(playersBtn);
 
         const moreBtn = toolbar.createEl('button', { cls: 'storyteller-campaign-toolbar-btn', attr: { 'aria-label': 'More' } });
         setIcon(moreBtn, 'more-horizontal');
@@ -704,6 +766,139 @@ export class CampaignView extends ItemView {
         })(); });
     }
 
+    // ── Player screen ─────────────────────────────────────────────────────
+
+    /** Sends the players' cut of the game to the player screen. Safe to call often: unchanged views are dropped. */
+    private publishPlayerView(): void {
+        void this.buildPlayerView()
+            .then(view => this.plugin.playerScreen.setView(view))
+            .catch(error => console.error('Storyteller Suite: player screen update failed', error));
+    }
+
+    /** Board place keys the players have seen: those revealed by the DM or visited, and where the party is now. */
+    private seenPlaceKeys(session: CampaignSession): Set<string> {
+        const seen = new Set(session.revealedLocations ?? []);
+        if (this.locationData) seen.add(this.getLocationKey(this.locationData));
+        return seen;
+    }
+
+    private async buildPlayerView(): Promise<PlayerView | null> {
+        const session = this.session;
+        if (!session) return null;
+        const controls = this.plugin.playerScreen.getState().controls;
+
+        // Arriving somewhere reveals it for good, so the fog stays lifted when the party moves on.
+        if (this.locationData) {
+            const here = this.getLocationKey(this.locationData);
+            if (!(session.revealedLocations ?? []).includes(here)) {
+                session.revealedLocations = [...(session.revealedLocations ?? []), here];
+                void this.autosave();
+            }
+        }
+        const seen = this.seenPlaceKeys(session);
+
+        let board: PlayerView['board'];
+        let choices: PlayerChoice[] | undefined;
+        const info = this.boardInfo;
+        if (info) {
+            let size = this.boardSizeCache.get(info.imageUrl);
+            if (size === undefined) {
+                size = await this.getCampaignBoardDimensions(info.map, info.imageUrl);
+                this.boardSizeCache.set(info.imageUrl, size);
+            }
+            if (size) {
+                const { width, height } = size;
+                const percent = (entry: CampaignBoardLocation) => boardPinPercent(entry.binding.coordinates, width, height);
+                board = {
+                    name: info.map.name,
+                    imageUrl: info.imageUrl,
+                    width,
+                    height,
+                    places: this.boardLocations
+                        .filter(entry => seen.has(this.getLocationKey(entry.location)))
+                        .map(entry => ({
+                            key: this.getLocationKey(entry.location),
+                            name: entry.location.name,
+                            ...percent(entry),
+                            current: this.isCurrentSceneLocation(entry.location),
+                        })),
+                };
+                if (controls.voteOpen) {
+                    const here = this.currentBoardLocation();
+                    const from = here ? percent(here) : null;
+                    choices = this.playerChoices().map(({ branch, number }) => {
+                        const there = this.boardLocationForScene(branch.target);
+                        if (!there || there === here || !from) return { number, label: branch.label };
+                        const key = this.getLocationKey(there.location);
+                        if (seen.has(key)) return { number, label: branch.label, toKey: key };
+                        // Unseen place: the path heads its way and stops in the fog.
+                        const to = percent(there);
+                        return { number, label: branch.label, intoFog: { x: from.x + (to.x - from.x) * 0.55, y: from.y + (to.y - from.y) * 0.55 } };
+                    });
+                }
+            }
+        }
+        if (controls.voteOpen && !choices) {
+            choices = this.playerChoices().map(({ branch, number }) => ({ number, label: branch.label }));
+        }
+
+        const names = session.partyCharacterNames ?? [];
+        const party = names.map(name => {
+            const state = (session.partyState ?? []).find(member => this.normalizeName(member.characterName) === this.normalizeName(name));
+            return {
+                name,
+                hp: state?.currentHp,
+                maxHp: state?.maxHp,
+                conditions: state?.conditions ?? [],
+            };
+        });
+
+        return {
+            sessionName: session.name,
+            sceneName: this.currentScene?.name,
+            date: session.inWorldDate,
+            board,
+            party,
+            clocks: (session.clocks ?? [])
+                .filter(clock => clock.shown)
+                .map(clock => ({ name: clock.name, filled: clock.current, segments: clock.segments })),
+            choices,
+            roll: controls.showRolls && this.lastPlayerRoll ? this.lastPlayerRoll : undefined,
+        };
+    }
+
+    /** The choices players may vote on: not hidden, and open right now. Numbered as on the DM's cards. */
+    private playerChoices(): Array<{ branch: SceneBranch; number: number }> {
+        return this.visibleBranches()
+            .map((branch, i) => ({ branch: this.resolveBranchReferences(branch), number: i + 1 }))
+            .filter(({ branch }) => this.branchCheck(branch).met);
+    }
+
+    /** Shows a roll on the player screen, if the DM lets players see rolls. */
+    private showRollToPlayers(title: string, total: number, result: string): void {
+        this.lastPlayerRoll = { title, total, result, at: Date.now() };
+        this.publishPlayerView();
+    }
+
+    private setPlayerControls(controls: Partial<PlayerScreenControls>): void {
+        this.plugin.playerScreen.setControls(controls);
+        this.publishPlayerView();
+        this.refreshPlayersButton();
+    }
+
+    /** Reveals a board place to the players, or hides it again. */
+    private toggleRevealedPlace(location: Location): void {
+        const session = this.session;
+        if (!session) return;
+        const key = this.getLocationKey(location);
+        const revealed = new Set(session.revealedLocations ?? []);
+        if (revealed.has(key)) revealed.delete(key);
+        else revealed.add(key);
+        session.revealedLocations = Array.from(revealed);
+        void this.autosave(revealed.has(key) ? `Revealed to players: ${location.name}` : `Hidden from players: ${location.name}`);
+        this.publishPlayerView();
+    }
+
     private openSceneNote(): void {
         if (this.currentScene?.filePath) {
             void this.plugin.app.workspace.openLinkText(this.currentScene.filePath, '', 'tab');
@@ -711,9 +906,32 @@ export class CampaignView extends ItemView {
     }
 
     private openPlayersMenu(event: MouseEvent): void {
+        const { controls } = this.plugin.playerScreen.getState();
         const menu = new Menu();
         menu.addItem(item => item.setTitle('Open player screen').setIcon('monitor').onClick(() => {
             void this.plugin.openPlayerScreen();
+        }));
+        menu.addSeparator();
+        const modes: Array<[PlayerScreenMode, string, string]> = [
+            ['board', 'Show the board', 'map'],
+            ['scene', 'Show the scene only', 'image'],
+            ['blank', 'Blank the screen', 'eye-off'],
+        ];
+        for (const [mode, title, icon] of modes) {
+            menu.addItem(item => item.setTitle(title).setIcon(icon).setChecked(controls.mode === mode).onClick(() => {
+                this.setPlayerControls({ mode });
+            }));
+        }
+        menu.addSeparator();
+        menu.addItem(item => item
+            .setTitle(controls.voteOpen ? 'Close the vote' : 'Open a vote on the choices')
+            .setIcon('vote')
+            .onClick(() => {
+                this.setPlayerControls({ voteOpen: !controls.voteOpen });
+                void this.autosave(controls.voteOpen ? 'Vote closed.' : 'Vote opened on the choices.');
+            }));
+        menu.addItem(item => item.setTitle('Show rolls to players').setIcon('dices').setChecked(controls.showRolls).onClick(() => {
+            this.setPlayerControls({ showRolls: !controls.showRolls });
         }));
         const first = this.readSections.find(section => READ_ALOUD_HEADING.test(section.heading)) ?? this.readSections[0];
         if (first) {
@@ -722,10 +940,11 @@ export class CampaignView extends ItemView {
             }));
         }
         menu.addSeparator();
-        menu.addItem(item => item.setTitle('Clear player screen').setIcon('eraser').onClick(() => {
+        menu.addItem(item => item.setTitle('Clear pushed text').setIcon('eraser').onClick(() => {
             this.plugin.playerScreen.clear();
-            new Notice('Player screen cleared');
-            void this.render();
+            new Notice('Pushed text cleared');
+            this.refreshPlayersButton();
+            void this.refreshSidebarPart('read');
         }));
         menu.showAtMouseEvent(event);
     }
@@ -1029,6 +1248,7 @@ export class CampaignView extends ItemView {
         const locations = await this.collectBoardLocations(boardMap);
         if (token !== this.boardRenderToken) return true;
         this.boardLocations = locations;
+        this.boardInfo = { map: boardMap, imageUrl };
 
         const canvas = boardEl.createDiv('storyteller-campaign-board-canvas');
         const mountedLeaflet = await this.renderLeafletCampaignBoard(canvas, boardMap, imageUrl, locations, token);
@@ -1075,7 +1295,7 @@ export class CampaignView extends ItemView {
      */
     private drawBoardPlay(map: L.Map): void {
         const here = this.currentBoardLocation();
-        const panelEl = this.containerEl.querySelector<HTMLElement>('.storyteller-campaign-scene-panel');
+        const panelEl = map.getContainer().closest<HTMLElement>('.storyteller-campaign-scene-panel');
         if (here) {
             const [y, x] = here.binding.coordinates;
             // Own pane (styled as .leaflet-storyteller-choice-paths-pane), so the paths sit above the
@@ -1204,7 +1424,7 @@ export class CampaignView extends ItemView {
         this.boardRenderer?.setPinHighlight(this.getBoardPinHighlight(key));
 
         this.boardInspectorOpen = true;
-        const boardEl = this.containerEl.querySelector<HTMLElement>('.storyteller-campaign-board-canvas');
+        const boardEl = this.currentRoot()?.querySelector<HTMLElement>('.storyteller-campaign-board-canvas') ?? null;
         const entry = this.boardLocations.find(candidate => this.getLocationKey(candidate.location) === key);
         if (!boardEl || !entry) return;
 
@@ -1279,9 +1499,7 @@ export class CampaignView extends ItemView {
         const partyInitials = this.partyTokenInitials();
 
         for (const entry of locations) {
-            const [top, left] = entry.binding.coordinates;
-            const topPercent = this.clampBoardPercent((top / Math.max(dimensions.height, 1)) * 100);
-            const leftPercent = this.clampBoardPercent((left / Math.max(dimensions.width, 1)) * 100);
+            const { x: leftPercent, y: topPercent } = boardPinPercent(entry.binding.coordinates, dimensions.width, dimensions.height);
             const locationKey = this.getLocationKey(entry.location);
             const button = stage.createEl('button', {
                 cls:
@@ -1347,6 +1565,21 @@ export class CampaignView extends ItemView {
                 if (entry.location.filePath) {
                     void this.plugin.app.workspace.openLinkText(entry.location.filePath, '', 'tab');
                 }
+            });
+        }
+        if (this.session && !this.isCurrentSceneLocation(entry.location)) {
+            const seen = this.seenPlaceKeys(this.session).has(this.getLocationKey(entry.location));
+            const revealBtn = actions.createEl('button', {
+                cls: 'clickable-icon' + (seen ? ' is-active' : ''),
+                attr: { type: 'button', 'aria-label': seen ? 'Hide from players' : 'Reveal to players' },
+            });
+            setIcon(revealBtn, seen ? 'eye' : 'eye-off');
+            revealBtn.addEventListener('click', () => {
+                this.toggleRevealedPlace(entry.location);
+                const nowSeen = this.seenPlaceKeys(this.session!).has(this.getLocationKey(entry.location));
+                setIcon(revealBtn, nowSeen ? 'eye' : 'eye-off');
+                revealBtn.setAttribute('aria-label', nowSeen ? 'Hide from players' : 'Reveal to players');
+                revealBtn.toggleClass('is-active', nowSeen);
             });
         }
         const closeBtn = actions.createEl('button', {
@@ -1443,7 +1676,7 @@ export class CampaignView extends ItemView {
     }
 
     private focusBoardLocationInspector(locationKey: string, inspector?: HTMLElement | null): void {
-        const target = inspector ?? this.containerEl.querySelector<HTMLElement>(
+        const target = inspector ?? this.currentRoot()?.querySelector<HTMLElement>(
             `.storyteller-campaign-board-inspector[data-location-key="${CSS.escape(locationKey)}"]`
         );
         if (!target) return;
@@ -1453,10 +1686,6 @@ export class CampaignView extends ItemView {
             target.addClass('is-highlighted');
             window.setTimeout(() => target.removeClass('is-highlighted'), 900);
         });
-    }
-
-    private clampBoardPercent(value: number): number {
-        return Math.max(2, Math.min(98, value));
     }
 
     private ensureBoardLocationSelection(locations: CampaignBoardLocation[]): string | null {
@@ -1885,6 +2114,7 @@ export class CampaignView extends ItemView {
                 const locStr = locBonus !== 0 ? ` ${locBonus > 0 ? '+' : ''}${locBonus} loc` : '';
                 const logLine = `Rolled ${branch.dice}${stat}${statStr}${locStr} = **${total}**${thr} -> ${outcome === 'success' ? '[success]' : '[fail]'} *${branch.label}*`;
                 void this.autosave(logLine);
+                this.showRollToPlayers(branch.label, total, outcome === 'success' ? 'Success' : 'Fail');
             }, 600);
         });
 
@@ -2247,6 +2477,7 @@ export class CampaignView extends ItemView {
             tags,
         });
         this.lastEncounter = { sceneName: this.currentScene?.name ?? '', total, row };
+        this.showRollToPlayers(`Encounter (${table.dice})`, total, row.label);
         const timeLine = this.passCampaignTime(row.advances);
         return { total, row, logLines: [line, ...effectLines, ...(timeLine ? [timeLine] : [])] };
     }
@@ -2562,13 +2793,21 @@ export class CampaignView extends ItemView {
         this.refreshPlayersButton();
     }
 
-    /** Updates the count on the Players button without redrawing the board. */
+    /** Updates the Players button without redrawing the board. */
     private refreshPlayersButton(): void {
-        const button = this.containerEl.querySelector<HTMLElement>('.storyteller-campaign-players-btn');
-        if (!button) return;
+        const button = this.currentRoot()?.querySelector<HTMLElement>('.storyteller-campaign-players-btn');
+        if (button) this.decoratePlayersButton(button);
+    }
+
+    /** The Players button shows what the player screen is doing: a vote, a blank screen, pushed text. */
+    private decoratePlayersButton(button: HTMLElement): void {
         const state = this.plugin.playerScreen.getState();
+        button.querySelectorAll('.storyteller-campaign-players-count, .storyteller-campaign-players-flag').forEach(el => el.remove());
+        if (state.controls.voteOpen) button.createSpan({ cls: 'storyteller-campaign-players-flag is-vote', text: 'Vote' });
+        if (state.controls.mode !== 'board') {
+            button.createSpan({ cls: 'storyteller-campaign-players-flag', text: state.controls.mode === 'blank' ? 'Blank' : 'Scene' });
+        }
         const showing = state.pinned.length + state.popups.length;
-        button.querySelector('.storyteller-campaign-players-count')?.remove();
         if (showing > 0) button.createSpan({ cls: 'storyteller-campaign-players-count', text: String(showing) });
     }
 
@@ -3626,6 +3865,19 @@ export class CampaignView extends ItemView {
             });
         }
 
+        const share = row.createEl('button', {
+            cls: 'storyteller-campaign-progress-remove storyteller-campaign-clock-share' + (clock.shown ? ' is-shown' : ''),
+            attr: { 'aria-label': clock.shown ? `Hide ${clock.name} from players` : `Show ${clock.name} to players` },
+        });
+        setIcon(share, clock.shown ? 'eye' : 'eye-off');
+        share.addEventListener('click', () => {
+            clock.shown = !clock.shown || undefined;
+            void this.autosave().then(async () => {
+                await this.refreshSidebarPart('progress');
+                this.publishPlayerView();
+            });
+        });
+
         const remove = row.createEl('button', {
             cls: 'storyteller-campaign-progress-remove',
             attr: { 'aria-label': `Remove ${kind} ${clock.name}` },
@@ -3971,6 +4223,7 @@ export class CampaignView extends ItemView {
         if (!(fresh instanceof HTMLElement)) return;
         old.replaceWith(fresh);
         this.sidebarPartEls.set(part, fresh);
+        if (part === 'party' || part === 'progress') this.publishPlayerView();
     }
 
     private async refreshSidebarParts(parts: readonly SidebarPart[]): Promise<void> {

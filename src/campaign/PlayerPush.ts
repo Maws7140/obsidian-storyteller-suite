@@ -41,11 +41,84 @@ export interface NoteSection {
 
 type Listener = (state: PlayerScreenState) => void;
 
+/** What the player screen shows behind any pushed text. */
+export type PlayerScreenMode = 'board' | 'scene' | 'blank';
+
+/** The DM's switches for the player screen. They live on the bus, so they outlast a redraw of the DM view. */
+export interface PlayerScreenControls {
+    mode: PlayerScreenMode;
+    /** The players see the open choices, numbered on the board and in a list. */
+    voteOpen: boolean;
+    /** Encounter rolls and choice rolls appear on the player screen. */
+    showRolls: boolean;
+}
+
+/** A place on the board, positioned in percent of the map image so any screen size can draw it. */
+export interface PlayerBoardPlace {
+    key: string;
+    name: string;
+    /** Percent from the left and from the top of the map image. */
+    x: number;
+    y: number;
+    /** Where the party is now. */
+    current: boolean;
+}
+
+/** A choice as the players see it while a vote is open. */
+export interface PlayerChoice {
+    number: number;
+    label: string;
+    /** The place it leads to, when the players have seen that place. */
+    toKey?: string;
+    /** Leads somewhere on the board the players have not seen: drawn as a path into the fog. */
+    intoFog?: { x: number; y: number };
+}
+
+export interface PlayerPartyMember {
+    name: string;
+    hp?: number;
+    maxHp?: number;
+    conditions: string[];
+}
+
+export interface PlayerClock {
+    name: string;
+    filled: number;
+    segments: number;
+}
+
+/**
+ * Everything the player screen draws besides pushed text, already cut down to what players may
+ * see: only revealed places, only choices the DM opened to a vote, only public clocks.
+ */
+export interface PlayerView {
+    sessionName: string;
+    sceneName?: string;
+    date?: string;
+    board?: {
+        name: string;
+        imageUrl: string;
+        width: number;
+        height: number;
+        /** Revealed places only; the rest of the map is fog. */
+        places: PlayerBoardPlace[];
+    };
+    party: PlayerPartyMember[];
+    clocks: PlayerClock[];
+    /** Present while the DM has a vote open. */
+    choices?: PlayerChoice[];
+    /** The latest roll the DM chose to show. */
+    roll?: { title: string; total: number; result: string; at: number };
+}
+
 export interface PlayerScreenState {
     /** Popups not yet closed, oldest first. */
     popups: PlayerPush[];
     /** Pinned pushes, oldest first. */
     pinned: PlayerPush[];
+    controls: PlayerScreenControls;
+    /** The latest snapshot from the DM view, or null when no session is being played. */
+    view: PlayerView | null;
 }
 
 /**
@@ -89,7 +162,12 @@ export function splitNoteSections(content: string): NoteSection[] {
 
 /** What the player screen is showing, and who is listening for changes. */
 export class PlayerScreenBus {
-    private state: PlayerScreenState = { popups: [], pinned: [] };
+    private state: PlayerScreenState = {
+        popups: [],
+        pinned: [],
+        controls: { mode: 'board', voteOpen: false, showRolls: true },
+        view: null,
+    };
     private listeners = new Set<Listener>();
 
     push(push: Omit<PlayerPush, 'id' | 'at'>): PlayerPush {
@@ -98,8 +176,8 @@ export class PlayerScreenBus {
             id: `push-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
             at: Date.now(),
         };
-        if (full.mode === 'pinned') this.state.pinned = [...this.state.pinned, full];
-        else this.state.popups = [...this.state.popups, full];
+        if (full.mode === 'pinned') this.state = { ...this.state, pinned: [...this.state.pinned, full] };
+        else this.state = { ...this.state, popups: [...this.state.popups, full] };
         this.emit();
         return full;
     }
@@ -107,14 +185,28 @@ export class PlayerScreenBus {
     /** Closes a popup or unpins a pinned push. */
     dismiss(id: string): void {
         this.state = {
+            ...this.state,
             popups: this.state.popups.filter(p => p.id !== id),
             pinned: this.state.pinned.filter(p => p.id !== id),
         };
         this.emit();
     }
 
+    /** Takes all pushed text off the player screen. The board and party stay. */
     clear(): void {
-        this.state = { popups: [], pinned: [] };
+        this.state = { ...this.state, popups: [], pinned: [] };
+        this.emit();
+    }
+
+    setControls(controls: Partial<PlayerScreenControls>): void {
+        this.state = { ...this.state, controls: { ...this.state.controls, ...controls } };
+        this.emit();
+    }
+
+    /** Replaces the game snapshot. Skips the redraw when nothing in it changed. */
+    setView(view: PlayerView | null): void {
+        if (JSON.stringify(view) === JSON.stringify(this.state.view)) return;
+        this.state = { ...this.state, view };
         this.emit();
     }
 
