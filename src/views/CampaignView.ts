@@ -2127,7 +2127,7 @@ export class CampaignView extends ItemView {
         // A new scene starts on its first "read" header (Read-aloud, Read aloud), else the first header.
         const key = this.readSceneKey(scene);
         if (!this.readSelection.has(key)) {
-            const firstRead = sections.findIndex(section => /read/i.test(section.heading));
+            const firstRead = sections.findIndex(section => /\bread/i.test(section.heading));
             this.readSelection.set(key, firstRead >= 0 ? firstRead : 0);
         }
         const stored = this.readSelection.get(key) ?? null;
