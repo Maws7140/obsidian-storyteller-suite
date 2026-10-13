@@ -9677,6 +9677,16 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-sidebar { width: clamp(280px, 24vw, 340px); min-height: 0; border-left: 1px solid var(--background-modifier-border); overflow-y: auto; display: flex; flex-direction: column; flex-shrink: 0; background: color-mix(in srgb, var(--background-secondary) 58%, transparent); }
 .storyteller-campaign-sidebar-section { padding: 0.9rem; border-bottom: 1px solid var(--background-modifier-border); background: color-mix(in srgb, var(--background-primary) 82%, transparent); }
 .storyteller-campaign-sidebar-section h4 { margin: 0 0 0.5rem; font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; }
+.storyteller-campaign-read-toggle { margin-left: auto; display: inline-flex; padding: 0.1rem; background: none; box-shadow: none; color: var(--text-muted); cursor: pointer; }
+.storyteller-campaign-read-toggle:hover { color: var(--text-normal); }
+.storyteller-campaign-read-list { display: flex; flex-direction: column; gap: 0.1rem; }
+.storyteller-campaign-read-heading { display: flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.3rem; border-radius: 4px; }
+.storyteller-campaign-read-heading:hover { background: var(--background-modifier-hover); }
+.storyteller-campaign-read-heading.is-selected .storyteller-campaign-read-title { color: var(--interactive-accent); font-weight: 700; }
+.storyteller-campaign-read-title { flex: 1; min-width: 0; padding: 0; background: none; box-shadow: none; border: none; color: var(--text-normal); font-size: 0.84rem; text-align: left; word-break: break-word; cursor: pointer; }
+.storyteller-campaign-read-push { flex-shrink: 0; display: inline-flex; padding: 0.15rem; background: none; box-shadow: none; color: var(--text-muted); cursor: pointer; }
+.storyteller-campaign-read-push:hover { color: var(--interactive-accent); }
+.storyteller-campaign-read-detail { margin-top: 0.4rem; padding-top: 0.4rem; border-top: 1px solid var(--background-modifier-border); font-size: 0.86rem; }
 .storyteller-campaign-empty { color: var(--text-muted); font-style: italic; font-size: 0.875rem; }
 .storyteller-campaign-note-link { cursor: pointer; color: var(--link-color); font-size: 0.875rem; }
 .storyteller-campaign-cta { margin-bottom: 1rem; }

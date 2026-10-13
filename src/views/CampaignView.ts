@@ -85,6 +85,8 @@ import {
     renderCampaignSetupFields,
 } from '../campaign/CampaignSetup';
 import { outcomeChips } from '../utils/SceneOutcomeSummary';
+import { splitNoteSections } from '../campaign/PlayerPush';
+import type { NoteSection, PlayerPushMode } from '../campaign/PlayerPush';
 import {
     addCampaignAdvancement,
     addCampaignClock,
@@ -149,7 +151,7 @@ import {
 export const VIEW_TYPE_CAMPAIGN = 'storyteller-campaign-view';
 
 /** Sidebar sections that can be re-rendered on their own after a Partylog entry. */
-type SidebarPart = 'party' | 'progress' | 'standings' | 'log';
+type SidebarPart = 'read' | 'party' | 'progress' | 'standings' | 'log';
 type QuickMode = 'action' | 'assist' | 'group' | 'world' | 'roll' | 'consequence' | 'note';
 type QuickNoteKind = 'note' | 'rule' | 'ooc' | 'safety';
 
@@ -314,6 +316,10 @@ export class CampaignView extends ItemView {
     private readonly autosaveDebounceMs = 450;
     /** Live section elements, so one part can be re-rendered in place. */
     private sidebarPartEls = new Map<SidebarPart, HTMLElement>();
+    /** Per scene: index of the selected header in the Read panel, or null when collapsed on it. */
+    private readSelection = new Map<string, number | null>();
+    /** Whether the Read panel body is hidden. */
+    private readCollapsed = false;
     private quick: QuickEntryState = createQuickEntryState();
     /** The main quick entry input currently shown, so a submit can clear and restore its text. */
     private quickInputEl: HTMLInputElement | null = null;
@@ -620,6 +626,7 @@ export class CampaignView extends ItemView {
         await this.renderScenePanel(scenePanel);
 
         const sidebar = main.createDiv('storyteller-campaign-sidebar');
+        await this.renderReadSidebar(sidebar, session);
         this.renderPartySidebar(sidebar, session);
         await this.renderInventorySidebar(sidebar, session);
         this.renderProgressSidebar(sidebar, session);
@@ -2069,6 +2076,129 @@ export class CampaignView extends ItemView {
 
     // â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+    // ── Read panel ───────────────────────────────────────────────────────
+
+    private readSceneKey(scene: Scene): string {
+        return scene.filePath ?? scene.name;
+    }
+
+    /** The scene note's sections, minus the ones with no text under them. */
+    private async loadReadSections(scene: Scene | null): Promise<NoteSection[]> {
+        if (!scene?.filePath) return [];
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(scene.filePath));
+        if (!(file instanceof TFile)) return [];
+        try {
+            const content = await this.app.vault.cachedRead(file);
+            return splitNoteSections(content).filter(section => section.markdown.trim().length > 0);
+        } catch {
+            return [];
+        }
+    }
+
+    private async renderReadSidebar(sidebar: HTMLElement, session: CampaignSession): Promise<void> {
+        const sec = sidebar.createDiv('storyteller-campaign-sidebar-section');
+        sec.setAttribute('data-sts-part', 'read-panel');
+        this.sidebarPartEls.set('read', sec);
+        const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
+        setIcon(hdr.createSpan(), 'book-open');
+        hdr.createSpan({ text: ' Read' });
+        const toggle = hdr.createEl('button', {
+            cls: 'storyteller-campaign-read-toggle',
+            attr: {
+                'aria-label': this.readCollapsed ? 'Show read sections' : 'Hide read sections',
+                'aria-expanded': String(!this.readCollapsed),
+            },
+        });
+        setIcon(toggle, this.readCollapsed ? 'chevron-right' : 'chevron-down');
+        toggle.addEventListener('click', () => {
+            this.readCollapsed = !this.readCollapsed;
+            void this.refreshSidebarPart('read');
+        });
+        if (this.readCollapsed) return;
+
+        const body = sec.createDiv('storyteller-campaign-sidebar-body');
+        const scene = this.currentScene;
+        const sections = await this.loadReadSections(scene);
+        if (!scene || sections.length === 0) {
+            body.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'No headers in this scene note.' });
+            return;
+        }
+
+        // A new scene starts on its first "read" header (Read-aloud, Read aloud), else the first header.
+        const key = this.readSceneKey(scene);
+        if (!this.readSelection.has(key)) {
+            const firstRead = sections.findIndex(section => /read/i.test(section.heading));
+            this.readSelection.set(key, firstRead >= 0 ? firstRead : 0);
+        }
+        const stored = this.readSelection.get(key) ?? null;
+        const selected = stored !== null && stored < sections.length ? stored : null;
+
+        const list = body.createDiv('storyteller-campaign-read-list');
+        sections.forEach((section, i) => {
+            const row = list.createDiv('storyteller-campaign-read-heading');
+            row.setAttribute('data-sts-part', 'read-heading');
+            row.setCssStyles({ paddingLeft: `${Math.max(0, section.level - 1) * 0.75}rem` });
+            if (i === selected) row.addClass('is-selected');
+
+            const title = row.createEl('button', {
+                cls: 'storyteller-campaign-read-title',
+                text: section.heading,
+                attr: { 'aria-expanded': String(i === selected) },
+            });
+            title.addEventListener('click', () => {
+                this.readSelection.set(key, i === selected ? null : i);
+                void this.refreshSidebarPart('read');
+            });
+
+            const push = row.createEl('button', {
+                cls: 'storyteller-campaign-read-push',
+                attr: { 'aria-label': 'Push to players' },
+            });
+            setIcon(push, 'send');
+            push.addEventListener('click', event => {
+                this.openReadPushMenu(event, section, session);
+            });
+        });
+
+        if (selected !== null) {
+            const detail = body.createDiv('storyteller-campaign-read-detail');
+            void MarkdownRenderer.render(this.app, sections[selected].markdown, detail, scene.filePath ?? '', this);
+        }
+    }
+
+    private openReadPushMenu(event: MouseEvent, section: NoteSection, session: CampaignSession): void {
+        const menu = new Menu();
+        menu.addItem(item => item
+            .setTitle('Show as popup')
+            .setIcon('message-square')
+            .onClick(() => { this.pushReadSection(section, 'popup'); }));
+        menu.addItem(item => item
+            .setTitle('Pin for players')
+            .setIcon('pin')
+            .onClick(() => { this.pushReadSection(section, 'pinned'); }));
+        for (const name of session.partyCharacterNames ?? []) {
+            menu.addItem(item => item
+                .setTitle(`Send to ${name}`)
+                .setIcon('user')
+                .onClick(() => { this.pushReadSection(section, 'popup', name); }));
+        }
+        menu.showAtMouseEvent(event);
+    }
+
+    private pushReadSection(section: NoteSection, mode: PlayerPushMode, target?: string): void {
+        const scene = this.currentScene;
+        if (!scene) return;
+        this.plugin.playerScreen.push({
+            sourceName: scene.name,
+            heading: section.heading,
+            markdown: section.markdown,
+            mode,
+            ...(target ? { target } : {}),
+        });
+        new Notice(target ? `Pushed to ${target}` : 'Pushed to players');
+        void this.autosave(`Shown to players: ${section.heading}`);
+    }
+
     private renderPartySidebar(sidebar: HTMLElement, session: CampaignSession): void {
         const sec = sidebar.createDiv('storyteller-campaign-sidebar-section');
         this.sidebarPartEls.set('party', sec);
@@ -3473,6 +3603,9 @@ export class CampaignView extends ItemView {
         }
         const holder = activeDocument.createElement('div');
         switch (part) {
+            case 'read':
+                await this.renderReadSidebar(holder, session);
+                break;
             case 'party':
                 this.renderPartySidebar(holder, session);
                 break;
