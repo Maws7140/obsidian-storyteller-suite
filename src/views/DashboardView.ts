@@ -43,6 +43,9 @@ import { renderWritingChapterSceneList } from './dashboard/rendering/WritingList
 /** Unique identifier for the dashboard view type in Obsidian's workspace */
 export const VIEW_TYPE_DASHBOARD = "storyteller-dashboard-view";
 
+/** How long a tab may take to draw before it stops blocking the next tab switch. */
+const TAB_RENDER_TIME_LIMIT_MS = 8000;
+
 /**
  * Main dashboard view class providing a tabbed interface for story management
  * This view integrates all storytelling entities (characters, locations, events, gallery)
@@ -120,6 +123,12 @@ export class DashboardView extends ItemView {
     private hasRegisteredViewListeners = false;
     /** Shared dashboard refresh scheduler */
     private refreshCoordinator: DashboardRefreshCoordinator;
+    /** Tab renders run one after another through this chain (see enqueueTabRender). */
+    private tabRenderQueue: Promise<void> = Promise.resolve();
+    /** Bumped on every tab switch, so a queued render for an older switch is skipped. */
+    private renderSeq = 0;
+    /** Ends the wait on the tab render in progress; set while one runs. */
+    private supersedeRender: (() => void) | null = null;
     /** Shared dashboard mutation helper */
     private mutationRunner: DashboardMutationRunner;
     /** Migrated dashboard tab controllers */
@@ -392,23 +401,18 @@ export class DashboardView extends ItemView {
         if (activeTab) {
             try {
                 this.isRefreshingActiveTab = true;
-                this._suppressScrollCapture = true;
-                await activeTab.renderFn(this.tabContentContainer);
-                await this.restoreTabScroll(currentTabId);
-                
-                restoreDashboardStateSnapshot(
-                    snapshot,
-                    () => this.currentSearchInput,
-                    (value) => {
-                        this.currentFilter = value;
-                    },
-                    () => !this.isSimplifiedMobileDashboard()
-                );
-            } catch {
-            	// intentional
-                
+                await this.enqueueTabRender(activeTab, this.renderSeq, async () => {
+                    await this.restoreTabScroll(currentTabId);
+                    restoreDashboardStateSnapshot(
+                        snapshot,
+                        () => this.currentSearchInput,
+                        (value) => {
+                            this.currentFilter = value;
+                        },
+                        () => !this.isSimplifiedMobileDashboard()
+                    );
+                });
             } finally {
-                this._suppressScrollCapture = false;
                 this.isRefreshingActiveTab = false;
                 if (this.pendingActiveTabRefresh) {
                     this.pendingActiveTabRefresh = false;
@@ -416,6 +420,72 @@ export class DashboardView extends ItemView {
                 }
             }
         }
+    }
+
+    /**
+     * Draws tabs one at a time. A tab render empties the shared content area and fills it after
+     * loading, so two renders running together would mix their content. Each render waits for the
+     * one before it, and is skipped when a newer tab switch has been asked for since (`seq`).
+     * A render that fails shows its error in the content area; one that runs past the time limit
+     * stops holding up the queue, so the next click still works.
+     */
+    private enqueueTabRender(
+        tab: { id: string; renderFn: (container: HTMLElement) => Promise<void> },
+        seq: number,
+        after?: () => Promise<void>,
+    ): Promise<void> {
+        const run = async () => {
+            if (seq !== this.renderSeq || tab.id !== this.activeTabId) return;
+            const container = this.tabContentContainer;
+            container.addClass('is-loading');
+            this._suppressScrollCapture = true;
+            let timer: number | null = null;
+            try {
+                const render = tab.renderFn(container);
+                const timedOut = new Promise<'timeout'>(resolve => {
+                    timer = window.setTimeout(() => resolve('timeout'), TAB_RENDER_TIME_LIMIT_MS);
+                });
+                // A newer tab switch stops the wait at once, so a slow tab never holds up the next click.
+                const superseded = new Promise<'superseded'>(resolve => { this.supersedeRender = () => resolve('superseded'); });
+                const outcome = await Promise.race([render.then(() => 'done' as const), timedOut, superseded]);
+                this.supersedeRender = null;
+                if (outcome !== 'done') {
+                    if (outcome === 'timeout') {
+                        console.warn(`Storyteller Suite: the ${tab.id} tab is taking longer than ${TAB_RENDER_TIME_LIMIT_MS / 1000}s to draw.`);
+                    }
+                    // If the slow render finishes later it has drawn into the shared content area,
+                    // so draw whatever tab is showing by then again.
+                    render.then(
+                        () => { if (tab.id !== this.activeTabId) this.refreshCoordinator.requestImmediateRefresh({ source: 'manual', detail: 'late-tab-render' }); },
+                        error => this.showTabRenderError(tab.id, error),
+                    );
+                    return;
+                }
+                if (after) await after();
+            } catch (error) {
+                this.showTabRenderError(tab.id, error);
+            } finally {
+                if (timer !== null) window.clearTimeout(timer);
+                this._suppressScrollCapture = false;
+                container.removeClass('is-loading');
+            }
+        };
+        const next = this.tabRenderQueue.then(run, run);
+        this.tabRenderQueue = next.catch(() => undefined);
+        return next;
+    }
+
+    /** Shows why a tab could not draw, in place of its content, with a way to try again. */
+    private showTabRenderError(tabId: string, error: unknown): void {
+        console.error(`Storyteller Suite: the ${tabId} tab failed to draw`, error);
+        if (tabId !== this.activeTabId || !this.tabContentContainer) return;
+        const container = this.tabContentContainer;
+        container.empty();
+        const box = container.createDiv('storyteller-dashboard-tab-error');
+        box.createEl('strong', { text: 'This tab could not load.' });
+        box.createEl('p', { text: error instanceof Error ? error.message : String(error) });
+        const retry = box.createEl('button', { text: 'Try again' });
+        retry.addEventListener('click', () => { void this.setActiveTab(tabId); });
     }
 
     requestActiveTabRefresh(detail: string = 'manual-refresh'): void {
@@ -966,22 +1036,16 @@ export class DashboardView extends ItemView {
         if (this.tabContentContainer) {
             this.captureTabScrollState(previousTabId);
         }
-        // Update state
+        // Update state, and show the tab as chosen straight away, before its content loads.
         this.activeTabId = tabId;
         this.currentFilter = '';
         this.currentSearchInput = null;
         // Mark tab context for CSS entity card accent colors
         this.tabContentContainer.setAttr('data-tab', tabId);
-        // Render content and restore scroll without capturing intermediate resets
-        this._suppressScrollCapture = true;
-        try {
-            await tab.renderFn(this.tabContentContainer);
-            await this.restoreTabScroll(tabId);
-        } finally {
-            this._suppressScrollCapture = false;
-        }
-        // Update styles
         this.syncActiveTabStyles();
+        const seq = ++this.renderSeq;
+        this.supersedeRender?.();
+        await this.enqueueTabRender(tab, seq, () => this.restoreTabScroll(tabId));
     }
 
     private syncActiveTabStyles() {

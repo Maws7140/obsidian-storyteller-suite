@@ -15440,3 +15440,8 @@ img.storyteller-timeline-calendar-icon {
     .storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-map { position: relative; inset: auto; height: clamp(320px, 55vh, 700px); }
     .storyteller-campaign-scene-panel.has-board > .storyteller-campaign-play-row { max-height: none; overflow: visible; }
 }
+
+/* Dashboard: a tab drawing, and a tab that failed to draw */
+.storyteller-dashboard-content.is-loading:empty::before { content: "Loading…"; display: block; padding: 1.5rem; color: var(--text-muted); font-style: italic; }
+.storyteller-dashboard-tab-error { margin: 1rem; padding: 0.9rem 1rem; border: 1px solid var(--color-red); border-radius: 8px; background: color-mix(in srgb, var(--color-red) 8%, transparent); }
+.storyteller-dashboard-tab-error p { margin: 0.4rem 0 0.7rem; color: var(--text-muted); font-family: var(--font-monospace); font-size: 0.85rem; white-space: pre-wrap; }

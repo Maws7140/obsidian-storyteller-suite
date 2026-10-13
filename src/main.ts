@@ -4277,8 +4277,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 	): Promise<T | null> {
 		try {
 			// External file moves/deletes can leave stale TFile handles briefly; skip safely.
-			const fileStillExists = await this.app.vault.adapter.exists(normalizePath(file.path));
-			if (!fileStillExists) {
+			// The vault's own index is checked rather than the disk: a disk check per note made
+			// every list (and every dashboard redraw) wait on one file-system call per entity.
+			if (!(this.app.vault.getAbstractFileByPath(normalizePath(file.path)) instanceof TFile)) {
 				return null;
 			}
 
@@ -9597,14 +9598,18 @@ export default class StorytellerSuitePlugin extends Plugin {
 			];
 			const existing = this.app.vault.getAbstractFileByPath(filePath);
 			if (existing instanceof TFile) {
-				const split = splitNoteContent(await this.app.vault.cachedRead(existing));
+				const current = await this.app.vault.cachedRead(existing);
+				const split = splitNoteContent(current);
 				if (!split) {
 					// The frontmatter cannot be read. Overwriting it would destroy the user's text.
 					new Notice(t('failedToSave', t('group')));
 					return;
 				}
 				const merged = mergeOwnedFrontmatter(split.frontmatter, fm, [...GROUP_OWNED_FRONTMATTER_KEYS, ...typedKeys]);
-				await this.app.vault.modify(existing, composeNote(merged, replaceOwnedSections(split.body, sectionValues)));
+				const next = composeNote(merged, replaceOwnedSections(split.body, sectionValues));
+				// Startup writes every group back to its note; an unchanged note is left alone so it
+				// does not fire vault events (dashboard and group refreshes) or show up in sync.
+				if (next !== current) await this.app.vault.modify(existing, next);
 			} else {
 				await this.app.vault.create(filePath, composeNote(fm, replaceOwnedSections('', sectionValues)));
 			}
@@ -9800,8 +9805,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 				const idx = this.settings.groups.findIndex(g => g.id === id);
 				if (idx !== -1) {
+					// Only a group whose note says something different counts as a change, so an
+					// unchanged note does not save settings or refresh every view that lists groups.
+					const before = JSON.stringify(this.settings.groups[idx]);
 					Object.assign(this.settings.groups[idx], fromFile);
-					changed = true;
+					if (JSON.stringify(this.settings.groups[idx]) !== before) changed = true;
 				} else {
 					this.settings.groups.push(fromFile);
 					changed = true;
