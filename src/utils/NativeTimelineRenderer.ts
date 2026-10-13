@@ -13,6 +13,10 @@ import { sidebarWidthFor } from './TimelineSidebarWidth';
 import { daysInYear, fromAbsolute, monthsInYear, normalYearLength, toAbsolute } from '../calendar/CalendarEngine';
 import type { CalendarSystem } from '../calendar/types';
 import { chooseSnapResolution, generateTicks, snapDay, snapSlots, stepDay } from '../calendar/TimelineAxis';
+import { holidayOccurrencesInYear, monthOfDay, monthStartDay, shiftMonth } from './TimelineCalendarGrid';
+import type { CalendarMonthRef } from './TimelineCalendarGrid';
+import { TimelineCalendarPanel } from './TimelineCalendarPanel';
+import type { TimelineCalendarHost } from './TimelineCalendarPanel';
 import type { AxisTick, AxisView, SnapResolution } from '../calendar/TimelineAxis';
 import { isEventInFork, isEventLinkedToFork, isEventOnMain, orderForksByParent } from './ForkVisibility';
 import { chooseConnectorEnds } from './ConnectorGeometry';
@@ -43,6 +47,8 @@ import type { TimelineIconMode } from './TimelineIconLayout';
 export interface TimelineRendererOptions {
     ganttMode?: boolean;
     timelineLayout?: 'chronology' | 'timeline';
+    /** Show the month grid instead of the canvas. Gantt and the timeline layouts are off while it is on. */
+    calendarMode?: boolean;
     timelineOrientation?: 'horizontal' | 'vertical';
     groupMode?: TimelineGroupMode;
     showDependencies?: boolean;
@@ -107,7 +113,7 @@ export interface TimelineFilters {
  */
 type TimelineEvent = Event & { _sceneLocations?: string[] };
 
-interface NativeItem {
+export interface NativeItem {
     id: string;
     event: Event;
     eventIndex: number;
@@ -308,6 +314,11 @@ export class NativeTimelineRenderer {
     private readonly plugin: StorytellerSuitePlugin;
     private readonly container: HTMLElement;
     private readonly calendarRegistry: CalendarRegistry;
+    /** The month grid, drawn in the DOM beside the canvas. Created on mount. */
+    private calendarPanel: TimelineCalendarPanel | null = null;
+    private readonly calendarHost: TimelineCalendarHost;
+    /** The events the last rebuild laid out, before lanes split them by group. */
+    private sourceEvents: Event[] = [];
     private options: Required<Omit<TimelineRendererOptions, 'onConflictsDetected' | 'onEventSelected' | 'onViewChange'>> & Pick<TimelineRendererOptions, 'onConflictsDetected' | 'onEventSelected' | 'onViewChange'>;
     private filters: TimelineFilters = {};
     private events: Event[] = [];
@@ -399,6 +410,7 @@ export class NativeTimelineRenderer {
         this.options = {
             ganttMode: false,
             timelineLayout: 'chronology',
+            calendarMode: false,
             timelineOrientation: 'horizontal',
             groupMode: 'none',
             showDependencies: true,
@@ -416,6 +428,7 @@ export class NativeTimelineRenderer {
             iconMode: options.iconMode ?? defaultTimelineIconMode(plugin.settings.timelineShowIcons),
             minimal: options.minimal === true
         };
+        this.calendarHost = this.createCalendarHost();
     }
 
     async initialize(): Promise<void> {
@@ -451,6 +464,16 @@ export class NativeTimelineRenderer {
     applyFilters(filters: Partial<TimelineFilters>): void { this.filters = { ...this.filters, ...filters }; this.rebuild(false); }
     setGanttMode(value: boolean): void { this.options.ganttMode = value; this.rebuild(false); }
     setTimelineLayout(value: 'chronology' | 'timeline'): void { this.options.timelineLayout = value; this.rebuild(false); }
+    /**
+     * The month grid replaces the canvas. The canvas is hidden rather than torn
+     * down, so switching back keeps the same mount and view window.
+     */
+    setCalendarMode(value: boolean): void {
+        this.options.calendarMode = value;
+        this.hideTooltip();
+        this.setCalendarVisibility(value);
+        if (value) this.scheduleDraw(); else this.redraw();
+    }
     setTimelineOrientation(value: 'horizontal' | 'vertical'): void { this.options.timelineOrientation = value; this.rebuild(false); }
     private isTimelineLayout(): boolean { return !this.options.ganttMode && this.options.timelineLayout === 'timeline'; }
     private isHorizontalTimeline(): boolean { return this.isTimelineLayout() && this.options.timelineOrientation === 'horizontal'; }
@@ -499,12 +522,98 @@ export class NativeTimelineRenderer {
         this.resizeObserver = null;
         if (this.onFontsLoaded) this.container.ownerDocument.fonts?.removeEventListener('loadingdone', this.onFontsLoaded);
         this.onFontsLoaded = null;
+        this.calendarPanel?.destroy();
+        this.calendarPanel = null;
         this.root?.remove();
         this.root = null;
         this.canvas = null;
         this.ctx = null;
         this.tooltipEl = null;
         this.hovered = null;
+    }
+
+    /** Month the calendar grid shows: the one holding the middle of the view window. */
+    private calendarMonth(): CalendarMonthRef {
+        return monthOfDay(this.calendarRegistry.getActiveCalendar(), this.dayOfTime((this.viewStart + this.viewEnd) / 2));
+    }
+
+    /** Point the view window at a whole month, so the footer and saved range describe what the grid shows. */
+    private showCalendarMonth(ref: CalendarMonthRef): void {
+        const calendar = this.calendarRegistry.getActiveCalendar();
+        const epoch = this.unixEpochAbsoluteDay();
+        const start = monthStartDay(calendar, ref);
+        const end = monthStartDay(calendar, shiftMonth(calendar, ref, 1));
+        this.viewStart = (start - epoch) * DAY_MS;
+        this.viewEnd = (end - epoch) * DAY_MS;
+        this.scheduleDraw();
+    }
+
+    private setCalendarVisibility(calendar: boolean): void {
+        if (calendar) {
+            this.canvas?.hide();
+            this.calendarPanel?.show();
+        } else {
+            this.calendarPanel?.hide();
+            this.canvas?.show();
+        }
+    }
+
+    /** An absolute day for an instant on this renderer's clock (ms since the Unix epoch). */
+    private dayOfTime(time: number): number {
+        return Math.floor(time / DAY_MS + this.unixEpochAbsoluteDay());
+    }
+
+    /**
+     * What the month grid asks of the renderer. Events, colours, icons, selection
+     * and saves all go through the same methods the canvas views use.
+     */
+    private createCalendarHost(): TimelineCalendarHost {
+        return {
+            app: this.app,
+            calendar: () => this.calendarRegistry.getActiveCalendar(),
+            todayDay: () => this.dayOfTime(this.nowMs()),
+            dayOfTime: time => this.dayOfTime(time),
+            items: () => this.calendarItems(),
+            colorOf: item => this.markerColor(item),
+            iconSourceFor: event => this.iconSourceFor(event),
+            photoUrl: source => this.photoUrl(source),
+            isDraggable: item => this.isDraggable(item),
+            isEditing: () => this.options.editMode && !this.options.ganttMode,
+            isSelected: item => this.selected !== null && this.eventIdentity(this.selected.event) === this.eventIdentity(item.event),
+            paneWidth: () => this.viewportWidth(),
+            showMonth: ref => this.showCalendarMonth(ref),
+            showToday: () => this.moveToToday(),
+            selectItem: item => {
+                this.selected = item;
+                this.options.onEventSelected?.(item?.event ?? null);
+                this.scheduleDraw();
+            },
+            openItem: item => { void this.openItem(item); },
+            moveItemByDays: async (item, days) => {
+                if (!this.isDraggable(item)) return;
+                // Shift both ends by the same whole days: the time of day and the length stay put.
+                const from = { start: item.start, end: item.end };
+                item.start += days * DAY_MS;
+                item.end += days * DAY_MS;
+                this.scheduleDraw();
+                await this.commitMove(item, from);
+            },
+        };
+    }
+
+    /**
+     * Each event once, as the lane item the canvas views already built for it, so the
+     * chip carries the same group colour and the same selection identity.
+     */
+    private calendarItems(): NativeItem[] {
+        const byIdentity = new Map<string, NativeItem>();
+        for (const lane of this.lanes) {
+            for (const item of lane.items) {
+                const identity = this.eventIdentity(item.event);
+                if (!byIdentity.has(identity) && Number.isFinite(item.start)) byIdentity.set(identity, item);
+            }
+        }
+        return Array.from(byIdentity.values());
     }
 
     getVisibleEvents(): Event[] {
@@ -539,6 +648,7 @@ export class NativeTimelineRenderer {
         if (item.hiddenInMarker && item.marker) this.expandedMarkers.add(item.marker.key);
         this.selected = item;
         this.options.onEventSelected?.(event);
+        if (this.options.calendarMode) this.showCalendarMonth(monthOfDay(this.calendarRegistry.getActiveCalendar(), this.dayOfTime(item.start)));
         this.ensureLaneVisible(item.laneId);
         this.scheduleDraw();
         return true;
@@ -576,6 +686,10 @@ export class NativeTimelineRenderer {
     }
 
     moveToToday(): void {
+        if (this.options.calendarMode) {
+            this.showCalendarMonth(monthOfDay(this.calendarRegistry.getActiveCalendar(), this.dayOfTime(this.nowMs())));
+            return;
+        }
         const span = this.viewEnd - this.viewStart;
         const now = this.nowMs();
         this.viewStart = now - span / 2;
@@ -768,6 +882,8 @@ export class NativeTimelineRenderer {
         this.root.setAttribute('aria-label', 'Story timeline');
         this.canvas = this.root.createEl('canvas', { cls: 'sts-native-timeline-canvas' });
         this.ctx = this.canvas.getContext('2d');
+        this.calendarPanel = new TimelineCalendarPanel(this.root, this.calendarHost);
+        this.setCalendarVisibility(this.options.calendarMode);
         this.tooltipEl = this.root.createDiv('sts-native-timeline-tooltip');
         this.tooltipEl.hide();
         this.bindEvents();
@@ -796,6 +912,7 @@ export class NativeTimelineRenderer {
         this.referenceDate = this.options.getReferenceDate();
         this.clearTextCaches();
         const sourceEvents = this.collectEvents();
+        this.sourceEvents = sourceEvents;
         // Conflict analysis is secondary to rendering and can be quadratic for
         // dense character histories. Keep large timelines interactive; users
         // can still run the dedicated conflict tools against the full dataset.
@@ -1264,7 +1381,8 @@ export class NativeTimelineRenderer {
         // frames is never answered from an earlier frame's read.
         this.styleCache = { computed: new Map(), values: new Map() };
         try {
-            this.paintFrame();
+            if (this.options.calendarMode) this.calendarPanel?.render(this.calendarMonth());
+            else this.paintFrame();
         } finally {
             this.styleCache = null;
         }
@@ -1704,16 +1822,11 @@ export class NativeTimelineRenderer {
                 });
             });
             if (includeHolidays) {
-                const yearMonths = monthsInYear(calendar, year);
-                for (const holiday of calendar.holidays || []) {
-                    const baseMonth = calendar.months[holiday.month];
-                    const month = baseMonth ? yearMonths.findIndex(candidate => candidate.name === baseMonth.name) : -1;
-                    if (month < 0 || holiday.day > yearMonths[month].days) continue;
-                    const startDay = toAbsolute(calendar, { year, month, day: holiday.day }).absoluteDay;
-                    const endDay = startDay + Math.max(1, holiday.length || 1);
-                    if (endDay <= absoluteStart || startDay >= absoluteEnd) continue;
+                for (const holiday of holidayOccurrencesInYear(calendar, year)) {
+                    const endDay = holiday.startDay + holiday.length;
+                    if (endDay <= absoluteStart || holiday.startDay >= absoluteEnd) continue;
                     bands.push({
-                        startDay,
+                        startDay: holiday.startDay,
                         endDay,
                         label: holiday.name,
                         group: 'Holidays',

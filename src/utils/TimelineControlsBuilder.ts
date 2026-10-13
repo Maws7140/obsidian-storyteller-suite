@@ -29,11 +29,15 @@ export interface TimelineControlCallbacks {
     onEventCreated?: () => void | Promise<void>;
 }
 
-/** The three top-level views. Horizontal/vertical are orientations of Timeline. */
-export type TimelineViewMode = 'chronology' | 'timeline' | 'gantt';
+/** The top-level views. Horizontal/vertical are orientations of Timeline. */
+export type TimelineViewMode = 'chronology' | 'timeline' | 'gantt' | 'calendar';
 
-/** Resolve the top-level view without confusing Timeline orientation for a view. */
-export function timelineViewMode(state: Pick<TimelineUIState, 'ganttMode' | 'timelineLayout'>): TimelineViewMode {
+/**
+ * Resolve the top-level view without confusing Timeline orientation for a view.
+ * Calendar wins over Gantt and the layouts; setViewMode keeps them from both being on.
+ */
+export function timelineViewMode(state: Pick<TimelineUIState, 'ganttMode' | 'timelineLayout'> & { calendarMode?: boolean }): TimelineViewMode {
+    if (state.calendarMode) return 'calendar';
     return state.ganttMode ? 'gantt' : state.timelineLayout;
 }
 
@@ -117,6 +121,7 @@ export class TimelineControlsBuilder {
     static createDefaultState(plugin: StorytellerSuitePlugin): TimelineUIState {
         return {
             ganttMode: false,
+            calendarMode: false,
             timelineLayout: 'chronology',
             timelineOrientation: 'horizontal',
             groupMode: (plugin.settings.defaultTimelineGroupMode || 'location'),
@@ -479,7 +484,8 @@ export class TimelineControlsBuilder {
         const modes: { id: TimelineViewMode; label: string; icon: string; hint: string }[] = [
             { id: 'chronology', label: 'Chronology', icon: 'list-tree', hint: 'Original grouped chronological lanes' },
             { id: 'timeline', label: 'Timeline', icon: 'git-branch', hint: 'Card timeline with horizontal or vertical orientation' },
-            { id: 'gantt', label: 'Gantt', icon: 'align-left', hint: 'Durations as bars, with dependencies' }
+            { id: 'gantt', label: 'Gantt', icon: 'align-left', hint: 'Durations as bars, with dependencies' },
+            { id: 'calendar', label: 'Calendar', icon: 'calendar', hint: 'Month grid in the story calendar' }
         ];
 
         const current = (): TimelineViewMode => timelineViewMode(this.state);
@@ -560,16 +566,20 @@ export class TimelineControlsBuilder {
     }
 
     private setViewMode(mode: TimelineViewMode, sync: () => void): void {
+        const calendar = mode === 'calendar';
         const gantt = mode === 'gantt';
+        // Calendar is a view of its own, so the Timeline layout and Gantt are both off while it is on.
         const layout = mode === 'timeline' ? 'timeline' : 'chronology';
-        const changed = gantt !== this.state.ganttMode || layout !== this.state.timelineLayout;
+        const changed = gantt !== this.state.ganttMode || layout !== this.state.timelineLayout || calendar !== (this.state.calendarMode === true);
         if (!changed) return;
         this.state.ganttMode = gantt;
         this.state.timelineLayout = layout;
+        this.state.calendarMode = calendar;
         sync();
         const renderer = this.callbacks.getRenderer();
         renderer?.setTimelineLayout(layout);
         renderer?.setGanttMode(gantt);
+        renderer?.setCalendarMode(calendar);
         this.callbacks.onStateChange();
     }
 

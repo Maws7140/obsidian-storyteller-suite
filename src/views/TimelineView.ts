@@ -493,6 +493,7 @@ export class TimelineView extends ItemView {
         // Initialize timeline renderer
         this.renderer = new TimelineRenderer(this.timelineContainer, this.plugin, {
             ganttMode: this.currentState.ganttMode,
+            calendarMode: this.currentState.calendarMode === true,
             timelineLayout: this.currentState.timelineLayout,
             timelineOrientation: this.currentState.timelineOrientation,
             groupMode: this.currentState.groupMode,
@@ -937,6 +938,7 @@ export class TimelineView extends ItemView {
 
         return {
             ganttMode: this.currentState.ganttMode,
+            calendarMode: this.currentState.calendarMode === true,
             timelineLayout: this.currentState.timelineLayout,
             timelineOrientation: this.currentState.timelineOrientation,
             groupMode: this.currentState.groupMode,
@@ -995,6 +997,8 @@ export class TimelineView extends ItemView {
             const filters = restoreFilters(state.filters);
             const restored: TimelineViewState = {
                 ganttMode: state.ganttMode === true,
+                // A saved state from before Calendar existed has no key, so it loads as not calendar.
+                calendarMode: state.calendarMode === true,
                 timelineLayout: state.timelineLayout === 'timeline' ? 'timeline' : 'chronology',
                 timelineOrientation: state.timelineOrientation === 'vertical' ? 'vertical' : 'horizontal',
                 groupMode: isGroupMode(state.groupMode) ? state.groupMode : (this.plugin.settings.defaultTimelineGroupMode || 'location'),
