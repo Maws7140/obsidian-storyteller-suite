@@ -2678,6 +2678,8 @@ export type TimelineGroupMode =
 export interface TimelineUIState {
     /** Whether Gantt chart view is enabled */
     ganttMode: boolean;
+    /** Month grid view. Off for older saved states, which load as before. */
+    calendarMode?: boolean;
     /** Chronology keeps the original lane view; Timeline owns both orientations. */
     timelineLayout: 'chronology' | 'timeline';
     /** Orientation inside the Timeline view; Chronology and Gantt are horizontal. */

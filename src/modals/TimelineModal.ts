@@ -223,6 +223,7 @@ export class TimelineModal extends Modal {
         // Initialize new renderer with current settings from shared state
         this.renderer = new TimelineRenderer(this.timelineContainer, this.plugin, {
             ganttMode: this.currentState.ganttMode,
+            calendarMode: this.currentState.calendarMode === true,
             timelineLayout: this.currentState.timelineLayout,
             timelineOrientation: this.currentState.timelineOrientation,
             groupMode: this.currentState.groupMode,
