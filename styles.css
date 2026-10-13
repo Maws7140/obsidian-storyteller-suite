@@ -12197,6 +12197,13 @@ body.mod-rtl .storyteller-group-members {
   overflow: hidden;
 }
 
+/* The block's one control, a New event button sitting just above its top edge. */
+.sts-timeline-block-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0.75em 0 -0.5em;
+}
+
 /* Typos in a block's settings, listed above it. Loud on purpose: a filter that
    silently did not apply is worse than an ugly warning. */
 .sts-timeline-block-errors {

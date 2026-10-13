@@ -12,6 +12,7 @@ import { TimelineControlsBuilder, TimelineControlCallbacks } from '../utils/Time
 import { TimelineFilterBuilder, TimelineFilterCallbacks } from '../utils/TimelineFilterBuilder';
 import { ConflictDetector, DetectedConflict } from '../utils/ConflictDetector';
 import { PlatformUtils } from '../utils/PlatformUtils';
+import { openNewEventModal } from '../utils/OpenNewEventModal';
 
 export const VIEW_TYPE_TIMELINE = 'storyteller-timeline-view';
 
@@ -108,7 +109,8 @@ export class TimelineView extends ItemView {
             },
             onRendererUpdate: () => { void this.buildTimeline(); },
             getRenderer: () => this.renderer,
-            getEvents: () => this.plugin.listEvents()
+            getEvents: () => this.plugin.listEvents(),
+            onEventCreated: () => this.refresh()
         };
 
         // Create filter callbacks
@@ -202,6 +204,7 @@ export class TimelineView extends ItemView {
 
         // Pushed right: conflicts, search, overflow
         const trailing = viewRow.createDiv('storyteller-toolbar-group storyteller-toolbar-trailing');
+        this.controlsBuilder.createNewEventButton(trailing);
         this.buildConflictBadge(trailing);
         this.buildSearchField(trailing);
         this.buildOverflowButton(trailing);
@@ -603,13 +606,9 @@ export class TimelineView extends ItemView {
             });
             const actions = empty.createDiv('storyteller-timeline-empty-actions');
             const createBtn = actions.createEl('button', { cls: 'mod-cta', text: 'Create an event' });
-            createBtn.addEventListener('click', () => { void (async () => {
-                const { EventModal } = await import('../modals/EventModal');
-                new EventModal(this.app, this.plugin, null, async created => {
-                    await this.plugin.saveEvent(created);
-                    await this.refresh();
-                }).open();
-            })(); });
+            createBtn.addEventListener('click', () => {
+                void openNewEventModal(this.plugin, { onCreated: () => this.refresh() });
+            });
         }
     }
 

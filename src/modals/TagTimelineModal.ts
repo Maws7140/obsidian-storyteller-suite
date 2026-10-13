@@ -3,6 +3,7 @@ import { TagTimelineGenerator, TagTimelineOptions, GeneratedEventPreview } from 
 import { Event, Location } from '../types';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
+import { openNewEventModal } from '../utils/OpenNewEventModal';
 
 /**
  * Modal for generating timeline events from tags
@@ -69,6 +70,19 @@ export class TagTimelineModal extends Modal {
 
         // Action buttons
         const buttonContainer = new Setting(contentEl);
+        // One event by hand, tagged with whatever tags are chosen above, for
+        // the moment that has no note to generate it from.
+        buttonContainer.addButton(btn => btn
+            .setButtonText('New event')
+            .setTooltip('Create one event by hand, with the chosen tags')
+            .onClick(() => {
+                const tags = this.selectedTags.map(tag => tag.replace(/^#/, '')).filter(Boolean);
+                void openNewEventModal(this.plugin, {
+                    seed: tags.length ? { tags } : undefined,
+                    onCreated: () => this.plugin.refreshTimelineViews()
+                });
+            })
+        );
         buttonContainer.addButton(btn => btn
             .setButtonText('Create events')
             .setCta()
