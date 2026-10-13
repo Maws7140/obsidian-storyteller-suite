@@ -15485,24 +15485,14 @@ img.storyteller-timeline-calendar-icon {
 .storyteller-campaign-board-map.is-ping-tool .leaflet-grab,
 .storyteller-campaign-board-map.is-ping-tool .leaflet-interactive { cursor: crosshair; }
 
-/* Floating panels */
-.storyteller-campaign-float { position: absolute; z-index: 650; width: min(540px, calc(100% - 130px)); max-height: 52%; display: flex; flex-direction: column; border-radius: 14px; background: color-mix(in srgb, var(--background-primary) 93%, transparent); backdrop-filter: blur(10px); border: 1px solid var(--sts-hud-border); box-shadow: 0 12px 34px rgba(0, 0, 0, 0.38); }
-.storyteller-campaign-float.is-play:not(.is-placed) { left: 62px; bottom: 62px; }
-.storyteller-campaign-float.is-combat { width: 360px; max-height: calc(100% - 140px); }
-.storyteller-campaign-float.is-combat:not(.is-placed) { right: 12px; top: 58px; }
-.storyteller-campaign-float-header { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 4px; border-bottom: 1px solid var(--background-modifier-border); cursor: grab; user-select: none; touch-action: none; font-size: 0.85rem; font-weight: 700; }
-.storyteller-campaign-float-header:active { cursor: grabbing; }
-.storyteller-campaign-float.is-collapsed .storyteller-campaign-float-body { display: none; }
-.storyteller-campaign-float.is-collapsed .storyteller-campaign-float-header { border-bottom: none; }
-.storyteller-campaign-float-grip { display: inline-flex; color: var(--text-faint); }
-.storyteller-campaign-float-icon { display: inline-flex; color: var(--text-muted); }
-.storyteller-campaign-float-count { min-width: 1.3rem; padding: 0 0.35rem; border-radius: 999px; background: var(--color-green); color: var(--text-on-accent); font-size: 0.7rem; text-align: center; }
-.storyteller-campaign-float-tag { padding: 0 0.45rem; border-radius: 999px; background: color-mix(in srgb, var(--color-orange) 20%, transparent); color: var(--color-orange); font-size: 0.7rem; font-weight: 600; }
-.storyteller-campaign-float-fold { margin-left: auto; display: inline-flex; padding: 3px; background: none; border: none; box-shadow: none; color: var(--text-muted); cursor: pointer; }
-.storyteller-campaign-float-body { overflow-y: auto; padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 8px; }
-.storyteller-campaign-float .storyteller-campaign-choices > .storyteller-campaign-branch-header { display: none; }
-.storyteller-campaign-view .storyteller-campaign-float .storyteller-campaign-branch-list { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
-.storyteller-campaign-view .storyteller-campaign-float .storyteller-campaign-encounter { margin: 0; padding: 0.45rem 0.55rem; gap: 0.3rem; font-size: 0.85rem; }
+/* Choices and the encounter in the Scene tab */
+.storyteller-campaign-scene-play { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.4rem 0; padding-top: 0.6rem; border-top: 1px solid var(--background-modifier-border); }
+.storyteller-campaign-view .storyteller-campaign-scene-play .storyteller-campaign-branch-list { grid-template-columns: minmax(0, 1fr); }
+.storyteller-campaign-view .storyteller-campaign-scene-play .storyteller-campaign-encounter { margin: 0; padding: 0.45rem 0.55rem; gap: 0.3rem; font-size: 0.85rem; }
+
+/* Combat at the top of the Party tab */
+.storyteller-campaign-combat-section { border-left: 3px solid var(--interactive-accent); }
+.storyteller-campaign-combat-body { display: flex; flex-direction: column; gap: 6px; }
 
 /* Quick bar */
 .storyteller-campaign-quickbar { position: absolute; left: 60px; right: 12px; bottom: 10px; z-index: 640; display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 14px; background: var(--sts-hud-bg); backdrop-filter: blur(8px); border: 1px solid var(--sts-hud-border); box-shadow: var(--sts-hud-shadow); }
@@ -15577,8 +15567,6 @@ img.storyteller-timeline-calendar-icon {
   .storyteller-campaign-rail.is-collapsed .storyteller-campaign-rail-tabs { flex-direction: row; height: auto; }
   .storyteller-campaign-hud.is-left { max-width: calc(100% - 24px); }
   .storyteller-campaign-hud.is-right { top: auto; bottom: 60px; }
-  .storyteller-campaign-float { width: calc(100% - 24px); }
-  .storyteller-campaign-float.is-combat { width: calc(100% - 24px); }
 }
 
 /* The plain-image board covers the stage too: the frame is a size container and the image is

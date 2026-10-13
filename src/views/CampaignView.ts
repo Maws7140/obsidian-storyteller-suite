@@ -168,17 +168,14 @@ export const VIEW_TYPE_CAMPAIGN = 'storyteller-campaign-view';
 type SidebarPart = 'read' | 'party' | 'progress' | 'standings' | 'log';
 type RailTab = 'read' | 'party' | 'progress' | 'world' | 'log';
 type BoardTool = 'inspect' | 'move' | 'reveal' | 'ping';
-type FloatingPanelId = 'play' | 'combat';
 interface PanelLayout {
-    play?: { x?: number; y?: number; collapsed?: boolean };
-    combat?: { x?: number; y?: number; collapsed?: boolean };
     railCollapsed?: boolean;
     railTab?: RailTab;
 }
-const PANEL_LAYOUT_KEY = 'storyteller-campaign-panel-layout';
+const PANEL_LAYOUT_KEY = 'storyteller-campaign-rail-layout';
 
 const RAIL_TABS: ReadonlyArray<{ id: RailTab; label: string; icon: string }> = [
-    { id: 'read', label: 'Read', icon: 'book-open' },
+    { id: 'read', label: 'Scene', icon: 'book-open' },
     { id: 'party', label: 'Party', icon: 'users' },
     { id: 'progress', label: 'Progress', icon: 'gauge' },
     { id: 'world', label: 'World', icon: 'globe' },
@@ -419,8 +416,10 @@ export class CampaignView extends ItemView {
     /** Whether the right rail is folded down to its icons. */
     private railCollapsed = false;
     private railEl: HTMLElement | null = null;
-    /** Where the floating panels sit, remembered on this device. */
+    /** The rail's tab and fold, remembered on this device. */
     private panelLayout: PanelLayout = {};
+    /** The stage panel of this render: dice rolls for choices open over it. */
+    private scenePanelEl: HTMLElement | null = null;
     /** The map tool in use: inspect a place, move the party, reveal places, or ping. */
     private boardTool: BoardTool = 'inspect';
     /** The DM's latest ping, shown on both screens for a few seconds. */
@@ -727,20 +726,19 @@ export class CampaignView extends ItemView {
         this.boardInfo = null;
         this.loadPanelLayout();
 
-        // The board fills the stage; the scene title, tools, choices, combat and quick entry float
-        // over it, as on a virtual tabletop. The rail on the right folds down to icons.
+        // The board fills the stage; the scene title, tools and quick entry float over it, as on a
+        // virtual tabletop. Choices sit in the Scene tab and combat in the Party tab of the rail.
         const table = root.createDiv('storyteller-campaign-table');
         const stage = table.createDiv('storyteller-campaign-stage-col');
         stage.setAttribute('data-sts-part', 'table');
         const scenePanel = stage.createDiv('storyteller-campaign-scene-panel');
+        this.scenePanelEl = scenePanel;
         await this.renderScenePanel(scenePanel);
         const hasBoard = scenePanel.hasClass('has-board');
         stage.toggleClass('has-board', hasBoard);
 
         this.renderHud(stage, session);
         if (hasBoard) this.renderToolStrip(stage);
-        if (this.currentScene) this.renderPlayPanel(stage, scenePanel);
-        if (session.combat) this.renderCombatPanel(stage, session);
         await this.renderQuickBar(stage, session);
 
         const rail = table.createDiv('storyteller-campaign-sidebar storyteller-campaign-rail' + (this.railCollapsed ? ' is-collapsed' : ''));
@@ -813,12 +811,6 @@ export class CampaignView extends ItemView {
                     void this.plugin.app.workspace.openLinkText(session.filePath!, '', 'tab');
                 }));
             }
-            menu.addSeparator();
-            menu.addItem(item => item.setTitle('Reset panel positions').setIcon('layout').onClick(() => {
-                this.panelLayout = {};
-                this.savePanelLayout();
-                void this.render();
-            }));
             menu.showAtMouseEvent(event);
         });
 
@@ -1037,7 +1029,7 @@ export class CampaignView extends ItemView {
         menu.showAtMouseEvent(event);
     }
 
-    // ── Floating panels ───────────────────────────────────────────────────
+    // ── Rail layout ───────────────────────────────────────────────────────
 
     private loadPanelLayout(): void {
         try {
@@ -1052,89 +1044,16 @@ export class CampaignView extends ItemView {
         }
     }
 
+    /** Opens the rail on a tab (unfolding it); the caller redraws the rail or the whole view. */
+    private showRailTab(tab: RailTab): void {
+        this.railTab = tab;
+        this.railCollapsed = false;
+        this.savePanelLayout();
+    }
+
     private savePanelLayout(): void {
         this.panelLayout = { ...this.panelLayout, railCollapsed: this.railCollapsed, railTab: this.railTab };
         try { this.app.saveLocalStorage(PANEL_LAYOUT_KEY, this.panelLayout); } catch { /* not saved: positions reset next time */ }
-    }
-
-    /**
-     * A panel floating over the board, dragged by its header and folded by its button, like the
-     * tool bubbles on Owlbear Rodeo. Where it was left and whether it was folded are remembered.
-     */
-    private createFloatingPanel(
-        stage: HTMLElement,
-        id: FloatingPanelId,
-        title: string,
-        icon: string,
-        extraHeader?: (header: HTMLElement) => void,
-    ): HTMLElement {
-        const saved = this.panelLayout[id];
-        const panel = stage.createDiv(`storyteller-campaign-float is-${id}` + (saved?.collapsed ? ' is-collapsed' : ''));
-        panel.setAttribute('data-sts-part', `${id}-panel`);
-        if (saved?.x !== undefined && saved.y !== undefined) {
-            panel.addClass('is-placed');
-            panel.setCssStyles({ left: `${saved.x}px`, top: `${saved.y}px` });
-        }
-        const header = panel.createDiv('storyteller-campaign-float-header');
-        setIcon(header.createSpan({ cls: 'storyteller-campaign-float-grip' }), 'grip-vertical');
-        setIcon(header.createSpan({ cls: 'storyteller-campaign-float-icon' }), icon);
-        header.createSpan({ cls: 'storyteller-campaign-float-title', text: title });
-        extraHeader?.(header);
-        const fold = header.createEl('button', {
-            cls: 'storyteller-campaign-float-fold',
-            attr: { type: 'button', 'aria-label': saved?.collapsed ? `Open ${title}` : `Fold ${title}` },
-        });
-        setIcon(fold, saved?.collapsed ? 'chevron-up' : 'chevron-down');
-        fold.addEventListener('click', event => {
-            event.stopPropagation();
-            const collapsed = !panel.hasClass('is-collapsed');
-            panel.toggleClass('is-collapsed', collapsed);
-            setIcon(fold, collapsed ? 'chevron-up' : 'chevron-down');
-            this.panelLayout[id] = { ...(this.panelLayout[id] ?? {}), collapsed: collapsed || undefined };
-            this.savePanelLayout();
-        });
-
-        header.addEventListener('pointerdown', event => {
-            if ((event.target as HTMLElement).closest('button, input, select')) return;
-            event.preventDefault();
-            const stageRect = stage.getBoundingClientRect();
-            const rect = panel.getBoundingClientRect();
-            const offsetX = event.clientX - rect.left;
-            const offsetY = event.clientY - rect.top;
-            const win = stage.ownerDocument.defaultView ?? window;
-            const move = (e: PointerEvent) => {
-                const x = Math.max(0, Math.min(stageRect.width - rect.width, e.clientX - stageRect.left - offsetX));
-                const y = Math.max(0, Math.min(stageRect.height - 40, e.clientY - stageRect.top - offsetY));
-                panel.addClass('is-placed');
-                panel.setCssStyles({ left: `${x}px`, top: `${y}px` });
-            };
-            const up = () => {
-                win.removeEventListener('pointermove', move);
-                win.removeEventListener('pointerup', up);
-                if (!panel.hasClass('is-placed')) return;
-                this.panelLayout[id] = {
-                    x: Math.round(parseFloat(panel.style.left) || 0),
-                    y: Math.round(parseFloat(panel.style.top) || 0),
-                    collapsed: panel.hasClass('is-collapsed') || undefined,
-                };
-                this.savePanelLayout();
-            };
-            win.addEventListener('pointermove', move);
-            win.addEventListener('pointerup', up);
-        });
-        return panel.createDiv('storyteller-campaign-float-body');
-    }
-
-    /** Choices and the encounter in one floating panel over the board, numbered as on the map. */
-    private renderPlayPanel(stage: HTMLElement, scenePanel: HTMLElement): void {
-        const choices = this.visibleBranches();
-        const table = this.rollableEncounterTable();
-        const body = this.createFloatingPanel(stage, 'play', 'Choices', 'git-branch', header => {
-            if (choices.length > 0) header.createSpan({ cls: 'storyteller-campaign-float-count', text: String(choices.length) });
-            if (table) header.createSpan({ cls: 'storyteller-campaign-float-tag', text: `Encounter ${table.dice}` });
-        });
-        this.renderPlayChoices(body, scenePanel);
-        this.renderPlayEncounter(body);
     }
 
     // ── Map tools ─────────────────────────────────────────────────────────
@@ -1169,8 +1088,12 @@ export class CampaignView extends ItemView {
         });
         setIcon(combatBtn, 'swords');
         combatBtn.addEventListener('click', () => {
-            if (this.session?.combat) new Notice('Combat is on: use the turn order panel.');
-            else void this.beginCombat();
+            if (this.session?.combat) {
+                this.showRailTab('party');
+                if (this.railEl && this.session) void this.renderRail(this.railEl, this.session);
+            } else {
+                void this.beginCombat();
+            }
         });
     }
 
@@ -1306,9 +1229,7 @@ export class CampaignView extends ItemView {
         menu.addSeparator();
         menu.addItem(item => item.setTitle('Move the party…').setIcon('footprints').onClick(() => this.setBoardTool('move')));
         menu.addItem(item => item.setTitle('Show party details').setIcon('users').onClick(() => {
-            this.railTab = 'party';
-            this.railCollapsed = false;
-            this.savePanelLayout();
+            this.showRailTab('party');
             if (this.railEl) void this.renderRail(this.railEl, session);
         }));
         menu.showAtMouseEvent(event);
@@ -1344,6 +1265,7 @@ export class CampaignView extends ItemView {
         const encounter = this.lastEncounter && this.lastEncounter.sceneName === this.currentScene?.name ? this.lastEncounter : null;
         if (encounter) entries.push({ name: encounter.row.label, initiative: roll('d20'), isPlayer: false });
         session.combat = startCombat(entries);
+        this.showRailTab('party');
         const order = initiativeOrder(session.combat).map(c => `${c.name} ${c.initiative}`).join(', ');
         await this.autosave(`Combat started (round 1): ${order}`);
         await this.render();
@@ -1370,17 +1292,24 @@ export class CampaignView extends ItemView {
 
     private refreshCombatPanel(): void {
         const session = this.session;
-        const panel = this.currentRoot()?.querySelector<HTMLElement>('.storyteller-campaign-float.is-combat .storyteller-campaign-float-body');
-        if (!session?.combat || !panel) return;
-        panel.empty();
-        this.fillCombatPanel(panel, session);
-        const title = panel.parentElement?.querySelector('.storyteller-campaign-float-title');
-        if (title) title.setText(`Round ${session.combat.round}`);
+        const section = this.currentRoot()?.querySelector<HTMLElement>('.storyteller-campaign-combat-section');
+        if (!session?.combat || !section) return;
+        section.empty();
+        this.fillCombatSection(section, session);
     }
 
-    private renderCombatPanel(stage: HTMLElement, session: CampaignSession): void {
-        const body = this.createFloatingPanel(stage, 'combat', `Round ${session.combat!.round}`, 'swords');
-        this.fillCombatPanel(body, session);
+    /** The fight at the top of the Party tab. */
+    private renderCombatSection(sidebar: HTMLElement, session: CampaignSession): void {
+        const sec = sidebar.createDiv('storyteller-campaign-sidebar-section storyteller-campaign-combat-section');
+        sec.setAttribute('data-sts-part', 'combat');
+        this.fillCombatSection(sec, session);
+    }
+
+    private fillCombatSection(sec: HTMLElement, session: CampaignSession): void {
+        const hdr = sec.createDiv('storyteller-campaign-sidebar-hdr');
+        setIcon(hdr.createSpan(), 'swords');
+        hdr.createSpan({ text: ` Combat · round ${session.combat!.round}` });
+        this.fillCombatPanel(sec.createDiv('storyteller-campaign-sidebar-body storyteller-campaign-combat-body'), session);
     }
 
     /** The turn order: who acts, initiative, HP, and controls for turns, damage and joining the fight. */
@@ -1561,6 +1490,7 @@ export class CampaignView extends ItemView {
                 await this.renderReadSidebar(body, session);
                 break;
             case 'party':
+                if (session.combat) this.renderCombatSection(body, session);
                 this.renderPartySidebar(body, session);
                 await this.renderInventorySidebar(body, session);
                 break;
@@ -3281,8 +3211,19 @@ export class CampaignView extends ItemView {
             sec.createDiv({ cls: 'storyteller-campaign-empty-text', text: 'No scene loaded.' });
             return;
         }
+        // Read first (it is read out as the scene opens), then what can be chosen and rolled,
+        // then who and what is here.
+        await this.renderReadSections(sec, scene, session);
+        const play = sec.createDiv('storyteller-campaign-scene-play');
+        play.setAttribute('data-sts-part', 'choices');
+        const stage = this.scenePanelEl ?? sec;
+        this.renderPlayChoices(play, stage);
+        this.renderPlayEncounter(play);
         this.renderSceneEntityContext(sec);
+    }
 
+    /** The scene note by header, with the open section's text and its push buttons. */
+    private async renderReadSections(sec: HTMLElement, scene: Scene, session: CampaignSession): Promise<void> {
         const sections = this.readSections.length ? this.readSections : await this.loadReadSections(scene);
         if (sections.length === 0) {
             sec.createDiv({
