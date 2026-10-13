@@ -6,7 +6,8 @@
  */
 
 import { App, Modal, Notice, Setting, TFile, normalizePath, setIcon } from 'obsidian';
-import { SceneBranch, EncounterTable, Scene, Character, Event, Group, CompendiumEntry } from '../types';
+import { SceneBranch, SceneOutcomeFields, EncounterTable, Scene, Character, Event, Group, CompendiumEntry } from '../types';
+import { encounterFlag } from '../utils/DiceRoller';
 import {
     serializeBranches, serializeEncounterTable,
     extractBranchesFromMarkdown, extractEncounterTableFromMarkdown
@@ -283,6 +284,11 @@ export class BranchEditorModal extends Modal {
                 .addText(t => t.setValue(branch.requiresFlag ?? '').setPlaceholder('Flag').onChange(v => { branch.requiresFlag = v || undefined; }));
 
             new Setting(fields)
+                .setName('Requires flag not set')
+                .setDesc('Block the choice while this flag is set. An encounter result sets one, such as the wolves row.')
+                .addText(t => t.setValue(branch.requiresNoFlag ?? '').setPlaceholder('Flag').onChange(v => { branch.requiresNoFlag = v || undefined; }));
+
+            new Setting(fields)
                 .setName('Requires stat min')
                 .setDesc('Only used when stat is set.')
                 .addText(t => t
@@ -341,99 +347,14 @@ export class BranchEditorModal extends Modal {
                     });
                 });
 
-            // Outcomes
-            const outcomeToggle = fields.createEl('details', { cls: 'storyteller-branch-dice-details' });
-            outcomeToggle.createEl('summary', { text: 'Outcomes' });
-            if (
-                branch.grantsItem || branch.removesItem || branch.grantsCharacter || branch.removesCharacter ||
-                branch.setsFlag || branch.triggersEvent || branch.changesGroupStanding ||
-                branch.revealsCompendiumEntry || branch.groupStandingDelta != null
-            ) {
-                outcomeToggle.setAttribute('open', '');
-            }
+            this.renderOutcomeSettings(fields, branch, 'Outcomes');
 
-            const outcomeFields = outcomeToggle.createDiv('storyteller-branch-dice-row');
-            new Setting(outcomeFields)
-                .setName('Grants item')
-                .addText(t => t.setValue(branch.grantsItem ?? '').setPlaceholder('Item name').onChange(v => { branch.grantsItem = v || undefined; }));
-            new Setting(outcomeFields)
-                .setName('Removes item')
-                .addText(t => t.setValue(branch.removesItem ?? '').setPlaceholder('Item name').onChange(v => { branch.removesItem = v || undefined; }));
-            new Setting(outcomeFields)
-                .setName('Grants character')
-                .addText(t => t.setValue(branch.grantsCharacter ?? '').setPlaceholder('Character name').onChange(v => { branch.grantsCharacter = v || undefined; }));
-            new Setting(outcomeFields)
-                .setName('Removes character')
-                .addText(t => t.setValue(branch.removesCharacter ?? '').setPlaceholder('Character name').onChange(v => { branch.removesCharacter = v || undefined; }));
-            new Setting(outcomeFields)
-                .setName('Sets flag')
-                .addText(t => t.setValue(branch.setsFlag ?? '').setPlaceholder('Flag').onChange(v => { branch.setsFlag = v || undefined; }));
-            new Setting(outcomeFields)
-                .setName('Change group standing')
-                .setDesc('Adjust a faction/group standing when this choice is taken.')
-                .addDropdown(dd => {
-                    dd.addOption('', 'None');
-                    for (const group of this.groupOptions) {
-                        dd.addOption(group.id, group.name);
-                    }
-                    const selectedByName = branch.changesGroupStanding
-                        ? this.groupOptions.find(group => this.normalizeName(group.name) === this.normalizeName(branch.changesGroupStanding!))?.id
-                        : '';
-                    dd.setValue(branch.changesGroupStandingId ?? selectedByName ?? '');
-                    dd.onChange(value => {
-                        branch.changesGroupStandingId = value || undefined;
-                        const group = this.groupOptions.find(item => item.id === value);
-                        if (group) branch.changesGroupStanding = group.name;
-                    });
-                })
-                .addText(t => t
-                    .setValue(branch.groupStandingDelta != null ? String(branch.groupStandingDelta) : '')
-                    .setPlaceholder('Delta')
-                    .onChange(v => {
-                        const n = parseInt(v);
-                        branch.groupStandingDelta = isNaN(n) ? undefined : n;
-                    })
-                );
-            new Setting(outcomeFields)
-                .setName('Reveal lore entry')
-                .setDesc('Compendium entry revealed after this choice.')
-                .addDropdown(dd => {
-                    dd.addOption('', 'None');
-                    for (const entry of this.compendiumOptions) {
-                        if (!entry.id) continue;
-                        dd.addOption(entry.id, entry.name);
-                    }
-                    const selectedByName = branch.revealsCompendiumEntry
-                        ? this.compendiumOptions.find(entry => this.normalizeName(entry.name) === this.normalizeName(branch.revealsCompendiumEntry!))?.id
-                        : '';
-                    dd.setValue(branch.revealsCompendiumEntryId ?? selectedByName ?? '');
-                    dd.onChange(value => {
-                        branch.revealsCompendiumEntryId = value || undefined;
-                        const entry = this.compendiumOptions.find(item => item.id === value);
-                        if (entry) branch.revealsCompendiumEntry = entry.name;
-                    });
-                });
-            new Setting(outcomeFields)
-                .setName('Triggers event')
-                .addText(t => t.setValue(branch.triggersEvent ?? '').setPlaceholder('Event name').onChange(v => { branch.triggersEvent = v || undefined; }));
-            new Setting(outcomeFields)
-                .setName('Triggers event (linked)')
-                .setDesc('Uses event ID to survive renames.')
-                .addDropdown(dd => {
-                    dd.addOption('', 'None');
-                    for (const event of this.eventOptions) {
-                        if (!event.id) continue;
-                        dd.addOption(event.id, event.name);
-                    }
-                    const selectedByName = branch.triggersEvent
-                        ? this.eventOptions.find(event => this.normalizeName(event.name) === this.normalizeName(branch.triggersEvent!))?.id
-                        : '';
-                    dd.setValue(branch.triggersEventId ?? selectedByName ?? '');
-                    dd.onChange(value => {
-                        branch.triggersEventId = value || undefined;
-                        const event = this.eventOptions.find(item => item.id === value);
-                        if (event) branch.triggersEvent = event.name;
-                    });
+            new Setting(fields)
+                .setName('Rolls encounter')
+                .setDesc("Roll this scene's encounter table when the choice succeeds. A row that leads to a scene goes there instead of the target.")
+                .addToggle(toggle => {
+                    toggle.setValue(Boolean(branch.rollsEncounter));
+                    toggle.onChange(value => { branch.rollsEncounter = value || undefined; });
                 });
 
             new Setting(fields)
@@ -452,6 +373,110 @@ export class BranchEditorModal extends Modal {
                 this.renderBranchList(container);
             });
         });
+    }
+
+    /** Effects shared by choices and encounter rows, in a collapsible section. */
+    private renderOutcomeSettings(container: HTMLElement, branch: SceneOutcomeFields, summary: string): void {
+        const outcomeToggle = container.createEl('details', { cls: 'storyteller-branch-dice-details' });
+        outcomeToggle.createEl('summary', { text: summary });
+        if (
+            branch.grantsItem || branch.removesItem || branch.grantsCharacter || branch.removesCharacter ||
+            branch.setsFlag || branch.clearsFlag || branch.tags || branch.triggersEvent || branch.changesGroupStanding ||
+            branch.revealsCompendiumEntry || branch.groupStandingDelta != null
+        ) {
+            outcomeToggle.setAttribute('open', '');
+        }
+
+        const outcomeFields = outcomeToggle.createDiv('storyteller-branch-dice-row');
+        new Setting(outcomeFields)
+            .setName('Grants item')
+            .addText(t => t.setValue(branch.grantsItem ?? '').setPlaceholder('Item name').onChange(v => { branch.grantsItem = v || undefined; }));
+        new Setting(outcomeFields)
+            .setName('Removes item')
+            .addText(t => t.setValue(branch.removesItem ?? '').setPlaceholder('Item name').onChange(v => { branch.removesItem = v || undefined; }));
+        new Setting(outcomeFields)
+            .setName('Grants character')
+            .addText(t => t.setValue(branch.grantsCharacter ?? '').setPlaceholder('Character name').onChange(v => { branch.grantsCharacter = v || undefined; }));
+        new Setting(outcomeFields)
+            .setName('Removes character')
+            .addText(t => t.setValue(branch.removesCharacter ?? '').setPlaceholder('Character name').onChange(v => { branch.removesCharacter = v || undefined; }));
+        new Setting(outcomeFields)
+            .setName('Sets flag')
+            .addText(t => t.setValue(branch.setsFlag ?? '').setPlaceholder('Flag').onChange(v => { branch.setsFlag = v || undefined; }));
+        new Setting(outcomeFields)
+            .setName('Clears flag')
+            .addText(t => t.setValue(branch.clearsFlag ?? '').setPlaceholder('Flag').onChange(v => { branch.clearsFlag = v || undefined; }));
+        new Setting(outcomeFields)
+            .setName('Change group standing')
+            .setDesc('Adjust a faction/group standing when this happens.')
+            .addDropdown(dd => {
+                dd.addOption('', 'None');
+                for (const group of this.groupOptions) {
+                    dd.addOption(group.id, group.name);
+                }
+                const selectedByName = branch.changesGroupStanding
+                    ? this.groupOptions.find(group => this.normalizeName(group.name) === this.normalizeName(branch.changesGroupStanding!))?.id
+                    : '';
+                dd.setValue(branch.changesGroupStandingId ?? selectedByName ?? '');
+                dd.onChange(value => {
+                    branch.changesGroupStandingId = value || undefined;
+                    const group = this.groupOptions.find(item => item.id === value);
+                    if (group) branch.changesGroupStanding = group.name;
+                });
+            })
+            .addText(t => t
+                .setValue(branch.groupStandingDelta != null ? String(branch.groupStandingDelta) : '')
+                .setPlaceholder('Delta')
+                .onChange(v => {
+                    const n = parseInt(v);
+                    branch.groupStandingDelta = isNaN(n) ? undefined : n;
+                })
+            );
+        new Setting(outcomeFields)
+            .setName('Reveal lore entry')
+            .setDesc('Compendium entry revealed when this happens.')
+            .addDropdown(dd => {
+                dd.addOption('', 'None');
+                for (const entry of this.compendiumOptions) {
+                    if (!entry.id) continue;
+                    dd.addOption(entry.id, entry.name);
+                }
+                const selectedByName = branch.revealsCompendiumEntry
+                    ? this.compendiumOptions.find(entry => this.normalizeName(entry.name) === this.normalizeName(branch.revealsCompendiumEntry!))?.id
+                    : '';
+                dd.setValue(branch.revealsCompendiumEntryId ?? selectedByName ?? '');
+                dd.onChange(value => {
+                    branch.revealsCompendiumEntryId = value || undefined;
+                    const entry = this.compendiumOptions.find(item => item.id === value);
+                    if (entry) branch.revealsCompendiumEntry = entry.name;
+                });
+            });
+        new Setting(outcomeFields)
+            .setName('Triggers event')
+            .addText(t => t.setValue(branch.triggersEvent ?? '').setPlaceholder('Event name').onChange(v => { branch.triggersEvent = v || undefined; }));
+        new Setting(outcomeFields)
+            .setName('Triggers event (linked)')
+            .setDesc('Uses event ID to survive renames.')
+            .addDropdown(dd => {
+                dd.addOption('', 'None');
+                for (const event of this.eventOptions) {
+                    if (!event.id) continue;
+                    dd.addOption(event.id, event.name);
+                }
+                const selectedByName = branch.triggersEvent
+                    ? this.eventOptions.find(event => this.normalizeName(event.name) === this.normalizeName(branch.triggersEvent!))?.id
+                    : '';
+                dd.setValue(branch.triggersEventId ?? selectedByName ?? '');
+                dd.onChange(value => {
+                    branch.triggersEventId = value || undefined;
+                    const event = this.eventOptions.find(item => item.id === value);
+                    if (event) branch.triggersEvent = event.name;
+                });
+            });
+        new Setting(outcomeFields)
+            .setName('Partylog tags')
+            .setDesc('Partylog tags applied to the session, for clocks, party resources and threads.')
+            .addText(t => t.setValue(branch.tags ?? '').setPlaceholder('Tags').onChange(v => { branch.tags = v.trim() || undefined; }));
     }
 
     // ─── Encounter Table Tab ──────────────────────────────────────────────────
@@ -496,6 +521,11 @@ export class BranchEditorModal extends Modal {
                         table.rows.splice(i, 1);
                         renderRows();
                     }));
+                new Setting(r)
+                    .setName('Result key')
+                    .setDesc(`Choices can require the flag ${encounterFlag(row)} while this is the latest result.`)
+                    .addText(t => t.setValue(row.id ?? '').setPlaceholder('Short key').onChange(v => { row.id = v.trim() || undefined; }));
+                this.renderOutcomeSettings(r, row, 'Effects');
             });
         };
         renderRows();

@@ -10,6 +10,11 @@ interface FieldSpec<T> {
     kind: FieldKind;
 }
 
+/** A YAML scalar as text; anything else (a map, a list) is treated as empty. */
+function text(value: unknown): string {
+    return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
+}
+
 const field = <T>(key: keyof T & string, yaml: string, kind: FieldKind = 'string'): FieldSpec<T> => ({ key, yaml, kind });
 
 /** Effects shared by choices and encounter rows, in the order they are written. */
@@ -66,7 +71,7 @@ function readFields<T>(item: Record<string, unknown>, specs: ReadonlyArray<Field
         for (const key of [spec.yaml, spec.key]) {
             const value = item[key];
             if (spec.kind === 'string') {
-                if (value) target[spec.key] = String(value);
+                if (text(value)) target[spec.key] = text(value);
             } else if (spec.kind === 'number') {
                 if (value != null) target[spec.key] = Number(value);
             } else if (value != null) {
@@ -106,8 +111,8 @@ export function parseBranches(source: string): SceneBranch[] {
     if (!Array.isArray(raw)) return [];
     return (raw as Record<string, unknown>[]).map((item, i) => {
         const b: SceneBranch = {
-            id: String(item['id'] ?? `branch-${i}`),
-            label: String(item['label'] ?? ''),
+            id: text(item['id']) || `branch-${i}`,
+            label: text(item['label']),
         };
         readFields(item, BRANCH_FIELDS, b);
         readFields(item, OUTCOME_FIELDS, b);
@@ -135,10 +140,10 @@ export function parseEncounterTable(source: string): EncounterTable | null {
             const row: EncounterTableRow = {
                 min:    Number(r['min'] ?? 1),
                 max:    Number(r['max'] ?? 1),
-                label:  String(r['label'] ?? ''),
-                target: String(r['target'] ?? 'continue'),
+                label:  text(r['label']),
+                target: text(r['target']) || 'continue',
             };
-            if (r['id']) row.id = String(r['id']);
+            if (text(r['id'])) row.id = text(r['id']);
             readFields(r, OUTCOME_FIELDS, row);
             rows.push(row);
         }

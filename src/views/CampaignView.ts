@@ -34,7 +34,9 @@ import {
     CampaignItemEffect,
     Scene,
     SceneBranch,
+    SceneOutcomeFields,
     EncounterTable,
+    EncounterTableRow,
     PartyMemberState,
     Character,
     Group,
@@ -53,12 +55,16 @@ import {
     roll,
     statModifier,
     resolveBranch,
-    rollEncounterTable,
+    rollOnEncounterTable,
+    encounterRowFor,
+    encounterLeadsToScene,
     checkBranchConditions,
     applyBranchOutcomes,
+    applyEncounterResult,
 } from '../utils/DiceRoller';
-import { renderEncounterWidget } from '../extensions/BranchBlockExtension';
 import { getOwners, getPartyOwner, setPartyOwner } from '../utils/ItemOwnership';
+import { renderOutcomeChips } from '../extensions/BranchBlockExtension';
+import { outcomeChips } from '../utils/SceneOutcomeSummary';
 import {
     addCampaignAdvancement,
     addCampaignClock,
@@ -114,6 +120,7 @@ import {
     formatEvent,
     formatMeta,
     formatRoll,
+    formatTable,
     parsePartylogLine,
     type Interlude,
     type SessionHeader,
@@ -304,6 +311,8 @@ export class CampaignView extends ItemView {
     private partyAmountDrafts = new Map<string, string>();
     /** Last dice result from a branch roll, used to prefill the Roll entry. */
     private lastDiceResult: { expression: string; outcome: string } | null = null;
+    /** Latest encounter roll, shown on the scene until the party moves on. */
+    private lastEncounter: { sceneName: string; total: number; row: EncounterTableRow } | null = null;
     private tagNameCache: TagNameCache | null = null;
     /** Kind of the next scene header written to the log. Resets to 'next' after one header. */
     private sceneKindChoice: SceneKindChoice = 'next';
@@ -543,11 +552,11 @@ export class CampaignView extends ItemView {
         this.renderActorSelector(toolbar, session);
         toolbar.createDiv({ cls: 'storyteller-campaign-toolbar-spacer' });
 
-        if (this.encounterTable?.trigger === 'manual') {
-            const encBtn = toolbar.createEl('button', { cls: 'storyteller-campaign-toolbar-btn' });
+        if (this.rollableEncounterTable()) {
+            const encBtn = toolbar.createEl('button', { cls: 'storyteller-campaign-toolbar-btn', attr: { 'aria-label': 'Roll encounter' } });
             setIcon(encBtn.createSpan(), 'dices');
             encBtn.createSpan({ text: ' Encounter' });
-            encBtn.addEventListener('click', () => this.showEncounterOverlay(main));
+            encBtn.addEventListener('click', () => { void this.rollManualEncounter(); });
         }
 
         const graphBtn = toolbar.createEl('button', { cls: 'storyteller-campaign-toolbar-btn', attr: { 'aria-label': 'Scene graph' } });
@@ -633,10 +642,8 @@ export class CampaignView extends ItemView {
         // Scene entity context: location badge, NPCs, items at scene
         this.renderSceneEntityContext(panel);
 
-        // Encounter table display
-        if (this.encounterTable) {
-            renderEncounterWidget(panel.createDiv('storyteller-campaign-encounter-wrap'), this.encounterTable);
-        }
+        // Encounter table: rolling it applies the row, logs it and offers its scene
+        this.renderPlayEncounter(panel);
 
         // Choices
         if (this.branches.length > 0) {
@@ -1395,6 +1402,13 @@ export class CampaignView extends ItemView {
             });
         }
 
+        if (resolvedBranch.requiresNoFlag) {
+            const isSet = this.session?.flags?.includes(resolvedBranch.requiresNoFlag);
+            tags.createSpan({ cls: `storyteller-branch-tag is-flag${isSet ? ' is-unmet' : ''}`, text: `Not: ${resolvedBranch.requiresNoFlag}` });
+        }
+
+        renderOutcomeChips(card, outcomeChips(resolvedBranch));
+
         if (!check.met) {
             for (const reason of check.unmet) {
                 card.createDiv({ cls: 'storyteller-campaign-play-branch-blocked', text: reason });
@@ -1527,14 +1541,85 @@ export class CampaignView extends ItemView {
         rollBtn.focus();
     }
 
-    private showEncounterOverlay(main: HTMLElement): void {
-        if (!this.encounterTable) return;
-        const overlay = this.createDiceOverlay(main);
-        const box = overlay.createDiv('storyteller-dice-box');
-        renderEncounterWidget(box, this.encounterTable);
-        const closeBtn = box.createEl('button', { cls: 'storyteller-campaign-btn', text: 'Close' });
-        closeBtn.addEventListener('click', () => overlay.remove());
-        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    /**
+     * The scene's encounter table in play: the rows with their effects, a Roll button (with an
+     * optional typed result for physical dice), and the latest result with a way to its scene.
+     */
+    private renderPlayEncounter(panel: HTMLElement): void {
+        const table = this.rollableEncounterTable();
+        if (!table) return;
+        const box = panel.createDiv('storyteller-campaign-encounter');
+        const header = box.createDiv('storyteller-campaign-encounter-header');
+        setIcon(header.createSpan(), 'dices');
+        header.createSpan({ cls: 'storyteller-campaign-encounter-title', text: `Encounter (${table.dice})` });
+        header.createSpan({
+            cls: 'storyteller-encounter-trigger',
+            text: table.trigger === 'on-enter' ? 'rolls on enter' : 'roll when it fits',
+        });
+
+        const latest = this.lastEncounter && this.lastEncounter.sceneName === this.currentScene?.name
+            ? this.lastEncounter
+            : null;
+
+        const list = box.createDiv('storyteller-campaign-encounter-rows');
+        for (const row of table.rows) {
+            // Compared by content: the table is parsed again whenever the scene is entered.
+            const isHit = Boolean(latest && latest.row.min === row.min && latest.row.max === row.max && latest.row.label === row.label);
+            const rowEl = list.createDiv('storyteller-campaign-encounter-row' + (isHit ? ' is-active' : ''));
+            rowEl.createSpan({
+                cls: 'storyteller-campaign-encounter-range',
+                text: row.min === row.max ? String(row.min) : `${row.min}-${row.max}`,
+            });
+            const main = rowEl.createDiv('storyteller-campaign-encounter-main');
+            const labelRow = main.createDiv('storyteller-campaign-encounter-label');
+            labelRow.createSpan({ text: row.label });
+            if (encounterLeadsToScene(row)) {
+                labelRow.createSpan({ cls: 'storyteller-campaign-play-branch-target', text: `-> ${row.target}` });
+            }
+            renderOutcomeChips(main, outcomeChips(row));
+        }
+
+        if (latest) {
+            const result = box.createDiv('storyteller-campaign-encounter-result');
+            result.createSpan({ cls: 'storyteller-campaign-encounter-result-roll', text: String(latest.total) });
+            result.createSpan({ cls: 'storyteller-campaign-encounter-result-label', text: latest.row.label });
+            if (encounterLeadsToScene(latest.row) && this.resolveSceneReference(latest.row.target)) {
+                const goBtn = result.createEl('button', {
+                    cls: 'storyteller-campaign-btn is-primary',
+                    text: `Go -> ${latest.row.target}`,
+                });
+                goBtn.addEventListener('click', () => { void this.doNavigate(latest.row.target, true); });
+            }
+        }
+
+        const actions = box.createDiv('storyteller-campaign-encounter-actions');
+        const overrideInput = actions.createEl('input', {
+            cls: 'storyteller-campaign-input is-small',
+            attr: { type: 'number', placeholder: 'Rolled', 'aria-label': 'Typed die result' },
+        });
+        const rollBtn = actions.createEl('button', { cls: 'storyteller-campaign-btn is-primary' });
+        setIcon(rollBtn.createSpan(), 'dices');
+        rollBtn.createSpan({ text: latest ? ' Roll again' : ' Roll' });
+        rollBtn.addEventListener('click', () => {
+            const typed = overrideInput.value.trim();
+            const override = typed ? parseInt(typed, 10) : undefined;
+            void this.rollManualEncounter(Number.isFinite(override) ? override : undefined);
+        });
+    }
+
+    /** Rolls the scene's table from the Roll button: applies and logs the row, then stays on the scene. */
+    private async rollManualEncounter(override?: number): Promise<void> {
+        if (this.choiceInFlight) return;
+        this.choiceInFlight = true;
+        try {
+            const encounter = await this.rollSceneEncounter('manual', override);
+            if (!encounter) return;
+            new Notice(`Encounter: ${encounter.row.label}`);
+            await this.autosave(encounter.logLines);
+            await this.render();
+        } finally {
+            this.choiceInFlight = false;
+        }
     }
 
     // â”€â”€ Branch execution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1553,27 +1638,41 @@ export class CampaignView extends ItemView {
     private async applyChoice(branch: SceneBranch, outcome: 'success' | 'fail', rollTotal?: number): Promise<void> {
         if (!this.session) return;
 
-        // Apply outcomes (inventory, flags, party membership)
-        const previousItems = [...(this.session.partyItems ?? [])];
-        this.session = applyBranchOutcomes(branch, this.session);
-        this.ensureActiveActor(this.session);
-        await this.ensurePartyCharacterStats(this.session);
-        await this.syncPartyInventoryOwnership(this.session, previousItems);
-        const eventLogLine = await this.applyTriggeredEvent(branch.triggersEvent, branch.triggersEventId);
+        if (outcome === 'fail' && branch.failMode === 'loop') {
+            new Notice('Failed - try again!');
+            await this.autosave(`*${branch.label}* - failed (loop retry)`);
+            await this.render();
+            return;
+        }
+
+        // Apply outcomes (inventory, flags, party membership, tags)
+        const effectLines = await this.applySceneOutcomes(branch, previous => applyBranchOutcomes(branch, previous));
 
         // Determine target
         let target: string | undefined;
         if (outcome === 'success') {
             target = this.resolveSceneName(branch.targetSceneId, branch.target);
-        } else if (branch.failMode === 'loop') {
-            new Notice('Failed - try again!');
-            await this.autosave(`*${branch.label}* - failed (loop retry)`);
-            await this.render();
-            return;
         } else if (branch.failMode === 'scene') {
             target = this.resolveSceneName(branch.failSceneId, branch.fail);
         }
         // 'continue' — no navigation
+
+        const logEntries = [
+            rollTotal != null
+            ? `*${branch.label}* - rolled ${rollTotal} -> ${outcome}${target ? ` -> *${target}*` : ''}`
+            : `Chose *${branch.label}*${target ? ` -> *${target}*` : ''}`,
+            ...effectLines,
+        ];
+
+        // A choice that rolls the encounter table: a row with its own scene wins over the choice's target.
+        if (branch.rollsEncounter && outcome === 'success') {
+            const encounter = await this.rollSceneEncounter('choice');
+            if (encounter) {
+                logEntries.push(...encounter.logLines);
+                if (encounterLeadsToScene(encounter.row)) target = encounter.row.target;
+            }
+        }
+
         if (target && target !== 'continue' && !this.resolveSceneReference(target)) {
             // Nothing is logged or navigated for a missing target; the outcomes already applied are still saved.
             new Notice(`Scene "${target}" not found.`);
@@ -1582,25 +1681,74 @@ export class CampaignView extends ItemView {
             return;
         }
 
-        const logEntries = [
-            rollTotal != null
-            ? `*${branch.label}* - rolled ${rollTotal} -> ${outcome}${target ? ` -> *${target}*` : ''}`
-            : `Chose *${branch.label}*${target ? ` -> *${target}*` : ''}`,
-        ];
-        if (branch.revealsCompendiumEntry) logEntries.push(`Revealed lore: *${branch.revealsCompendiumEntry}*`);
-        if (branch.changesGroupStanding) {
-            const delta = branch.groupStandingDelta ?? 1;
-            logEntries.push(`Changed *${branch.changesGroupStanding}* standing by ${delta > 0 ? '+' : ''}${delta}`);
-        }
-        if (eventLogLine) logEntries.push(eventLogLine);
-
+        await this.autosave(logEntries);
         if (target && target !== 'continue') {
-            await this.autosave(logEntries);
             await this.doNavigate(target, true);
         } else {
-            await this.autosave(logEntries);
             await this.render();
         }
+    }
+
+    /**
+     * Applies the effects shared by choices and encounter rows: the session update, item ownership,
+     * Partylog tags and the linked timeline event. Returns the log lines describing them.
+     */
+    private async applySceneOutcomes(
+        fields: SceneOutcomeFields,
+        apply: (session: CampaignSession) => CampaignSession,
+    ): Promise<string[]> {
+        if (!this.session) return [];
+        const previousItems = [...(this.session.partyItems ?? [])];
+        this.session = apply(this.session);
+        this.ensureActiveActor(this.session);
+        await this.ensurePartyCharacterStats(this.session);
+        await this.syncPartyInventoryOwnership(this.session, previousItems);
+
+        const lines: string[] = [];
+        if (fields.revealsCompendiumEntry) lines.push(`Revealed lore: *${fields.revealsCompendiumEntry}*`);
+        if (fields.changesGroupStanding) {
+            const delta = fields.groupStandingDelta ?? 1;
+            lines.push(`Changed *${fields.changesGroupStanding}* standing by ${delta > 0 ? '+' : ''}${delta}`);
+        }
+        const tags = fields.tags ? extractTags(fields.tags).tags : [];
+        if (tags.length) {
+            const result = applyPartylogTagsToSession(this.session, tags, this.partylogContext());
+            if (result.changed) new Notice(result.summary.join('\n'));
+        }
+        const eventLogLine = await this.applyTriggeredEvent(fields.triggersEvent, fields.triggersEventId);
+        if (eventLogLine) lines.push(eventLogLine);
+        return lines;
+    }
+
+    /** The current scene's encounter table, when it has at least one row to roll on. */
+    private rollableEncounterTable(): EncounterTable | null {
+        return this.encounterTable && this.encounterTable.rows.length > 0 ? this.encounterTable : null;
+    }
+
+    /**
+     * Rolls the current scene's encounter table (or takes the DM's typed result), applies the row and
+     * returns it with its log lines. Does not log or navigate: the caller decides both.
+     */
+    private async rollSceneEncounter(
+        source: 'on-enter' | 'manual' | 'choice',
+        override?: number,
+    ): Promise<{ total: number; row: EncounterTableRow; logLines: string[] } | null> {
+        const table = this.rollableEncounterTable();
+        if (!table || !this.session) return null;
+        const { total, row } = override != null
+            ? { total: override, row: encounterRowFor(table, override) }
+            : rollOnEncounterTable(table);
+        const effectLines = await this.applySceneOutcomes(row, previous => applyEncounterResult(row, previous));
+        const sourceText = source === 'on-enter' ? 'on enter' : source === 'choice' ? 'from choice' : 'encounter';
+        const tags = row.tags ? extractTags(row.tags).tags : [];
+        const line = formatTable({
+            source: 'tbl',
+            expression: `${table.dice}=${total} (${sourceText})`,
+            outcome: `${row.label}${encounterLeadsToScene(row) ? ` -> ${row.target}` : ''}`,
+            tags,
+        });
+        this.lastEncounter = { sceneName: this.currentScene?.name ?? '', total, row };
+        return { total, row, logLines: [line, ...effectLines] };
     }
 
     // â”€â”€ Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1651,13 +1799,14 @@ export class CampaignView extends ItemView {
         await this.autosave(`Entered *${scene.name}*`);
 
         // On-enter encounter auto-roll
-        if (this.encounterTable?.trigger === 'on-enter') {
-            const hit = rollEncounterTable(this.encounterTable);
-            const logLine = `*On-enter encounter*: **${hit.label}**${hit.target !== 'continue' ? ` -> *${hit.target}*` : ''}`;
-            await this.autosave(logLine);
-            if (hit.target && hit.target !== 'continue') {
-                await this.enterScene(hit.target, true);
-                return;
+        if (this.rollableEncounterTable()?.trigger === 'on-enter') {
+            const encounter = await this.rollSceneEncounter('on-enter');
+            if (encounter) {
+                await this.autosave(encounter.logLines);
+                if (encounterLeadsToScene(encounter.row)) {
+                    await this.enterScene(encounter.row.target, true);
+                    return;
+                }
             }
         }
 

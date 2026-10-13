@@ -10246,6 +10246,24 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-branch-outcome.is-remove { color: var(--color-red); }
 .storyteller-branch-outcome.is-flag { color: var(--color-cyan); }
 .storyteller-branch-outcome.is-event { color: var(--color-yellow); }
+.storyteller-branch-outcome.is-standing { color: #b7791f; }
+.storyteller-branch-outcome.is-lore { color: var(--color-blue); }
+.storyteller-branch-outcome.is-tags { color: var(--text-muted); font-family: var(--font-monospace); }
+.storyteller-branch-outcome.is-encounter { color: var(--color-orange); }
+.storyteller-campaign-encounter { border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 0.75rem; margin: 0.75rem 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.storyteller-campaign-encounter-header { display: flex; align-items: center; gap: 0.5rem; }
+.storyteller-campaign-encounter-title { font-weight: 600; }
+.storyteller-campaign-encounter-rows { display: flex; flex-direction: column; gap: 0.25rem; }
+.storyteller-campaign-encounter-row { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.35rem 0.5rem; border-radius: 6px; }
+.storyteller-campaign-encounter-row.is-active { background: rgba(250,179,135,0.15); }
+.storyteller-campaign-encounter-range { font-weight: 600; color: var(--color-orange); min-width: 2.5rem; white-space: nowrap; }
+.storyteller-campaign-encounter-main { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.storyteller-campaign-encounter-label { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: baseline; }
+.storyteller-campaign-encounter-result { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; padding: 0.5rem; border-radius: 6px; background: var(--background-secondary); }
+.storyteller-campaign-encounter-result-roll { font-size: 1.25rem; font-weight: 700; color: var(--color-orange); }
+.storyteller-campaign-encounter-result-label { font-weight: 600; flex: 1; }
+.storyteller-campaign-encounter-actions { display: flex; gap: 0.5rem; justify-content: flex-end; align-items: center; }
+.storyteller-campaign-encounter-actions .storyteller-campaign-input.is-small { width: 5.5rem; }
 .storyteller-branch-empty { color: var(--text-muted); font-style: italic; font-size: 0.875rem; }
 .storyteller-encounter-block { border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 1rem; margin: 0.5rem 0; }
 .storyteller-encounter-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }

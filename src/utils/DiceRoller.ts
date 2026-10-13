@@ -42,9 +42,18 @@ export function resolveBranch(branch: SceneBranch, rollTotal: number): 'success'
  * If no row matches (gap in ranges), returns the last row as a fallback.
  */
 export function rollEncounterTable(table: EncounterTable): EncounterTableRow {
-    const result = roll(table.dice);
-    const match = table.rows.find(r => result >= r.min && result <= r.max);
-    return match ?? table.rows[table.rows.length - 1];
+    return rollOnEncounterTable(table).row;
+}
+
+/** Roll on an encounter table and return both the die result and the matching row. */
+export function rollOnEncounterTable(table: EncounterTable, override?: number): { total: number; row: EncounterTableRow } {
+    const total = override ?? roll(table.dice);
+    return { total, row: encounterRowFor(table, total) };
+}
+
+/** The row covering a die result. A gap in the ranges falls back to the last row. */
+export function encounterRowFor(table: EncounterTable, total: number): EncounterTableRow {
+    return table.rows.find(r => total >= r.min && total <= r.max) ?? table.rows[table.rows.length - 1];
 }
 
 /**
