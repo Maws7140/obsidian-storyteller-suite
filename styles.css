@@ -15421,7 +15421,10 @@ img.storyteller-timeline-calendar-icon {
 .workspace-leaf-content .view-content.storyteller-campaign-host,
 .storyteller-campaign-host { position: relative; padding: 0; overflow: hidden; }
 .storyteller-campaign-host > .storyteller-campaign-view { position: absolute; inset: 0; height: auto; }
-.storyteller-campaign-host > .storyteller-campaign-view.is-building { visibility: hidden; pointer-events: none; }
+/* Hidden with opacity, not visibility: the map's tile layer sets visibility: visible on its own
+   tiles and panes, which would show through a visibility-hidden parent and draw a second map
+   over the live one while the new screen loads. Children cannot undo a parent's opacity. */
+.storyteller-campaign-host > .storyteller-campaign-view.is-building { opacity: 0; pointer-events: none; z-index: -1; }
 .storyteller-campaign-players-flag { padding: 0 0.35rem; border-radius: 999px; background: var(--background-modifier-border); color: var(--text-muted); font-size: 0.7rem; font-weight: 700; }
 .storyteller-campaign-players-flag.is-vote { background: var(--color-green); color: var(--text-on-accent); }
 .storyteller-campaign-clock-share.is-shown { color: var(--interactive-accent); }
