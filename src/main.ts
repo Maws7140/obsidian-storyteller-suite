@@ -134,6 +134,7 @@ import { PARTYLOG_NAME } from './campaign/PartylogExport';
 import { PlayerScreenBus } from './campaign/PlayerPush';
 import { LORELOG_NAME } from './lore/WorldLog';
 import { buildCampaignSessionFrontmatter, normalizeCampaignSessionData } from './utils/CampaignModel';
+import { appendLogLines } from './campaign/PartylogSessionBridge';
 import { isSafeFrontmatterKey, readIconFromFrontmatter, resolveIconPropertyKeys, writeIconToFrontmatter } from './utils/EntityIcon';
 import type { IconPropertyKeys } from './utils/EntityIcon';
 
@@ -2641,7 +2642,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 							try {
 								targetSession.modified = new Date().toISOString();
 								await this.saveSession(targetSession);
-								await this.appendToSessionLog(targetSession.filePath!, `- ${value.trim()}`);
+								await this.appendToSessionLog(targetSession.filePath!, value.trim());
 								new Notice(`Added log entry to "${targetSession.name}".`);
 							} catch {
 								
@@ -7095,31 +7096,17 @@ export default class StorytellerSuitePlugin extends Plugin {
         return readSessionLogBody(content);
     }
 
-    /** Atomically appends log entries to the ## Session Log section of a session file. */
+    /**
+     * Atomically appends log entries to the end of the ## Session Log section of a session file.
+     * Written as plain lines, the same as the Partylog lines from the quick entry bar, so the log
+     * reads as one list and Partylog reads each line (a `- ` bullet hid `tbl:` and `(note: ...)`).
+     */
     async appendToSessionLogEntries(filePath: string, entries: string[]): Promise<void> {
-        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
-        if (!(file instanceof TFile)) return;
         const cleaned = entries
             .map(entry => String(entry ?? '').trim())
             .filter(Boolean);
         if (!cleaned.length) return;
-
-        await this.app.vault.process(file, (content: string) => {
-            const logHeader = '## Session Log';
-            const idx = content.indexOf(logHeader);
-            const rendered = cleaned.map(entry => `- ${entry}`).join('\n');
-            if (idx === -1) {
-                return `${content.trimEnd()}\n\n${logHeader}\n${rendered}\n`;
-            }
-
-            const section = findSessionLogSection(content) ?? { start: content.length, end: content.length };
-            const sectionStart = section.start;
-            const nextSection = section.end;
-
-            const existingBody = content.slice(sectionStart, nextSection).replace(/\s+$/, '');
-            const mergedBody = existingBody ? `${existingBody}\n${rendered}\n` : `${rendered}\n`;
-            return content.slice(0, sectionStart) + mergedBody + content.slice(nextSection);
-        });
+        await this.updateSessionLog(filePath, body => appendLogLines(body, cleaned));
     }
 
     /** Atomically appends a single log entry to the ## Session Log section of a session file. */

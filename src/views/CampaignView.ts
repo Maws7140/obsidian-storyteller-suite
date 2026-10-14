@@ -329,6 +329,15 @@ export function readSectionsFor(content: string): NoteSection[] {
     return all.filter(section => section.markdown.length > 0);
 }
 
+/** Written to the log when the Campaign view closes on a session. */
+const SESSION_CLOSED_LINE = 'Session closed.';
+
+/** The last non-empty line of a log body, without an old-style `- ` bullet. */
+export function lastLogLine(body: string): string {
+    const lines = (body ?? '').split('\n').map(line => line.trim()).filter(Boolean);
+    return (lines[lines.length - 1] ?? '').replace(/^- /, '');
+}
+
 /** Which sidebar sections a set of bridge summary lines touches. */
 function partsAffectedBy(summary: readonly string[]): SidebarPart[] {
     const parts: SidebarPart[] = ['log'];
@@ -481,11 +490,27 @@ export class CampaignView extends ItemView {
         if (pending) await this.loadSession(pending.session, pending.startingScene, { isNew: pending.isNew });
         await this.render();
     }
+    /** Set by the first onClose, so a second call waits on it instead of closing again. */
+    private closing: Promise<void> | null = null;
+
     async onClose(): Promise<void> {
+        this.closing ??= this.closeSession();
+        await this.closing;
+    }
+
+    private async closeSession(): Promise<void> {
         this.destroyCampaignBoardRenderer();
-        if (this.session) {
-            await this.autosave('Session closed.');
-            await this.flushAutosaveNow();
+        const session = this.session;
+        if (!session) return;
+        await this.autosave();
+        await this.flushAutosaveNow();
+        if (!session.filePath) return;
+        // Checked inside the write, so a second close (another tab on this session, or Obsidian
+        // closing the view twice) finds the line already there and adds nothing.
+        try {
+            await this.writeSessionLog(body => lastLogLine(body) === SESSION_CLOSED_LINE ? body : appendLogLines(body, [SESSION_CLOSED_LINE]), session);
+        } catch {
+            // writeSessionLog has told the DM; nothing more to do while closing.
         }
     }
 
