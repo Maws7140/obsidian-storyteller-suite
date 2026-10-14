@@ -3802,7 +3802,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 		void workspace.revealLeaf(leaf);
 	}
 
-    /** Activate or focus the Campaign view, optionally pre-loading a session. */
     /** Opens (or reveals) the Lorelog dashboard in a tab. */
     async activateLoreDashboard(): Promise<void> {
         const { workspace } = this.app;
@@ -3828,22 +3827,52 @@ export default class StorytellerSuitePlugin extends Plugin {
         void workspace.revealLeaf(leaf);
     }
 
-    async activateCampaignView(session?: CampaignSession, startingScene?: import('./types').Scene): Promise<void> {
+    /** A session handed to a Campaign tab that is still opening; it loads it before its first draw. */
+    private pendingCampaignOpen: { session: CampaignSession; startingScene?: Scene; isNew?: boolean } | null = null;
+
+    /** Called by a Campaign view as it opens. */
+    takePendingCampaignOpen(): { session: CampaignSession; startingScene?: Scene; isNew?: boolean } | null {
+        const pending = this.pendingCampaignOpen;
+        this.pendingCampaignOpen = null;
+        return pending;
+    }
+
+    /**
+     * Activate or focus the Campaign view, optionally loading a session. `isNew` marks a session
+     * just created, which enters its starting scene; any other session resumes where it was left.
+     */
+    async activateCampaignView(session?: CampaignSession, startingScene?: Scene, options: { isNew?: boolean } = {}): Promise<void> {
         const { workspace } = this.app;
-        let leaf: WorkspaceLeaf | null = null;
-        const leaves = workspace.getLeavesOfType(VIEW_TYPE_CAMPAIGN);
-        if (leaves.length > 0) {
-            leaf = leaves[0];
-        } else {
-            leaf = workspace.getLeaf('tab');
-            if (leaf) await leaf.setViewState({ type: VIEW_TYPE_CAMPAIGN, active: true });
+        const existing = workspace.getLeavesOfType(VIEW_TYPE_CAMPAIGN)[0];
+        if (existing) {
+            // A tab restored at startup is a placeholder until shown; load the real view first.
+            await existing.loadIfDeferred();
+            void workspace.revealLeaf(existing);
+            if (session && existing.view instanceof CampaignView) {
+                await existing.view.loadSession(session, startingScene, options);
+                await existing.view.render();
+            }
+            return;
         }
-        if (!leaf) return;
+
+        const leaf = workspace.getLeaf('tab');
+        // The new view loads the session as it opens, so the session list is never drawn first.
+        this.pendingCampaignOpen = session ? { session, startingScene, isNew: options.isNew } : null;
+        let unclaimed: { session: CampaignSession; startingScene?: Scene; isNew?: boolean } | null = null;
+        try {
+            await leaf.setViewState({ type: VIEW_TYPE_CAMPAIGN, active: true });
+        } finally {
+            unclaimed = this.pendingCampaignOpen;
+            this.pendingCampaignOpen = null;
+        }
         void workspace.revealLeaf(leaf);
-        if (session) {
-            const view = leaf.view as CampaignView;
-            await view.loadSession(session, startingScene);
-            await view.render();
+        // Not opened yet (Obsidian deferred it): load the session the usual way once it is.
+        if (unclaimed) {
+            await leaf.loadIfDeferred();
+            if (leaf.view instanceof CampaignView) {
+                await leaf.view.loadSession(unclaimed.session, unclaimed.startingScene, { isNew: unclaimed.isNew });
+                await leaf.view.render();
+            }
         }
     }
 
@@ -3878,8 +3907,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         new CampaignSessionModal(
             this.app,
             this,
-            (session) => { void (async () => {
-                await this.activateCampaignView(session, preferredStartingScene);
+            (session, isNew) => { void (async () => {
+                await this.activateCampaignView(session, preferredStartingScene, { isNew });
             })(); },
             preferredStartingScene
         ).open();

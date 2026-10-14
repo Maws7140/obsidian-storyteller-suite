@@ -476,6 +476,9 @@ export class CampaignView extends ItemView {
             const bar = this.sidebarPartEls.get('log');
             if (bar && event.target instanceof Node && !bar.contains(event.target)) this.setQuickOpen(false);
         });
+        // Opened to resume or start a session: go straight to play, without drawing the session list first.
+        const pending = this.plugin.takePendingCampaignOpen();
+        if (pending) await this.loadSession(pending.session, pending.startingScene, { isNew: pending.isNew });
         await this.render();
     }
     async onClose(): Promise<void> {
@@ -488,7 +491,12 @@ export class CampaignView extends ItemView {
 
     // â”€â”€ External API (called by main.ts) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    async loadSession(session: CampaignSession, startingScene?: Scene): Promise<void> {
+    /**
+     * Loads a session without drawing it; the caller renders once afterwards. A resumed session
+     * picks up in the scene it was left in, as it was. A new session, or one opened on a given
+     * scene, enters that scene: it is logged, put on the timeline and rolls on-enter encounters.
+     */
+    async loadSession(session: CampaignSession, startingScene?: Scene, options: { isNew?: boolean } = {}): Promise<void> {
         // Edits still waiting on the debounce belong to the session being left: write them before it is replaced.
         await this.flushAutosaveNow();
         this.session = { ...session };
@@ -507,11 +515,40 @@ export class CampaignView extends ItemView {
         this.partyStatsCacheKey = '';
         try { this.allScenes = await this.plugin.listScenes(); } catch { this.allScenes = []; }
 
+        this.currentScene = null;
+        this.sceneBody = '';
+        this.branches = [];
+        this.encounterTable = null;
+        this.locationData = null;
+        this.readSections = [];
+
         const startingRef = startingScene?.id ?? startingScene?.name ?? session.currentSceneId ?? session.currentSceneName;
         const resolvedScene = startingRef ? this.resolveSceneReference(startingRef) : null;
-        if (resolvedScene) {
-            await this.doNavigate(resolvedScene.name, false);
+        if (!resolvedScene) return;
+        if (startingScene || options.isNew) {
+            await this.doNavigate(resolvedScene.name, false, { render: false });
+        } else {
+            await this.resumeScene(resolvedScene);
         }
+    }
+
+    /**
+     * Back into the scene a session was left in. Nothing about entering it runs again: no new log
+     * header or timeline event, no encounter roll, and the party token and board map stay put.
+     */
+    private async resumeScene(scene: Scene): Promise<void> {
+        if (!this.session) return;
+        this.boardInspectorOpen = false;
+        this.currentScene = scene;
+        await this.loadCurrentScene();
+        await this.loadSceneLocation();
+        if (this.session.activeMapId) {
+            this.selectedBoardLocationId = this.locationData ? this.getLocationKey(this.locationData) : null;
+        } else {
+            await this.syncActiveCampaignBoardForScene();
+        }
+        this.session.currentSceneName = scene.name;
+        this.session.currentSceneId = scene.id;
     }
 
     /**
@@ -530,6 +567,10 @@ export class CampaignView extends ItemView {
         this.boardRenderToken++;
         this.boardLocations = [];
 
+        // First draw: nothing to keep on screen while the hidden copy loads, so say it is loading.
+        if (!this.viewRoot && !host.querySelector(':scope > .storyteller-campaign-loading')) {
+            host.createDiv({ cls: 'storyteller-campaign-loading', text: 'Loading campaign…' });
+        }
         const next = host.createDiv('storyteller-campaign-view is-building');
         this.buildingRoot = next;
         try {
@@ -596,7 +637,7 @@ export class CampaignView extends ItemView {
 
         // New session form
         wrap.createDiv({ cls: 'storyteller-campaign-section-label', text: 'New Session' });
-        await this.renderNewSessionForm(wrap);
+        await this.renderNewSessionForm(wrap, sessions);
     }
 
     private renderSessionCard(container: HTMLElement, session: CampaignSession): void {
@@ -636,7 +677,7 @@ export class CampaignView extends ItemView {
         })(); });
     }
 
-    private async renderNewSessionForm(container: HTMLElement): Promise<void> {
+    private async renderNewSessionForm(container: HTMLElement, existingSessions: CampaignSession[]): Promise<void> {
         const form = container.createDiv('storyteller-campaign-form');
 
         // Session name
@@ -681,7 +722,6 @@ export class CampaignView extends ItemView {
 
         // Campaign: which timeline fork play records into, the in-world date, and whether time moves.
         const calendar = new CalendarRegistry(this.plugin).getActiveCalendar();
-        const existingSessions = await this.plugin.listSessions().catch(() => [] as CampaignSession[]);
         const campaigns = knownCampaigns(existingSessions, this.plugin.getTimelineForks(), this.plugin.getTimelineTracks());
         const setup = defaultCampaignSetup(campaigns, this.plugin.getActiveStory()?.name);
         renderCampaignSetupFields(form, setup, campaigns, calendar);
@@ -721,7 +761,7 @@ export class CampaignView extends ItemView {
             };
             await applyCampaignSetup(this.plugin, setup, newSession, calendar);
             await this.plugin.saveSession(newSession);
-            await this.loadSession(newSession);
+            await this.loadSession(newSession, undefined, { isNew: true });
             await this.render();
         })(); });
     }
@@ -3058,17 +3098,18 @@ export class CampaignView extends ItemView {
      * Jumps to a scene. Ignored while another scene change (or Back) is still running, so a double
      * tap does not push history twice or write two scene headers.
      */
-    private async doNavigate(sceneName: string, pushHistory: boolean): Promise<void> {
+    private async doNavigate(sceneName: string, pushHistory: boolean, options: { render?: boolean } = {}): Promise<void> {
         if (this.navigationInFlight) return;
         this.navigationInFlight = true;
         try {
-            await this.enterScene(sceneName, pushHistory);
+            await this.enterScene(sceneName, pushHistory, options);
         } finally {
             this.navigationInFlight = false;
         }
     }
 
-    private async enterScene(sceneName: string, pushHistory: boolean): Promise<void> {
+    /** Pass render: false when the caller draws the view itself afterwards. */
+    private async enterScene(sceneName: string, pushHistory: boolean, options: { render?: boolean } = {}): Promise<void> {
         if (!this.session) return;
         if (!this.allScenes.length) {
             try { this.allScenes = await this.plugin.listScenes(); } catch { return; }
@@ -3097,13 +3138,13 @@ export class CampaignView extends ItemView {
             if (encounter) {
                 await this.autosave(encounter.logLines);
                 if (encounterLeadsToScene(encounter.row)) {
-                    await this.enterScene(encounter.row.target, true);
+                    await this.enterScene(encounter.row.target, true, options);
                     return;
                 }
             }
         }
 
-        await this.render();
+        if (options.render !== false) await this.render();
     }
 
     private async navigateBack(): Promise<void> {

@@ -13,7 +13,7 @@ import { confirmWithModal } from './ui/ConfirmModal';
 
 export class CampaignSessionModal extends ResponsiveModal {
     private plugin: StorytellerSuitePlugin;
-    private onSessionSelected: (session: CampaignSession) => void;
+    private onSessionSelected: (session: CampaignSession, isNew?: boolean) => void;
     private preferredStartingScene?: import('../types').Scene;
 
     private sessions: CampaignSession[] = [];
@@ -23,7 +23,7 @@ export class CampaignSessionModal extends ResponsiveModal {
     constructor(
         app: App,
         plugin: StorytellerSuitePlugin,
-        onSessionSelected: (session: CampaignSession) => void,
+        onSessionSelected: (session: CampaignSession, isNew?: boolean) => void,
         preferredStartingScene?: import('../types').Scene
     ) {
         super(app);
@@ -208,7 +208,7 @@ export class CampaignSessionModal extends ResponsiveModal {
             await this.plugin.saveSession(session);
             new Notice(`Session "${session.name}" created.`);
             this.close();
-            this.onSessionSelected(session);
+            this.onSessionSelected(session, true);
         })(); });
     })(); }
 
