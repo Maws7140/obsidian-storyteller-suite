@@ -7083,11 +7083,15 @@ export default class StorytellerSuitePlugin extends Plugin {
         }
     }
 
-    /** Returns the raw content of the ## Session Log section of a session file. */
+    /**
+     * Returns the raw content of the ## Session Log section of a session file. Read from disk, not
+     * the cache: the Campaign view shows the log right after writing to it, and the cached copy can
+     * still hold the text from before that write.
+     */
     async loadSessionLog(filePath: string): Promise<string> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (!(file instanceof TFile)) return '';
-        const content = await this.app.vault.cachedRead(file);
+        const content = await this.app.vault.read(file);
         return readSessionLogBody(content);
     }
 
@@ -7130,7 +7134,8 @@ export default class StorytellerSuitePlugin extends Plugin {
      */
     async updateSessionLog(filePath: string, update: (body: string) => string): Promise<void> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
-        if (!(file instanceof TFile)) return;
+        // Fail rather than drop the write: the caller tells the DM and keeps the typed entry.
+        if (!(file instanceof TFile)) throw new Error(`Session note "${filePath}" was not found.`);
 
         await this.app.vault.process(file, (content: string) => {
             const logHeader = '## Session Log';

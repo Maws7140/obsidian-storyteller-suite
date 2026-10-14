@@ -4772,8 +4772,17 @@ export class CampaignView extends ItemView {
     private async writeSessionLog(update: (body: string) => string, session: CampaignSession | null = this.session): Promise<void> {
         if (!session) return;
         await this.flushAutosaveNow();
+        // A session that was never saved has no note yet: saving it creates the note the line goes into.
+        if (!session.filePath) {
+            try {
+                await this.plugin.saveSession(session);
+            } catch (error) {
+                this.notifySaveFailure(error, 'Could not create the session note');
+                throw error;
+            }
+        }
         const filePath = session.filePath;
-        if (!filePath) return;
+        if (!filePath) throw new Error('The session has no note to write to.');
         // A failed link must not poison the chain for later writes, so each one starts after the last settles.
         this.flushChain = this.flushChain.catch(() => undefined).then(() => this.plugin.updateSessionLog(filePath, update));
         try {
@@ -5336,15 +5345,20 @@ export class CampaignView extends ItemView {
         } finally {
             this.quickSubmitInFlight = false;
         }
-        const result = applyPartylogTagsToSession(session, entryTags(parsePartylogLine(line)), this.partylogContext());
-        this.flushChain = this.flushChain.catch(() => undefined).then(() => this.plugin.saveSession(session));
+        // The line is in the note now. Whatever its tags do, the log on screen must show it.
+        let summary: string[] = [];
+        let changed = false;
         try {
+            const result = applyPartylogTagsToSession(session, entryTags(parsePartylogLine(line)), this.partylogContext());
+            summary = result.summary;
+            changed = result.changed;
+            this.flushChain = this.flushChain.catch(() => undefined).then(() => this.plugin.saveSession(session));
             await this.flushChain;
         } catch (error) {
             this.notifySaveFailure(error, 'Session not saved');
         }
-        if (result.changed) new Notice(result.summary.join('\n'));
-        await this.refreshSidebarParts(partsAffectedBy(result.summary));
+        if (changed) new Notice(summary.join('\n'));
+        await this.refreshSidebarParts(partsAffectedBy(summary));
         this.focusQuickEntry();
     }
 
