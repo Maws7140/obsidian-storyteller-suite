@@ -15509,9 +15509,35 @@ img.storyteller-timeline-calendar-icon {
 .storyteller-campaign-quickbar { position: absolute; left: 60px; right: 12px; bottom: 10px; z-index: 640; display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 14px; background: var(--sts-hud-bg); backdrop-filter: blur(8px); border: 1px solid var(--sts-hud-border); box-shadow: var(--sts-hud-shadow); }
 .storyteller-campaign-stage-col:not(.has-board) .storyteller-campaign-quickbar { left: 12px; }
 .storyteller-campaign-quickbar .storyteller-campaign-quick { flex: 1; min-width: 0; margin: 0; padding: 0; border: none; background: none; }
-.storyteller-campaign-quickbar:not(:focus-within) .storyteller-campaign-quick { flex-direction: row; align-items: center; flex-wrap: nowrap; }
-.storyteller-campaign-quickbar:not(:focus-within) .storyteller-campaign-quick > :is(.storyteller-campaign-quick-actors, .storyteller-campaign-quick-npc, .storyteller-campaign-quick-tags, .storyteller-campaign-quick-preview) { display: none; }
-.storyteller-campaign-quickbar:not(:focus-within) .storyteller-campaign-quick-line { flex: 1; min-width: 160px; }
+/* Folded: the summary chip, the line and Add. Open: who, type, extra fields, line, preview and tags. */
+.storyteller-campaign-quickbar:not(.is-open) .storyteller-campaign-quick { flex-direction: row; align-items: center; flex-wrap: nowrap; }
+.storyteller-campaign-quickbar:not(.is-open) .storyteller-campaign-quick > :not(.storyteller-campaign-quick-summary, .storyteller-campaign-quick-line) { display: none; }
+.storyteller-campaign-quickbar:not(.is-open) .storyteller-campaign-quick-line { flex: 1; min-width: 160px; flex-wrap: nowrap; }
+.storyteller-campaign-quickbar.is-open { align-items: flex-end; padding: 10px 12px; }
+.storyteller-campaign-quickbar.is-open .storyteller-campaign-quick { gap: 8px; }
+.storyteller-campaign-quickbar.is-open .storyteller-campaign-quick-summary { display: none; }
+.storyteller-campaign-quickbar.is-open .storyteller-campaign-quickbar-last { padding-bottom: 6px; }
+.storyteller-campaign-quickbar .storyteller-campaign-quick-label { flex: 0 0 44px; }
+.storyteller-campaign-quickbar .storyteller-campaign-quick-roll,
+.storyteller-campaign-quickbar .storyteller-campaign-quick-line,
+.storyteller-campaign-quickbar .storyteller-campaign-quick-preview { padding-left: calc(44px + 0.3rem); }
+.storyteller-campaign-quickbar .storyteller-campaign-quick-preview { display: flex; align-items: baseline; gap: 0.3rem; padding-left: 0; }
+.storyteller-campaign-quickbar.is-open .storyteller-campaign-quick-line { padding-left: calc(44px + 0.3rem); }
+.storyteller-campaign-quickbar:not(.is-open) .storyteller-campaign-quick-line { padding-left: 0; }
+.storyteller-campaign-view button.storyteller-campaign-quick-summary { flex: 0 1 auto; max-width: 40%; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--sts-hud-border); background: var(--background-secondary); box-shadow: none; color: var(--text-normal); font-size: 0.78rem; cursor: pointer; white-space: nowrap; }
+.storyteller-campaign-view button.storyteller-campaign-quick-summary:hover { background: var(--background-modifier-hover); }
+.storyteller-campaign-quick-summary-who { overflow: hidden; text-overflow: ellipsis; }
+.storyteller-campaign-quick-summary-mode { color: var(--interactive-accent); font-weight: 600; }
+.storyteller-campaign-quickbar .storyteller-campaign-quick-npc-input { width: 120px; }
+.storyteller-campaign-quickbar select.storyteller-campaign-quick-select { width: auto; min-width: 0; flex: 0 0 auto; height: auto; padding-top: 2px; padding-bottom: 2px; font-size: 0.75rem; }
+.storyteller-campaign-quick-field { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; color: var(--text-muted); }
+.storyteller-campaign-quick-field input { width: 124px; }
+.storyteller-campaign-quickbar .storyteller-campaign-quick-tag-name { width: 140px; }
+.storyteller-campaign-quick-hint { font-size: 0.7rem; color: var(--text-faint); }
+.storyteller-campaign-view button.storyteller-campaign-quick-chip { padding: 2px 9px; border-radius: 999px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); box-shadow: none; color: var(--text-normal); font-size: 0.75rem; }
+.storyteller-campaign-view button.storyteller-campaign-quick-chip.is-active { border-color: var(--interactive-accent); background: color-mix(in srgb, var(--interactive-accent) 22%, transparent); }
+.storyteller-campaign-view button.storyteller-campaign-quick-mode { padding: 2px 9px; border-radius: 6px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); box-shadow: none; color: var(--text-normal); font-family: inherit; font-size: 0.75rem; }
+.storyteller-campaign-view button.storyteller-campaign-quick-mode.is-active { background: var(--interactive-accent); border-color: var(--interactive-accent); color: var(--text-on-accent); }
 .storyteller-campaign-quickbar-last { max-width: 32%; font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .storyteller-campaign-quickbar-last:hover { color: var(--text-normal); }
 

@@ -34,6 +34,8 @@ interface FakeEl {
     setText(text: string): void;
     toggleClass(cls: string, on: boolean): void;
     empty(): void;
+    focus(): void;
+    querySelector(selector: string): FakeEl | null;
     createDiv(cls?: string): FakeEl;
     createSpan(opts?: string | { cls?: string; text?: string }): FakeEl;
     createEl(tag: string, opts?: { cls?: string; text?: string; attr?: Record<string, string> }): FakeEl;
@@ -54,6 +56,8 @@ function fakeEl(tag = 'div', opts: { text?: string; attr?: Record<string, string
         setText(text) { el.text = text; },
         toggleClass() {},
         empty() { el.children = []; },
+        focus() {},
+        querySelector() { return null; },
         createDiv() { const child = fakeEl('div'); el.children.push(child); return child; },
         createSpan(opts) { const child = fakeEl('span', { text: typeof opts === 'string' ? undefined : opts?.text }); el.children.push(child); return child; },
         createEl(tag, opts) { const child = fakeEl(tag, opts); el.children.push(child); return child; },

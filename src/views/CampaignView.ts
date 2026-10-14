@@ -223,13 +223,13 @@ interface TagNameCache {
 const TAG_DATALIST_ID = 'storyteller-campaign-tag-names';
 
 const QUICK_MODES: ReadonlyArray<{ mode: QuickMode; label: string; hint: string }> = [
-    { mode: 'action', label: '@ Action', hint: 'Action by the selected actor. Leave none selected for an unattributed action.' },
-    { mode: 'assist', label: '@ Assist', hint: 'Assist: select two actors, the leader first.' },
-    { mode: 'group', label: '@ Group', hint: 'Group action: select two or more actors.' },
-    { mode: 'world', label: '! World', hint: 'World event: the game world acts.' },
-    { mode: 'roll', label: 'd: Roll', hint: 'Roll and outcome, attributed to the selected actors.' },
-    { mode: 'consequence', label: '=> Result', hint: 'Consequence of the last action or roll.' },
-    { mode: 'note', label: '( ) Note', hint: 'Note, rule, out-of-character or safety entry.' },
+    { mode: 'action', label: 'Action', hint: 'Action by the selected actor. Leave none selected for an unattributed action.' },
+    { mode: 'assist', label: 'Assist', hint: 'Assist: select two actors, the leader first.' },
+    { mode: 'group', label: 'Group', hint: 'Group action: select two or more actors.' },
+    { mode: 'world', label: 'World event', hint: 'World event: the game world acts.' },
+    { mode: 'roll', label: 'Roll', hint: 'Roll and outcome, attributed to the selected actors.' },
+    { mode: 'consequence', label: 'Result', hint: 'Consequence of the last action or roll.' },
+    { mode: 'note', label: 'Note', hint: 'Note, rule, out-of-character or safety entry.' },
 ];
 
 const NOTE_KINDS: ReadonlyArray<{ value: QuickNoteKind; label: string }> = [
@@ -429,6 +429,11 @@ export class CampaignView extends ItemView {
     private quickInputEl: HTMLInputElement | null = null;
     /** True from the first submit until its line is written, so repeat submits are ignored. */
     private quickSubmitInFlight = false;
+    /**
+     * The quick entry bar shows its actor, type and tag rows. An explicit state rather than :focus-within,
+     * because picking a chip rebuilds the bar and drops focus, which used to fold it mid-entry.
+     */
+    private quickOpen = false;
     /** True while a branch choice is being applied. */
     private choiceInFlight = false;
     /** True while a party item is being used, so a repeat tap does not apply it again. */
@@ -465,7 +470,14 @@ export class CampaignView extends ItemView {
 
     getIcon():        string { return 'swords'; }
 
-    async onOpen():  Promise<void> { await this.render(); }
+    async onOpen():  Promise<void> {
+        this.registerDomEvent(this.containerEl, 'pointerdown', (event) => {
+            if (!this.quickOpen) return;
+            const bar = this.sidebarPartEls.get('log');
+            if (bar && event.target instanceof Node && !bar.contains(event.target)) this.setQuickOpen(false);
+        });
+        await this.render();
+    }
     async onClose(): Promise<void> {
         this.destroyCampaignBoardRenderer();
         if (this.session) {
@@ -1569,14 +1581,16 @@ export class CampaignView extends ItemView {
     private async renderQuickBar(stage: HTMLElement, session: CampaignSession): Promise<void> {
         const bar = stage.createDiv('storyteller-campaign-quickbar');
         bar.setAttribute('data-sts-part', 'quick-bar');
+        bar.addEventListener('focusin', () => this.setQuickOpen(true));
         await this.fillQuickBar(bar, session);
         this.sidebarPartEls.set('log', bar);
     }
 
     private async fillQuickBar(bar: HTMLElement, session: CampaignSession): Promise<void> {
         bar.empty();
+        bar.toggleClass('is-open', this.quickOpen);
         this.renderQuickEntry(bar, session);
-        const last = bar.createDiv('storyteller-campaign-quickbar-last');
+        const last = bar.createDiv({ cls: 'storyteller-campaign-quickbar-last', attr: { title: 'Last log entry. Click to open the log.' } });
         const lines = await this.recentLogLines(session, 1);
         last.setText(lines[0] ?? (session.filePath ? 'No entries yet.' : 'Not yet saved. The first entry creates the session note.'));
         last.addEventListener('click', () => {
@@ -4971,6 +4985,11 @@ export class CampaignView extends ItemView {
         await this.refreshSidebarParts(partsAffectedBy(result.summary));
     }
 
+    private setQuickOpen(open: boolean): void {
+        this.quickOpen = open;
+        this.sidebarPartEls.get('log')?.toggleClass('is-open', open);
+    }
+
     private focusQuickEntry(): void {
         this.sidebarPartEls.get('log')?.querySelector<HTMLInputElement>('.storyteller-campaign-quick-input')?.focus();
     }
@@ -4988,20 +5007,45 @@ export class CampaignView extends ItemView {
     private renderQuickEntryBody(wrap: HTMLElement, session: CampaignSession): void {
         wrap.empty();
         const q = this.quick;
-        const rerender = () => this.renderQuickEntryBody(wrap, session);
+        // A chip click rebuilds the bar; focus goes back to the field the DM types in next.
+        const rerender = () => {
+            this.renderQuickEntryBody(wrap, session);
+            const next = q.mode === 'roll' && !q.rollExpression
+                ? wrap.querySelector<HTMLInputElement>('.storyteller-campaign-quick-roll input')
+                : this.quickInputEl;
+            next?.focus({ preventScroll: true });
+        };
+        const modeDef = QUICK_MODES.find(def => def.mode === q.mode) ?? QUICK_MODES[0];
 
-        // Actors: GM/World clears the selection, PCs and added NPCs toggle in order.
+        // Folded: one chip says who acts and what kind of line it is. Clicking it opens the bar.
+        const summary = wrap.createEl('button', {
+            cls: 'storyteller-campaign-quick-summary',
+            attr: { type: 'button', 'aria-label': 'Choose who acts and the entry type' },
+        });
+        summary.createSpan({ cls: 'storyteller-campaign-quick-summary-who', text: q.actors.length ? q.actors.join(', ') : 'Nobody' });
+        summary.createSpan({ cls: 'storyteller-campaign-quick-summary-mode', text: modeDef.label });
+        summary.addEventListener('click', () => {
+            this.setQuickOpen(true);
+            this.quickInputEl?.focus({ preventScroll: true });
+        });
+
+        // Who acts: nobody (the GM or the world), party members and NPCs, in the order picked.
         const actorRow = wrap.createDiv('storyteller-campaign-quick-actors');
-        const worldChip = actorRow.createEl('button', { cls: 'storyteller-campaign-quick-chip', text: 'World' });
-        if (q.actors.length === 0) worldChip.addClass('is-active');
-        worldChip.addEventListener('click', () => { q.actors = []; rerender(); });
+        actorRow.createSpan({ cls: 'storyteller-campaign-quick-label', text: 'Who' });
+        const nobodyChip = actorRow.createEl('button', {
+            cls: 'storyteller-campaign-quick-chip',
+            text: 'Nobody',
+            attr: { type: 'button', title: 'No one in particular: the world or the narrator' },
+        });
+        if (q.actors.length === 0) nobodyChip.addClass('is-active');
+        nobodyChip.addEventListener('click', () => { q.actors = []; rerender(); });
 
         for (const name of Array.from(new Set([...(session.partyCharacterNames ?? []), ...this.quickNpcs]))) {
             const order = q.actors.indexOf(name);
-            const chip = actorRow.createEl('button', { cls: 'storyteller-campaign-quick-chip', text: name });
+            const chip = actorRow.createEl('button', { cls: 'storyteller-campaign-quick-chip', text: name, attr: { type: 'button' } });
             if (order >= 0) {
                 chip.addClass('is-active');
-                chip.createSpan({ cls: 'storyteller-campaign-quick-order', text: String(order + 1) });
+                if (q.actors.length > 1) chip.createSpan({ cls: 'storyteller-campaign-quick-order', text: String(order + 1) });
             }
             chip.addEventListener('click', () => {
                 q.actors = order >= 0 ? q.actors.filter(actor => actor !== name) : [...q.actors, name];
@@ -5009,14 +5053,15 @@ export class CampaignView extends ItemView {
             });
         }
 
-        const npcRow = wrap.createDiv('storyteller-campaign-quick-npc');
-        const npcInput = npcRow.createEl('input', {
-            cls: 'storyteller-campaign-input is-small',
-            attr: { type: 'text', placeholder: 'Actor not in the party', 'aria-label': 'Add an actor not in the party' },
+        const npcInput = actorRow.createEl('input', {
+            cls: 'storyteller-campaign-input is-small storyteller-campaign-quick-npc-input',
+            attr: { type: 'text', placeholder: 'Someone else', 'aria-label': 'Add an actor not in the party' },
         });
         npcInput.value = q.npcDraft;
         npcInput.addEventListener('input', () => { q.npcDraft = npcInput.value; });
-        const addNpc = () => {
+        npcInput.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
             const name = npcInput.value.trim();
             if (!name) return;
             if (!this.quickNpcs.some(existing => this.normalizeName(existing) === this.normalizeName(name))) {
@@ -5025,20 +5070,16 @@ export class CampaignView extends ItemView {
             if (!q.actors.includes(name)) q.actors = [...q.actors, name];
             q.npcDraft = '';
             rerender();
-        };
-        npcInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') { event.preventDefault(); addNpc(); }
         });
-        npcRow.createEl('button', { cls: 'storyteller-campaign-quick-chip', text: 'Add actor' })
-            .addEventListener('click', addNpc);
 
-        // Entry modes
+        // Entry type
         const modes = wrap.createDiv('storyteller-campaign-quick-modes');
+        modes.createSpan({ cls: 'storyteller-campaign-quick-label', text: 'Type' });
         for (const def of QUICK_MODES) {
             const button = modes.createEl('button', {
                 cls: 'storyteller-campaign-quick-mode',
                 text: def.label,
-                attr: { title: def.hint, 'aria-pressed': String(q.mode === def.mode) },
+                attr: { type: 'button', title: def.hint, 'aria-pressed': String(q.mode === def.mode) },
             });
             if (q.mode === def.mode) button.addClass('is-active');
             button.addEventListener('click', () => {
@@ -5053,32 +5094,40 @@ export class CampaignView extends ItemView {
 
         let updatePreview: () => void = () => undefined;
 
-        if (q.mode === 'note') {
-            const select = wrap.createEl('select', {
-                cls: 'storyteller-campaign-input is-small',
-                attr: { 'aria-label': 'Note type' },
-            });
-            for (const option of NOTE_KINDS) select.createEl('option', { value: option.value, text: option.label });
-            select.value = q.noteKind;
-            select.addEventListener('change', () => {
-                q.noteKind = select.value as QuickNoteKind;
-                updatePreview();
-            });
-        }
-
-        if (q.mode === 'roll') {
-            const rollRow = wrap.createDiv('storyteller-campaign-quick-roll');
-            const bindRollField = (placeholder: string, label: string, value: string, store: (next: string) => void) => {
-                const field = rollRow.createEl('input', {
-                    cls: 'storyteller-campaign-input is-small',
-                    attr: { type: 'text', placeholder, 'aria-label': label },
+        if (q.mode === 'note' || q.mode === 'roll') {
+            const extra = wrap.createDiv('storyteller-campaign-quick-roll');
+            if (q.mode === 'note') {
+                const select = extra.createEl('select', {
+                    cls: 'dropdown storyteller-campaign-quick-select',
+                    attr: { 'aria-label': 'Note type' },
                 });
-                field.value = value;
-                field.addEventListener('input', () => { store(field.value); updatePreview(); });
-            };
-            bindRollField('d20+3=17', 'Roll expression', q.rollExpression, next => { q.rollExpression = next; });
-            bindRollField('DC 15 or AC 14', 'Target', q.rollVs, next => { q.rollVs = next; });
-            bindRollField('Success', 'Outcome', q.rollOutcome, next => { q.rollOutcome = next; });
+                for (const option of NOTE_KINDS) select.createEl('option', { value: option.value, text: option.label });
+                select.value = q.noteKind;
+                select.addEventListener('change', () => {
+                    q.noteKind = select.value as QuickNoteKind;
+                    updatePreview();
+                });
+            } else {
+                const bindRollField = (label: string, placeholder: string, value: string, store: (next: string) => void) => {
+                    const field = extra.createEl('label', { cls: 'storyteller-campaign-quick-field' });
+                    field.createSpan({ text: label });
+                    const input = field.createEl('input', {
+                        cls: 'storyteller-campaign-input is-small',
+                        attr: { type: 'text', placeholder },
+                    });
+                    input.value = value;
+                    input.addEventListener('input', () => { store(input.value); updatePreview(); });
+                    input.addEventListener('keydown', (event) => {
+                        if (event.key === 'Enter' && !event.isComposing) {
+                            event.preventDefault();
+                            void this.submitQuickEntry().catch(() => undefined);
+                        }
+                    });
+                };
+                bindRollField('Roll', 'd20+3=17', q.rollExpression, next => { q.rollExpression = next; });
+                bindRollField('Against', 'DC 15', q.rollVs, next => { q.rollVs = next; });
+                bindRollField('Outcome', 'Success', q.rollOutcome, next => { q.rollOutcome = next; });
+            }
         }
 
         // Main line and submit
@@ -5093,28 +5142,44 @@ export class CampaignView extends ItemView {
         input.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && !event.isComposing) {
                 event.preventDefault();
-                void this.submitQuickEntry();
+                void this.submitQuickEntry().catch(() => undefined);
             } else if (event.key === 'Escape') {
                 event.preventDefault();
-                q.draft = '';
-                input.value = '';
-                updatePreview();
+                if (q.draft) {
+                    q.draft = '';
+                    input.value = '';
+                    updatePreview();
+                } else {
+                    this.setQuickOpen(false);
+                    input.blur();
+                }
             }
         });
-        const submit = line.createEl('button', { cls: 'storyteller-campaign-btn is-primary', text: 'Add' });
-        submit.addEventListener('click', () => { void this.submitQuickEntry(); });
+        const submit = line.createEl('button', { cls: 'storyteller-campaign-btn is-primary', text: 'Add', attr: { type: 'button' } });
+        submit.addEventListener('click', () => { void this.submitQuickEntry().catch(() => undefined); });
 
-        // Tag helper: inserts [Kind:Name] at the caret and suggests story names.
+        // Live preview of the exact line that will be written.
+        const preview = wrap.createDiv('storyteller-campaign-quick-preview');
+        preview.createSpan({ cls: 'storyteller-campaign-quick-label', text: 'Writes' });
+        const previewText = preview.createSpan({ cls: 'storyteller-campaign-quick-preview-text' });
+        updatePreview = () => {
+            const built = this.buildQuickLine();
+            previewText.setText(built.line ?? built.error ?? '');
+            preview.toggleClass('is-error', !built.line);
+        };
+        updatePreview();
+
+        // Tag helper: inserts [Kind:Name] at the caret. Tags are what update HP, clocks, items and factions.
         const tagRow = wrap.createDiv('storyteller-campaign-quick-tags');
         tagRow.createSpan({ cls: 'storyteller-campaign-quick-label', text: 'Tag' });
         const kindSelect = tagRow.createEl('select', {
-            cls: 'storyteller-campaign-input is-small',
+            cls: 'dropdown storyteller-campaign-quick-select',
             attr: { 'aria-label': 'Tag type' },
         });
         for (const option of TAG_KINDS) kindSelect.createEl('option', { value: option.kind, text: option.label });
         kindSelect.value = q.tagKind;
         const nameInput = tagRow.createEl('input', {
-            cls: 'storyteller-campaign-input is-small',
+            cls: 'storyteller-campaign-input is-small storyteller-campaign-quick-tag-name',
             attr: { type: 'text', placeholder: 'Name', list: TAG_DATALIST_ID, 'aria-label': 'Tag name' },
         });
         nameInput.value = q.tagName;
@@ -5137,18 +5202,10 @@ export class CampaignView extends ItemView {
         nameInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') { event.preventDefault(); insertTag(); }
         });
-        tagRow.createEl('button', { cls: 'storyteller-campaign-quick-chip', text: 'Insert' })
+        tagRow.createEl('button', { cls: 'storyteller-campaign-quick-chip', text: 'Insert', attr: { type: 'button' } })
             .addEventListener('click', insertTag);
+        tagRow.createSpan({ cls: 'storyteller-campaign-quick-hint', text: 'Tags update HP, clocks, items and factions.' });
         fillSuggestions();
-
-        // Live preview of the exact line that will be written.
-        const preview = wrap.createDiv('storyteller-campaign-quick-preview');
-        updatePreview = () => {
-            const built = this.buildQuickLine();
-            preview.setText(built.line ?? built.error ?? '');
-            preview.toggleClass('is-error', !built.line);
-        };
-        updatePreview();
     }
 
     /** Builds the Partylog line for the current quick entry state, or the reason it cannot be built. */
@@ -5217,8 +5274,11 @@ export class CampaignView extends ItemView {
         // Take the text before the first await: a second submit then sees an empty draft and writes nothing,
         // and text typed while the line saves starts the next entry instead of extending this one.
         const typed = this.quick.draft;
+        const roll = { rollExpression: this.quick.rollExpression, rollVs: this.quick.rollVs, rollOutcome: this.quick.rollOutcome };
         this.quick.draft = '';
         if (this.quickInputEl) this.quickInputEl.value = '';
+        // A logged roll is done with: clear it so a second Enter does not log it again.
+        if (this.quick.mode === 'roll') Object.assign(this.quick, { rollExpression: '', rollVs: '', rollOutcome: '' });
         this.quickSubmitInFlight = true;
         try {
             // The line is written before its tags touch the session, so a failed write never leaves tags applied.
@@ -5229,6 +5289,7 @@ export class CampaignView extends ItemView {
             if (this.session?.filePath === session.filePath) {
                 this.quick.draft = this.quick.draft ? `${typed} ${this.quick.draft}` : typed;
                 if (this.quickInputEl) this.quickInputEl.value = this.quick.draft;
+                if (this.quick.mode === 'roll' && !this.quick.rollExpression) Object.assign(this.quick, roll);
             }
             throw error;
         } finally {
