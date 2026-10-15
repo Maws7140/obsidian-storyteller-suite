@@ -4445,7 +4445,8 @@ export class DashboardView extends ItemView {
                 }
             }
 
-            const actionsEl = itemEl.createDiv('storyteller-list-item-actions');
+            // In the title row, not floating over the card, so the buttons never cover the name or badge.
+            const actionsEl = titleRow.createDiv('storyteller-list-item-actions');
             this.addEditButton(actionsEl, () => {
                 void import('../modals/EconomyModal').then(({ EconomyModal }) => {
                     new EconomyModal(this.app, this.plugin, economy, async (updated) => {
