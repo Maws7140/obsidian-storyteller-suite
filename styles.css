@@ -8868,18 +8868,10 @@ body.mod-rtl .storyteller-group-members {
 
 /* ─── Economy dashboard cards ───────────────────────────────────────────────── */
 
-/* Economy items have multiple rows — override vertical centering. Their buttons (edit, Delete,
-   open note, details) are wider than any fixed gap, so they end the title row instead of floating
-   over the card, where they covered the name and status badge. On a narrow card they wrap below it. */
+/* Economy items have multiple rows — override vertical centering. The action buttons use the
+   shared card placement; the card adds no padding of its own, which moved them onto the name. */
 .storyteller-economy-item {
     align-items: flex-start;
-}
-
-.storyteller-economy-card-title-row .storyteller-list-item-actions {
-    position: static;
-    margin-left: auto;
-    flex-wrap: wrap;
-    justify-content: flex-end;
 }
 
 .storyteller-economy-card-title-row {
