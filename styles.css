@@ -8874,29 +8874,6 @@ body.mod-rtl .storyteller-group-members {
     align-items: flex-start;
 }
 
-.storyteller-economy-card-title-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    margin-bottom: 0.15rem;
-}
-
-.storyteller-economy-status-badge {
-    font-size: var(--font-ui-smaller);
-    padding: 0.1rem 0.5rem;
-    border-radius: 999px;
-    border: 1px solid currentColor;
-    line-height: 1.4;
-}
-
-.storyteller-economy-status-badge.is-booming    { color: var(--color-green); }
-.storyteller-economy-status-badge.is-growing    { color: var(--color-cyan); }
-.storyteller-economy-status-badge.is-stable     { color: var(--text-muted); }
-.storyteller-economy-status-badge.is-recession  { color: var(--color-orange); }
-.storyteller-economy-status-badge.is-depression { color: var(--color-red); }
-.storyteller-economy-status-badge.is-recovering { color: var(--color-yellow); }
-
 .storyteller-economy-links-row {
     display: flex;
     gap: 0.4rem;
@@ -9581,6 +9558,15 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-event-status-done                          { background: rgba(76,175,80,0.18);   color: #4caf50; }
 .storyteller-event-status-failed,
 .storyteller-event-status-cancelled                     { background: rgba(239,83,80,0.18);   color: #ef5350; }
+
+/* ── Economy status badges ── */
+.storyteller-economy-status-booming    { background: rgba(76,175,80,0.18);   color: #4caf50; }
+.storyteller-economy-status-growing    { background: rgba(66,165,245,0.18);  color: #42a5f5; }
+.storyteller-economy-status-stable     { background: var(--background-secondary); color: var(--text-muted); }
+.storyteller-economy-status-recovering { background: rgba(255,167,38,0.18);  color: #ffa726; }
+.storyteller-economy-status-recession,
+.storyteller-economy-status-disrupted  { background: rgba(255,152,0,0.18);   color: #ff9800; }
+.storyteller-economy-status-depression { background: rgba(239,83,80,0.18);   color: #ef5350; }
 
 /* ── Culture badges ── */
 .storyteller-gov-badge   { background: rgba(255,152,0,0.18);  color: #ff9800; }

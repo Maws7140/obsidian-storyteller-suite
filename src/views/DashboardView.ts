@@ -4399,15 +4399,11 @@ export class DashboardView extends ItemView {
 
             const infoEl = itemEl.createDiv('storyteller-list-item-info');
 
-            // Title row: name + status badge
-            const titleRow = infoEl.createDiv('storyteller-economy-card-title-row');
-            titleRow.createEl('strong', { text: economy.name });
+            infoEl.createEl('strong', { text: economy.name });
             if (economy.status) {
-                const statusKey = economy.status.toLowerCase().replace(/\s+/g, '-');
-                titleRow.createEl('span', {
-                    cls: `storyteller-economy-status-badge is-${statusKey}`,
-                    text: economy.status
-                });
+                const badgesEl = infoEl.createDiv('storyteller-list-item-extra');
+                const statusSlug = economy.status.toLowerCase().replace(/\s+/g, '-');
+                badgesEl.createSpan({ cls: `storyteller-meta-badge storyteller-economy-status-badge storyteller-economy-status-${statusSlug}`, text: economy.status });
             }
 
             // Description preview
