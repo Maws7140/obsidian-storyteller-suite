@@ -1356,6 +1356,12 @@ export interface Story {
     /** Portable appearance theme used by this story's timeline. */
     activeTimelineThemeId?: string;
     /**
+     * This story's "today", as typed: an ISO date, a BCE year, or a date in the
+     * story's own calendar. Blank inherits the plugin-wide custom today, then
+     * the system clock.
+     */
+    customToday?: string;
+    /**
      * Per-story folder layout. Any key left blank or absent inherits the
      * plugin-wide folder setting, so a story that has never been customized
      * keeps resolving exactly where its notes already are.

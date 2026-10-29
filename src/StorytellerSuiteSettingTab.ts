@@ -37,6 +37,7 @@ import type { TemplateEntityType } from './templates/TemplateTypes';
 import type { EntityType } from './yaml/EntitySections';
 import { CalendarRegistry } from './calendar/CalendarRegistry';
 import { parseReferenceDate } from './utils/DateParsing';
+import { todayTextProblem } from './calendar/ReferenceToday';
 import { iconColorKey, isSafeFrontmatterKey } from './utils/EntityIcon';
 import { encodeShareCode, makeCalendarDocument, makeThemeDocument } from './calendar/TimelineDocuments';
 import { CalendarManagerModal } from './modals/CalendarManagerModal';
@@ -1295,6 +1296,33 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 await navigator.clipboard.writeText(encodeShareCode(makeThemeDocument(calendarRegistry.getActiveTheme())));
                 new Notice('Timeline theme share code copied');
             })(); }));
+
+        const activeStory = this.plugin.getActiveStory();
+        if (activeStory) {
+            const inherited = this.plugin.settings.customTodayISO?.trim();
+            new Setting(container)
+                .setName('Today for this story')
+                .setDesc(`Where the now marker sits and what "Jump to today" and relative dates count from in ${activeStory.name}. Type a date in the story's dating system, an ISO date or a BCE year. Leave blank to use ${inherited ? `the default custom today (${inherited})` : 'the system date'}. Also available from the timeline's zoom menu.`)
+                .addText(text => {
+                    text.setPlaceholder(inherited || 'System date')
+                        .setValue(activeStory.customToday || '')
+                        .onChange(async (value) => {
+                            await this.plugin.setStoryToday(activeStory.id, value);
+                        });
+                    // Checked once the field is left, not per keystroke: "2026-0" is unreadable on the way to a good date.
+                    text.inputEl.addEventListener('blur', () => {
+                        const problem = todayTextProblem(text.getValue(), activeCalendar);
+                        if (problem) new Notice(`${problem} Until it is fixed, this story uses the default today.`);
+                    });
+                })
+                .addExtraButton(btn => btn
+                    .setIcon('reset')
+                    .setTooltip('Use the default today')
+                    .onClick(async () => {
+                        await this.plugin.setStoryToday(activeStory.id, undefined);
+                        this.refreshSettingsView();
+                    }));
+        }
 
         let portableImport = '';
         new Setting(container)

@@ -5,7 +5,7 @@ import { setIcon, Menu, Notice, Setting, DropdownComponent } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { TimelineRenderer } from './NativeTimelineRenderer';
-import { TimelineUIState, TimelineGroupMode, Event } from '../types';
+import { TimelineUIState, TimelineGroupMode, Event, Story } from '../types';
 import { TrackManagerModal } from '../modals/TrackManagerModal';
 import { ConflictViewModal } from '../modals/ConflictViewModal';
 import { TagTimelineModal } from '../modals/TagTimelineModal';
@@ -13,6 +13,8 @@ import { ConflictDetector } from './ConflictDetector';
 import { CalendarRegistry, onTimelineThemeChange } from '../calendar/CalendarRegistry';
 import { defaultTimelineIconMode, parseTimelineIconMode } from './TimelineIconLayout';
 import { openNewEventModal } from './OpenNewEventModal';
+import { PromptModal } from '../modals/ui/PromptModal';
+import { todayTextProblem } from '../calendar/ReferenceToday';
 
 /**
  * Callbacks for control state changes
@@ -398,6 +400,18 @@ export class TimelineControlsBuilder {
         return btn;
     }
 
+    /** Ask for the story's own today, then show it. Blank goes back to the default. */
+    private promptStoryToday(story: Story, onSet: () => void): void {
+        const calendar = new CalendarRegistry(this.plugin).calendarFor(story);
+        new PromptModal(this.plugin.app, {
+            title: `Today in ${story.name}`,
+            label: `A date in ${calendar.name}. Leave blank for the default today.`,
+            defaultValue: story.customToday ?? '',
+            validator: value => todayTextProblem(value, calendar),
+            onSubmit: value => { void this.plugin.setStoryToday(story.id, value).then(onSet); },
+        }).open();
+    }
+
     /**
      * Edit mode, as a labelled toggle.
      *
@@ -696,6 +710,15 @@ export class TimelineControlsBuilder {
                 .onClick(() => jump(() => renderer?.zoomPresetYears(100))));
             menu.addItem(item => item.setTitle('Jump to today').setIcon('calendar-clock')
                 .onClick(() => jump(() => renderer?.moveToToday())));
+            const story = this.plugin.getActiveStory();
+            if (story) {
+                menu.addItem(item => item.setTitle('Set today for this story…').setIcon('pencil')
+                    .onClick(() => this.promptStoryToday(story, () => jump(() => this.callbacks.getRenderer()?.moveToToday()))));
+                if (story.customToday) {
+                    menu.addItem(item => item.setTitle('Use the default today').setIcon('rotate-ccw')
+                        .onClick(() => { void this.plugin.setStoryToday(story.id, undefined).then(() => jump(() => this.callbacks.getRenderer()?.moveToToday())); }));
+                }
+            }
             menu.showAtMouseEvent(clickEvent);
         });
 
