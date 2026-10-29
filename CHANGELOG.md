@@ -11,6 +11,7 @@
 - **Documented CSS variables**: every colour on the timeline canvas, the lane palette (`--sts-timeline-lane-1` … `--sts-timeline-lane-24`, `--sts-timeline-lane-count`), and the label font (`--sts-timeline-font`) are `--sts-timeline-*` variables. A CSS snippet can override any of them, and a theme sets them for its story.
 
 ### Fixed
+- The Gantt view was slow with many dependencies. Every frame measured and laid out every dependency arrow in the story, including ones far off screen, and set the canvas font once per event to measure its label. Arrows that cannot reach the screen are now skipped before any measuring, label widths are remembered per event until the label or font changes, and arrowheads no longer save and restore canvas state. In a 1,500-event benchmark a Gantt frame went from about 10 ms to about 3.5 ms; the drawn result is pixel-identical.
 - Timeline theme files declared event size, corner radius and opacity, lane label width, height and gap, axis label density, and connector width and style, but the timeline ignored them. Every field now applies.
 - Changing the timeline theme, switching Obsidian between light and dark, or editing a CSS snippet now repaints open timelines straight away instead of after they are reopened.
 - The conflict colour no longer changes with the "today" line colour; each has its own role.
