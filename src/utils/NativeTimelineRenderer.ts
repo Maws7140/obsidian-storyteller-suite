@@ -37,6 +37,7 @@ import {
     axisLabelSpacing,
     backgroundDrawRects,
     dashFor,
+    paletteColorFor,
     resolveTimelineStyle,
     rowHeightFor,
     themeCssVariables,
@@ -4648,7 +4649,7 @@ export class NativeTimelineRenderer {
     }
     private unixEpochAbsoluteDay(): number { return toAbsolute(GREGORIAN_CALENDAR, { year: 1970, month: 0, day: 1 }).absoluteDay; }
     private ensureLaneVisible(id: string): void { const lane = this.lanes.find(value => value.id === id); if (lane) this.scrollTop = Math.max(0, lane.top - this.axisHeight()); }
-    private colorFor(value: string): string { let hash = 0; for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0; return this.style.palette[Math.abs(hash) % this.style.palette.length]; }
+    private colorFor(value: string): string { return paletteColorFor(value, this.style.palette); }
     private color(role: TimelineColorRole): string { return this.style.colors[role]; }
     private font(size: number, weight?: number): string { return `${weight ? `${weight} ` : ''}${size}px ${this.style.font}`; }
 

@@ -25,8 +25,10 @@ const esbuild = require(path + 'node_modules/esbuild');
     await p.addScriptTag({ content: require('fs').readFileSync(path + 'node_modules/cytoscape/dist/cytoscape.min.js', 'utf8') });
     await p.evaluate(() => {
         const P = HTMLElement.prototype;
-        P.createEl = function (tag, o = {}) { const e = document.createElement(tag); if (typeof o === 'string') e.className = o; else { if (o.cls) e.className = o.cls; if (o.text) e.textContent = o.text; } this.append(e); return e; };
+        P.createEl = function (tag, o = {}) { const e = document.createElement(tag); if (typeof o === 'string') e.className = o; else { if (o.cls) e.className = o.cls; if (o.text) e.textContent = o.text; Object.entries(o.attr || {}).forEach(([k, v]) => e.setAttribute(k, v)); } this.append(e); return e; };
         P.createDiv = function (o) { return this.createEl('div', o); };
+        P.createSpan = function (o) { return this.createEl('span', o); };
+        P.toggleClass = function (c, on) { this.classList.toggle(c, on); };
         P.empty = function () { this.replaceChildren(); };
         P.setCssStyles = function (s) { Object.assign(this.style, s); };
         P.addClass = function (...c) { this.classList.add(...c); };
@@ -44,7 +46,8 @@ const esbuild = require(path + 'node_modules/esbuild');
             listCharacters: async () => chars.map(c => ({ ...c })),
             listLocations: async () => [], listEvents: async () => [], listPlotItems: async () => [],
             listCultures: async () => [], listEconomies: async () => [], listMagicSystems: async () => [],
-            getGroups: () => [], app: { vault: { getAbstractFileByPath: () => null } }
+            getGroups: () => [], settings: {}, saveSettings: async () => {}, getActiveStory: () => null,
+            app: { vault: { getAbstractFileByPath: () => null }, workspace: { on: () => ({}), offref: () => {} }, metadataCache: { getFirstLinkpathDest: () => null } }
         };
         const host = document.getElementById('host');
         const r = new NG.NetworkGraphRenderer(host, plugin);
@@ -66,7 +69,8 @@ const esbuild = require(path + 'node_modules/esbuild');
             listCharacters: async () => chars.map(c => ({ ...c })),
             listLocations: async () => [], listEvents: async () => [], listPlotItems: async () => [],
             listCultures: async () => [], listEconomies: async () => [], listMagicSystems: async () => [],
-            getGroups: () => [], app: { vault: { getAbstractFileByPath: () => null } }
+            getGroups: () => [], settings: {}, saveSettings: async () => {}, getActiveStory: () => null,
+            app: { vault: { getAbstractFileByPath: () => null }, workspace: { on: () => ({}), offref: () => {} }, metadataCache: { getFirstLinkpathDest: () => null } }
         };
         host.replaceChildren();
         const r = new NG.NetworkGraphRenderer(host, plugin);
@@ -85,7 +89,8 @@ const esbuild = require(path + 'node_modules/esbuild');
             listCharacters: async () => chars.map(c => ({ ...c })),
             listLocations: async () => [], listEvents: async () => [], listPlotItems: async () => [],
             listCultures: async () => [], listEconomies: async () => [], listMagicSystems: async () => [],
-            getGroups: () => [], app: { vault: { getAbstractFileByPath: () => null } }
+            getGroups: () => [], settings: {}, saveSettings: async () => {}, getActiveStory: () => null,
+            app: { vault: { getAbstractFileByPath: () => null }, workspace: { on: () => ({}), offref: () => {} }, metadataCache: { getFirstLinkpathDest: () => null } }
         };
         const host = document.getElementById('host'); host.replaceChildren();
         const r = new NG.NetworkGraphRenderer(host, plugin);

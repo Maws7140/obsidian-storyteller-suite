@@ -54,6 +54,16 @@ export const DEFAULT_TIMELINE_FONT = 'sans-serif';
 export const MAX_TIMELINE_PALETTE = 24;
 export const DEFAULT_TIMELINE_PALETTE = ['#7c3aed', '#2563eb', '#059669', '#ca8a04', '#dc2626', '#ea580c', '#0ea5e9', '#22c55e', '#d946ef', '#f59e0b'];
 
+/**
+ * The palette entry a name hashes to. Lanes, and graph nodes coloured the
+ * same way, use it, so one name gets one colour in every view of a theme.
+ */
+export function paletteColorFor(value: string, palette: string[]): string {
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+    return palette[Math.abs(hash) % palette.length];
+}
+
 /** CSS variable holding the colour of lane `index` (zero-based). */
 export function laneVariable(index: number): string {
     return `--sts-timeline-lane-${index + 1}`;

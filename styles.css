@@ -4361,8 +4361,12 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-network-canvas {
   width: 100%;
-  background-color: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+  /* The network graph follows the story's timeline theme: the
+     --sts-timeline-* variables are defined for it below, next to the
+     timeline's, and a theme sets them inline on this element. */
+  background-color: var(--sts-timeline-background);
+  border: 1px solid var(--sts-timeline-grid);
+  overflow: hidden;
   border-radius: 8px;
   position: relative;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -11651,11 +11655,15 @@ body.mod-rtl .storyteller-group-members {
   outline: none;
   touch-action: none;
   user-select: none;
+}
 
+/* Timeline theme variables, shared by the timeline and the network graph. */
+.sts-native-timeline,
+.storyteller-network-canvas {
   /* Timeline theme variables.
      Every colour, the lane palette and the label font on the timeline canvas
      come from these. The defaults follow the active Obsidian theme; a CSS
-     snippet targeting .sts-native-timeline can override any of them, and a
+     snippet targeting .sts-native-timeline (or .storyteller-network-canvas) can override any of them, and a
      timeline theme (Settings → Timeline → Timeline theme) sets them inline,
      which takes precedence over a snippet. */
   --sts-timeline-background: var(--background-primary);
@@ -15674,4 +15682,218 @@ img.storyteller-timeline-calendar-icon {
   min-height: 0;
   width: max(100cqw, calc(100cqh * var(--sts-board-ratio, 1.5)));
   max-width: none;
+}
+
+/* ── Network graph: theme backdrop, legend, toolbar ─────────────────────── */
+
+.storyteller-graph-toolbar {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.storyteller-graph-toolbar select.dropdown {
+  height: 30px;
+  max-width: 200px;
+}
+
+/* The theme's background image, under Cytoscape's transparent canvases. */
+.storyteller-network-backdrop {
+  position: absolute;
+  inset: 0;
+  display: none;
+  pointer-events: none;
+}
+
+.storyteller-network-legend-panel {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 999;
+  min-width: 210px;
+  max-width: 290px;
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
+  background: var(--sts-timeline-surface);
+  color: var(--sts-timeline-text);
+  font-family: var(--sts-timeline-font);
+  border: 1px solid var(--sts-timeline-grid);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.storyteller-network-legend-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 8px 12px;
+  background: var(--sts-timeline-sidebar);
+  border-bottom: 1px solid var(--sts-timeline-grid);
+}
+
+.storyteller-network-legend-title {
+  font-weight: 700;
+  font-size: var(--font-ui-small);
+}
+
+.storyteller-network-legend-close {
+  color: var(--sts-timeline-text-muted);
+}
+
+.storyteller-network-legend-body {
+  padding: 8px 10px 10px;
+}
+
+.storyteller-network-legend-section + .storyteller-network-legend-section {
+  margin-top: 10px;
+}
+
+.storyteller-network-legend-heading {
+  margin: 0 2px 4px;
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  color: var(--sts-timeline-text-accent);
+}
+
+.storyteller-network-legend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.storyteller-network-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: auto;
+  min-height: 24px;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font-size: var(--font-ui-smaller);
+  text-align: left;
+  cursor: pointer;
+}
+
+.storyteller-network-legend-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.storyteller-network-legend-row.is-hidden .storyteller-network-legend-label {
+  text-decoration: line-through;
+  color: var(--sts-timeline-text-muted);
+}
+
+.storyteller-network-legend-row.is-hidden .storyteller-network-legend-swatch {
+  opacity: 0.3;
+}
+
+.storyteller-network-legend-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.storyteller-network-legend-count {
+  color: var(--sts-timeline-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.storyteller-network-legend-swatch {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--sts-timeline-text-muted);
+  border: 1px solid var(--sts-timeline-grid);
+}
+
+/* Entity shapes, matching the node shapes on the graph. */
+.storyteller-network-legend-swatch.shape-round-rectangle { border-radius: 3px; }
+.storyteller-network-legend-swatch.shape-diamond { border-radius: 1px; transform: rotate(45deg) scale(0.8); }
+.storyteller-network-legend-swatch.shape-hexagon { border: none; border-radius: 0; clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
+.storyteller-network-legend-swatch.shape-tag { border: none; border-radius: 0; clip-path: polygon(0 0, 70% 0, 100% 50%, 70% 100%, 0 100%); }
+.storyteller-network-legend-swatch.shape-pentagon { border: none; border-radius: 0; clip-path: polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%); }
+.storyteller-network-legend-swatch.shape-star { border: none; border-radius: 0; clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+.storyteller-network-legend-swatch.shape-round-triangle { border: none; border-radius: 0; clip-path: polygon(50% 4%, 96% 92%, 4% 92%); }
+
+/* Line entries: the line's own colour, or the theme's muted text for line styles. */
+.storyteller-network-legend-swatch.is-deceased {
+  border: 2px dashed var(--sts-timeline-text-muted);
+}
+
+.storyteller-network-legend-swatch.is-line {
+  width: 22px;
+  height: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--sts-timeline-text-muted);
+  border-top: 3px solid currentColor;
+}
+.storyteller-network-legend-swatch.is-dashed { border-top-style: dashed; border-top-width: 2px; }
+.storyteller-network-legend-swatch.is-dotted { border-top-style: dotted; border-top-width: 3px; }
+.storyteller-network-legend-swatch.is-thin { border-top-width: 1px; }
+.storyteller-network-legend-swatch.is-arrow { position: relative; border-top-width: 2px; }
+.storyteller-network-legend-swatch.is-arrow::after {
+  content: '';
+  position: absolute;
+  right: -2px;
+  top: -6px;
+  border-left: 6px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+}
+
+.storyteller-network-legend-note,
+.storyteller-network-legend-tip,
+.storyteller-network-legend-empty {
+  margin-top: 8px;
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  color: var(--sts-timeline-text-muted);
+}
+
+.storyteller-network-legend-footer {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--sts-timeline-grid);
+}
+
+.storyteller-network-legend-showall {
+  font-size: var(--font-ui-smaller);
+  height: auto;
+  padding: 2px 8px;
+}
+
+.storyteller-legend-toggle-btn {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--sts-timeline-surface);
+  color: var(--sts-timeline-text);
+  border: 1px solid var(--sts-timeline-grid);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: opacity 0.3s ease, transform 0.2s ease;
+}
+
+.storyteller-legend-toggle-btn:hover {
+  transform: scale(1.08);
 }

@@ -137,6 +137,7 @@ import { buildCampaignSessionFrontmatter, normalizeCampaignSessionData } from '.
 import { appendLogLines } from './campaign/PartylogSessionBridge';
 import { isSafeFrontmatterKey, readIconFromFrontmatter, resolveIconPropertyKeys, writeIconToFrontmatter } from './utils/EntityIcon';
 import type { IconPropertyKeys } from './utils/EntityIcon';
+import type { GraphDisplayOptions } from './utils/GraphAppearance';
 
 /** Runtime-only flags added to entity objects during save/sync to prevent recursion. Not persisted. */
 type WithSyncFlags<T> = T & {
@@ -324,6 +325,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     networkGraphZoom?: number;
     /** Network graph view pan position (saved per session) */
     networkGraphPan?: { x: number; y: number };
+    /** Network graph colour mode, layers, layout and legend; see GraphAppearance. */
+    networkGraphDisplay?: Partial<GraphDisplayOptions>;
     /** Keys of implied-link suggestions the user dismissed in the graph view (see RelationshipSuggestions.ts) */
     dismissedLinkSuggestions?: string[];
 

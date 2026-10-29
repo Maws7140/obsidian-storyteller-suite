@@ -7,6 +7,15 @@ import { t } from '../i18n/strings';
 import { NetworkGraphRenderer } from './NetworkGraphRenderer';
 import { GraphEntityType, GraphFilters } from '../types';
 import { LinkSuggestionsModal } from '../modals/LinkSuggestionsModal';
+import { createTimelineThemeDropdown } from '../utils/TimelineControlsBuilder';
+import {
+    GRAPH_COLOR_MODES,
+    GRAPH_LAYOUTS,
+    GRAPH_SPACINGS,
+    activeGraphLayers,
+    sanitizeGraphDisplay,
+} from '../utils/GraphAppearance';
+import type { GraphColorMode, GraphDisplayOptions } from '../utils/GraphAppearance';
 
 export const VIEW_TYPE_NETWORK_GRAPH = 'storyteller-network-graph-view';
 
@@ -22,7 +31,8 @@ type ZoomableGraphRenderer = {
  * Users can open this in any workspace leaf for a larger, more detailed visualization
  * 
  * UI Structure (Optimized for vertical space):
- * - Toolbar: Icon buttons for layout, export, refresh
+ * - Toolbar: theme, colour by, Show menu, layout, export, refresh, zoom
+ *   (the theme is the story's timeline theme, shared with the timeline)
  * - Entity Filters: Inline icon toggles for character/location/event/item
  * - Advanced Filters (collapsible): Search, timeline range
  * - Graph Container: Flex-grow to fill remaining space
@@ -43,6 +53,8 @@ export class NetworkGraphView extends ItemView {
     private graphContainer: HTMLElement | null = null;
     private footerEl: HTMLElement | null = null;
     private footerStatusEl: HTMLElement | null = null;
+    private colorSelect: HTMLSelectElement | null = null;
+    private syncShowBadge: (() => void) | null = null;
     
     // Filter inputs
     private searchInput: HTMLInputElement | null = null;
@@ -104,6 +116,25 @@ export class NetworkGraphView extends ItemView {
     private buildToolbar(): void {
         if (!this.toolbarEl) return;
         this.toolbarEl.empty();
+
+        // Theme: the story's timeline theme, so the graph and the timeline match
+        createTimelineThemeDropdown(this.plugin, this.toolbarEl);
+
+        // Colour by: the graph's version of the timeline's grouping dropdown
+        this.colorSelect = this.toolbarEl.createEl('select', {
+            cls: 'dropdown storyteller-graph-color-select',
+            attr: { 'aria-label': 'Colour nodes by', title: 'Colour nodes by' }
+        });
+        const currentColor = this.display().colorMode;
+        GRAPH_COLOR_MODES.forEach(mode => {
+            const option = this.colorSelect!.createEl('option', { value: mode.value, text: `Colour: ${mode.label}` });
+            if (mode.value === currentColor) option.selected = true;
+        });
+        this.colorSelect.addEventListener('change', () => {
+            void this.graphRenderer?.setDisplay({ colorMode: this.colorSelect!.value as GraphColorMode });
+        });
+
+        this.createShowMenu(this.toolbarEl);
 
         // Layout toggle button
         const layoutBtn = this.toolbarEl.createEl('button', {
@@ -461,23 +492,89 @@ export class NetworkGraphView extends ItemView {
         }
     }
 
+    /** Display options: from the renderer once it exists, else as saved. */
+    private display(): GraphDisplayOptions {
+        return this.graphRenderer?.getDisplay() ?? sanitizeGraphDisplay(this.plugin.settings.networkGraphDisplay);
+    }
+
+    /**
+     * The "Show" menu, built like the timeline's: what is drawn, as checked
+     * items, with a badge counting the layers that are on so the state reads
+     * without opening it. Spacing sits below, like the timeline's row density.
+     */
+    private createShowMenu(container: HTMLElement): void {
+        const btn = container.createEl('button', {
+            cls: 'storyteller-toolbar-btn-labelled',
+            attr: { 'aria-haspopup': 'menu' }
+        });
+        const icon = btn.createSpan('storyteller-toolbar-btn-icon');
+        setIcon(icon, 'sliders-horizontal');
+        btn.createSpan({ cls: 'storyteller-toolbar-btn-text', text: 'Show' });
+        const badge = btn.createSpan({ cls: 'storyteller-toolbar-badge' });
+        const caret = btn.createSpan('storyteller-toolbar-caret');
+        setIcon(caret, 'chevron-down');
+
+        const syncBadge = () => {
+            const on = activeGraphLayers(this.display());
+            badge.setText(String(on.length));
+            badge.toggleClass('is-empty', on.length === 0);
+            const summary = on.length ? on.join(', ') : 'no extra layers';
+            btn.setAttribute('aria-label', `Show: ${summary}`);
+            btn.setAttribute('title', `Showing ${summary}`);
+        };
+        this.syncShowBadge = syncBadge;
+        syncBadge();
+
+        btn.addEventListener('click', clickEvent => {
+            const display = this.display();
+            const menu = new Menu();
+            const set = (patch: Partial<GraphDisplayOptions>) => {
+                void this.graphRenderer?.setDisplay(patch).then(() => {
+                    syncBadge();
+                    this.updateFooterStatus();
+                });
+            };
+            const check = (title: string, key: keyof GraphDisplayOptions) => {
+                menu.addItem(item => item.setTitle(title).setChecked(display[key] === true)
+                    .onClick(() => set({ [key]: !display[key] })));
+            };
+            check('Images', 'showImages');
+            check('Relationship labels', 'showEdgeLabels');
+            check('Ended relationships', 'showEnded');
+            check('Implied relationships', 'showImplied');
+            check('Group membership lines', 'showMembership');
+            check('Unconnected entities', 'showIsolated');
+            menu.addSeparator();
+            check('Size by connections', 'sizeByConnections');
+            check('Legend', 'legendVisible');
+            menu.addSeparator();
+            GRAPH_SPACINGS.forEach(spacing => {
+                menu.addItem(item => item.setTitle(`${spacing.label} spacing`)
+                    .setChecked(display.spacing === spacing.value)
+                    .onClick(() => set({ spacing: spacing.value })));
+            });
+            menu.showAtMouseEvent(clickEvent);
+        });
+    }
+
     /**
      * Show layout menu
      */
     private showLayoutMenu(buttonEl: HTMLElement): void {
         const menu = new Menu();
-        
-        const layouts: Array<{ value: 'cose' | 'circle' | 'grid' | 'concentric'; label: string }> = [
-            { value: 'cose', label: t('forceDirected') },
-            { value: 'circle', label: t('circle') },
-            { value: 'grid', label: t('grid') },
-            { value: 'concentric', label: t('concentric') }
-        ];
+        const current = this.display().layout;
+        const labels: Record<string, string> = {
+            cose: t('forceDirected'),
+            circle: t('circle'),
+            grid: t('grid'),
+            concentric: t('concentric')
+        };
 
-        layouts.forEach(layout => {
+        GRAPH_LAYOUTS.forEach(layout => {
             menu.addItem((item) => {
-                item.setTitle(layout.label)
+                item.setTitle(labels[layout.value] || layout.label)
                     .setIcon('layout')
+                    .setChecked(layout.value === current)
                     .onClick(() => {
                         this.graphRenderer?.changeLayout(layout.value);
                     });
