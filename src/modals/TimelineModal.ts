@@ -13,6 +13,8 @@ export class TimelineModal extends Modal {
     events: Event[];
     timelineContainer: HTMLElement;
     renderer: TimelineRenderer | null = null;
+    /** Bumped by each renderTimeline call, so a superseded render can tell it is stale. */
+    private renderGeneration = 0;
     legendEl?: HTMLElement;
     detailsEl?: HTMLElement;
 
@@ -20,6 +22,7 @@ export class TimelineModal extends Modal {
     private currentState: TimelineUIState;
     private controlsBuilder: TimelineControlsBuilder;
     private filterBuilder: TimelineFilterBuilder;
+    private unregisterLive: (() => void) | null = null;
 
     // UI state
     private defaultGanttDuration = 1;
@@ -69,6 +72,12 @@ export class TimelineModal extends Modal {
         // Initialize builders
         this.controlsBuilder = new TimelineControlsBuilder(plugin, this.currentState, controlCallbacks);
         this.filterBuilder = new TimelineFilterBuilder(plugin, this.currentState, filterCallbacks);
+        this.unregisterLive = plugin.registerLiveTimeline(this);
+    }
+
+    /** Called by the plugin when timeline data or the story's today has moved under this modal. */
+    refreshTimeline(): void {
+        if (this.renderer) void this.renderer.refresh();
     }
 
     async onOpen() {
@@ -84,6 +93,7 @@ export class TimelineModal extends Modal {
         this.controlsBuilder.createZoomInButton(toolbarContainer);
         this.controlsBuilder.createZoomOutButton(toolbarContainer);
         this.controlsBuilder.createGroupingDropdown(toolbarContainer);
+        this.controlsBuilder.createIconsDropdown(toolbarContainer);
         this.controlsBuilder.createFitButton(toolbarContainer);
         this.controlsBuilder.createFitGroupsButton(toolbarContainer);
         this.controlsBuilder.createDecadeButton(toolbarContainer);
@@ -194,6 +204,9 @@ export class TimelineModal extends Modal {
     // List UI removed
 
     private async renderTimeline() {
+        // A later render supersedes this one. Its renderer is destroyed below, and this
+        // generation check keeps a superseded render from reporting into the newer one.
+        const generation = ++this.renderGeneration;
         // Clear existing renderer if present
         if (this.renderer) {
             this.renderer.destroy();
@@ -211,6 +224,7 @@ export class TimelineModal extends Modal {
         // Initialize new renderer with current settings from shared state
         this.renderer = new TimelineRenderer(this.timelineContainer, this.plugin, {
             ganttMode: this.currentState.ganttMode,
+            calendarMode: this.currentState.calendarMode === true,
             timelineLayout: this.currentState.timelineLayout,
             timelineOrientation: this.currentState.timelineOrientation,
             groupMode: this.currentState.groupMode,
@@ -223,19 +237,25 @@ export class TimelineModal extends Modal {
             showDependencies: true,
             showEras: this.currentState.showEras,
             showPresence: this.currentState.showPresence,
-            narrativeOrder: this.currentState.narrativeOrder
+            narrativeOrder: this.currentState.narrativeOrder,
+            iconMode: this.currentState.icons,
+            minimal: this.currentState.minimal === true,
+            getReferenceDate: () => this.plugin.getReferenceTodayDate()
         });
 
         try {
-            await this.renderer.initialize();
+            const renderer = this.renderer;
+            await renderer.initialize();
+            if (generation !== this.renderGeneration) return;
 
             // Apply filters using shared utility
             if (this.filterBuilder.hasActiveFilters()) {
-                this.renderer.applyFilters(this.currentState.filters);
+                renderer.applyFilters(this.currentState.filters);
             }
             this.scheduleTimelineRedraw();
             this.updateSearchDropdown();
         } catch {
+            if (generation !== this.renderGeneration) return;
             
             this.timelineContainer.empty();
             const errorEl = this.timelineContainer.createDiv('storyteller-timeline-error');
@@ -254,6 +274,8 @@ export class TimelineModal extends Modal {
 
 
     onClose() {
+        this.unregisterLive?.();
+        this.unregisterLive = null;
         this.contentEl.empty();
         if (this.renderer) {
             this.renderer.destroy();

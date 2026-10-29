@@ -1304,6 +1304,21 @@
     white-space: nowrap;
 }
 
+.storyteller-modal-list-edit {
+    margin-left: 8px;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: var(--radius-xs);
+}
+
+.storyteller-modal-list-edit:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
 .storyteller-modal-list-remove {
     margin-left: 8px;
     color: var(--text-muted);
@@ -3153,6 +3168,15 @@ If your plugin does not need CSS, delete this file.
   flex-shrink: 0;
 }
 
+/* Status text reads like Obsidian's status copy: smaller and muted, with
+   figures that keep their width as the count and dates change. */
+.storyteller-timeline-view .storyteller-timeline-status {
+  padding: 4px 2px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .storyteller-timeline-date {
     color: var(--text-faint);
     font-size: var(--font-ui-smaller);
@@ -4428,6 +4452,17 @@ body.mod-rtl .storyteller-group-members {
   margin: 0 auto;
 }
 
+.storyteller-network-canvas > .storyteller-network-empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  max-width: none;
+  pointer-events: none;
+}
+
 .storyteller-empty-state.storyteller-empty-state {
   position: absolute;
   top: 50%;
@@ -5644,6 +5679,17 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-map-toolbar .storyteller-toolbar-btn:hover {
     background: var(--background-modifier-hover);
+}
+
+/* Pressed state, such as the Draw button while the Map Ink editor is open. Comes after the
+   map toolbar rules above so it wins at the same specificity. */
+.storyteller-map-view .storyteller-toolbar-btn.is-active {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.storyteller-map-view .storyteller-toolbar-btn.is-active:hover {
+    background: var(--interactive-accent-hover);
 }
 
 /* Map Selector */
@@ -8822,39 +8868,11 @@ body.mod-rtl .storyteller-group-members {
 
 /* ─── Economy dashboard cards ───────────────────────────────────────────────── */
 
-/* Economy items have multiple rows — override vertical centering and give room for the action buttons */
+/* Economy items have multiple rows — override vertical centering. The action buttons use the
+   shared card placement; the card adds no padding of its own, which moved them onto the name. */
 .storyteller-economy-item {
     align-items: flex-start;
-    padding-right: 128px;
 }
-
-.storyteller-economy-item .storyteller-list-item-actions {
-    top: 10px;
-    right: 10px;
-}
-
-.storyteller-economy-card-title-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    margin-bottom: 0.15rem;
-}
-
-.storyteller-economy-status-badge {
-    font-size: var(--font-ui-smaller);
-    padding: 0.1rem 0.5rem;
-    border-radius: 999px;
-    border: 1px solid currentColor;
-    line-height: 1.4;
-}
-
-.storyteller-economy-status-badge.is-booming    { color: var(--color-green); }
-.storyteller-economy-status-badge.is-growing    { color: var(--color-cyan); }
-.storyteller-economy-status-badge.is-stable     { color: var(--text-muted); }
-.storyteller-economy-status-badge.is-recession  { color: var(--color-orange); }
-.storyteller-economy-status-badge.is-depression { color: var(--color-red); }
-.storyteller-economy-status-badge.is-recovering { color: var(--color-yellow); }
 
 .storyteller-economy-links-row {
     display: flex;
@@ -9541,6 +9559,15 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-event-status-failed,
 .storyteller-event-status-cancelled                     { background: rgba(239,83,80,0.18);   color: #ef5350; }
 
+/* ── Economy status badges ── */
+.storyteller-economy-status-booming    { background: rgba(76,175,80,0.18);   color: #4caf50; }
+.storyteller-economy-status-growing    { background: rgba(66,165,245,0.18);  color: #42a5f5; }
+.storyteller-economy-status-stable     { background: var(--background-secondary); color: var(--text-muted); }
+.storyteller-economy-status-recovering { background: rgba(255,167,38,0.18);  color: #ffa726; }
+.storyteller-economy-status-recession,
+.storyteller-economy-status-disrupted  { background: rgba(255,152,0,0.18);   color: #ff9800; }
+.storyteller-economy-status-depression { background: rgba(239,83,80,0.18);   color: #ef5350; }
+
 /* ── Culture badges ── */
 .storyteller-gov-badge   { background: rgba(255,152,0,0.18);  color: #ff9800; }
 .storyteller-tech-badge  { background: rgba(100,181,246,0.15); color: #64b5f6; }
@@ -9625,7 +9652,7 @@ body.mod-rtl .storyteller-group-members {
 }
 .storyteller-campaign-toolbar-spacer { flex: 1; }
 .storyteller-campaign-scene-name { font-weight: 700; font-size: 0.95rem; letter-spacing: 0.01em; }
-.storyteller-campaign-main { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.storyteller-campaign-main { display: flex; flex: 1; min-height: 0; overflow: hidden; position: relative; }
 .storyteller-campaign-scene-panel { flex: 1; min-height: 0; overflow-y: auto; padding: 1.25rem 1.35rem 2.4rem; position: relative; display: flex; flex-direction: column; align-items: center; }
 .storyteller-campaign-scene-panel > :not(.storyteller-dice-overlay) { width: min(100%, 960px); }
 .storyteller-campaign-sidebar { width: clamp(280px, 24vw, 340px); min-height: 0; border-left: 1px solid var(--background-modifier-border); overflow-y: auto; display: flex; flex-direction: column; flex-shrink: 0; background: color-mix(in srgb, var(--background-secondary) 58%, transparent); }
@@ -9642,6 +9669,7 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-branch-card-tags { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .storyteller-branch-dice-tag { font-size: 0.75rem; color: var(--color-orange); }
 .storyteller-branch-item-tag { font-size: 0.75rem; color: var(--color-purple); }
+/* Lives on .storyteller-campaign-main (not the scrolling scene panel), so it always covers the visible view. */
 .storyteller-dice-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; border-radius: 8px; z-index: 100; }
 .storyteller-dice-face { font-size: 4rem; display: inline-block; }
 .storyteller-dice-face.rolling { animation: diceRoll 0.6s ease-out; }
@@ -9837,6 +9865,79 @@ body.mod-rtl .storyteller-group-members {
     background-size: var(--storyteller-board-grid-x, 10%) var(--storyteller-board-grid-y, 10%);
     opacity: 0.9;
 }
+/* Embedded Leaflet map for the campaign board. Leaflet core CSS is not bundled,
+   so these mirror the MapView rules, scoped to this container. */
+.storyteller-campaign-board-map {
+    position: relative;
+    width: 100%;
+    height: 360px;
+    min-height: 280px;
+    max-height: 60vh;
+    overflow: hidden;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--background-modifier-border) 82%, transparent);
+    background: rgba(8, 10, 13, 0.82);
+    touch-action: none;
+}
+.storyteller-campaign-board-map .leaflet-pane,
+.storyteller-campaign-board-map .leaflet-tile,
+.storyteller-campaign-board-map .leaflet-marker-icon,
+.storyteller-campaign-board-map .leaflet-marker-shadow,
+.storyteller-campaign-board-map .leaflet-tile-container,
+.storyteller-campaign-board-map .leaflet-pane > svg,
+.storyteller-campaign-board-map .leaflet-pane > canvas,
+.storyteller-campaign-board-map .leaflet-zoom-box,
+.storyteller-campaign-board-map .leaflet-image-layer,
+.storyteller-campaign-board-map .leaflet-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+.storyteller-campaign-board-map .leaflet-tile-container,
+.storyteller-campaign-board-map .leaflet-image-layer {
+    pointer-events: none;
+}
+/* Two classes so this beats Obsidian's `.workspace-leaf-content img:not([width])
+   { max-width: 100% }`. Tile containers are 0px wide, so that rule made every
+   tile 0px wide and the board image vanished. */
+.storyteller-campaign-board-map.leaflet-container img {
+    max-width: none !important;
+    max-height: none !important;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    object-fit: unset;
+}
+.storyteller-campaign-board-map .leaflet-control-container {
+    position: absolute;
+}
+.storyteller-campaign-board-map .leaflet-control {
+    position: relative;
+    z-index: 800;
+    pointer-events: auto;
+}
+.storyteller-campaign-board-map .leaflet-control-zoom a {
+    background: var(--background-primary);
+    color: var(--text-normal);
+    border-color: var(--background-modifier-border);
+}
+.storyteller-campaign-board-map .leaflet-control-zoom a:hover {
+    background: var(--background-secondary);
+}
+.storyteller-campaign-board-map .storyteller-marker-wrapper {
+    transition: transform 0.15s ease, filter 0.15s ease;
+}
+.storyteller-campaign-board-map .storyteller-location-marker.is-current .storyteller-marker-wrapper,
+.storyteller-campaign-board-map .storyteller-custom-marker.is-current .storyteller-marker-wrapper {
+    filter: drop-shadow(0 0 4px var(--color-green));
+}
+.storyteller-campaign-board-map .storyteller-location-marker.is-selected .storyteller-marker-wrapper,
+.storyteller-campaign-board-map .storyteller-custom-marker.is-selected .storyteller-marker-wrapper {
+    transform: scale(1.25);
+    filter: drop-shadow(0 0 6px var(--interactive-accent));
+}
 .storyteller-campaign-board-pin {
     position: absolute;
     transform: translate(-50%, -50%);
@@ -9984,6 +10085,7 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-progress-actions { display: flex; gap: 0.2rem; margin-left: auto; }
 .storyteller-campaign-progress-actions button,
 .storyteller-campaign-progress-remove,
+.storyteller-campaign-thread-more,
 .storyteller-campaign-thread-toggle,
 .storyteller-campaign-clock-segments button {
     border: 0;
@@ -9994,11 +10096,14 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-campaign-progress-actions button,
 .storyteller-campaign-progress-remove { display: inline-flex; padding: 3px; border-radius: 4px; }
 .storyteller-campaign-progress-actions button:hover,
-.storyteller-campaign-progress-remove:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.storyteller-campaign-progress-remove:hover,
+.storyteller-campaign-thread-more:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.storyteller-campaign-thread-more { padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; line-height: 1; letter-spacing: 0.05em; }
 .storyteller-campaign-clock-row,
 .storyteller-campaign-thread-row { display: flex; align-items: center; gap: 0.4rem; padding: 0.42rem 0.5rem; border: 1px solid var(--background-modifier-border); border-radius: 8px; }
 .storyteller-campaign-clock-info { display: flex; align-items: baseline; gap: 0.35rem; min-width: 0; }
 .storyteller-campaign-clock-name { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; font-weight: 600; }
+.storyteller-campaign-clock-kind { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); border: 1px solid var(--background-modifier-border); border-radius: 4px; padding: 0 4px; }
 .storyteller-campaign-clock-value { color: var(--text-muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
 .storyteller-campaign-clock-segments { display: flex; flex: 1; gap: 3px; }
 .storyteller-campaign-clock-segments button { flex: 1; min-width: 8px; height: 12px; padding: 0; border: 1px solid var(--background-modifier-border); border-radius: 3px; }
@@ -10122,6 +10227,24 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-branch-outcome.is-remove { color: var(--color-red); }
 .storyteller-branch-outcome.is-flag { color: var(--color-cyan); }
 .storyteller-branch-outcome.is-event { color: var(--color-yellow); }
+.storyteller-branch-outcome.is-standing { color: #b7791f; }
+.storyteller-branch-outcome.is-lore { color: var(--color-blue); }
+.storyteller-branch-outcome.is-tags { color: var(--text-muted); font-family: var(--font-monospace); }
+.storyteller-branch-outcome.is-encounter { color: var(--color-orange); }
+.storyteller-campaign-encounter { border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 0.75rem; margin: 0.75rem 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.storyteller-campaign-encounter-header { display: flex; align-items: center; gap: 0.5rem; }
+.storyteller-campaign-encounter-title { font-weight: 600; }
+.storyteller-campaign-encounter-rows { display: flex; flex-direction: column; gap: 0.25rem; }
+.storyteller-campaign-encounter-row { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.35rem 0.5rem; border-radius: 6px; }
+.storyteller-campaign-encounter-row.is-active { background: rgba(250,179,135,0.15); }
+.storyteller-campaign-encounter-range { font-weight: 600; color: var(--color-orange); min-width: 2.5rem; white-space: nowrap; }
+.storyteller-campaign-encounter-main { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.storyteller-campaign-encounter-label { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: baseline; }
+.storyteller-campaign-encounter-result { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; padding: 0.5rem; border-radius: 6px; background: var(--background-secondary); }
+.storyteller-campaign-encounter-result-roll { font-size: 1.25rem; font-weight: 700; color: var(--color-orange); }
+.storyteller-campaign-encounter-result-label { font-weight: 600; flex: 1; }
+.storyteller-campaign-encounter-actions { display: flex; gap: 0.5rem; justify-content: flex-end; align-items: center; }
+.storyteller-campaign-encounter-actions .storyteller-campaign-input.is-small { width: 5.5rem; }
 .storyteller-branch-empty { color: var(--text-muted); font-style: italic; font-size: 0.875rem; }
 .storyteller-encounter-block { border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 1rem; margin: 0.5rem 0; }
 .storyteller-encounter-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
@@ -11632,6 +11755,249 @@ body.mod-rtl .storyteller-group-members {
   cursor: ew-resize;
 }
 
+/* Calendar view: one month of the story's calendar as a week grid, or an
+   agenda on narrow panes. Each week is a CSS grid, so a multi-day chip spans
+   its columns, with the day numbers in row one and the chips in the rows below. */
+.storyteller-timeline-calendar {
+  --storyteller-timeline-calendar-lane-height: 20px;
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 8px 12px 16px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.storyteller-timeline-calendar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.storyteller-timeline-calendar-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-ui-medium);
+  font-weight: 600;
+}
+
+.storyteller-timeline-calendar-today {
+  padding: 2px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.storyteller-timeline-calendar-board {
+  min-width: 0;
+}
+
+.storyteller-timeline-calendar-weekdays,
+.storyteller-timeline-calendar-week {
+  display: grid;
+  grid-template-columns: repeat(var(--storyteller-timeline-calendar-columns, 7), minmax(0, 1fr));
+}
+
+.storyteller-timeline-calendar-weekday {
+  min-width: 0;
+  padding: 4px 2px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.storyteller-timeline-calendar-week {
+  grid-template-rows: auto repeat(var(--storyteller-timeline-calendar-lanes, 1), var(--storyteller-timeline-calendar-lane-height));
+}
+
+.storyteller-timeline-calendar-day {
+  min-width: 0;
+  border-right: 1px solid var(--background-modifier-border);
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+
+.storyteller-timeline-calendar-day.is-outside {
+  background: var(--background-secondary);
+  opacity: 0.55;
+}
+
+.storyteller-timeline-calendar-day.is-today {
+  background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
+}
+
+.storyteller-timeline-calendar-day.is-drop-target {
+  box-shadow: inset 0 0 0 2px var(--interactive-accent);
+}
+
+/* Day number and holidays sit in row one and let clicks through to the day. */
+.storyteller-timeline-calendar-daynum {
+  min-width: 0;
+  padding: 2px 4px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  pointer-events: none;
+}
+
+.storyteller-timeline-calendar-daynum-value {
+  display: inline-block;
+  min-width: 1.4em;
+  text-align: center;
+}
+
+.storyteller-timeline-calendar-daynum.is-today .storyteller-timeline-calendar-daynum-value {
+  border-radius: 999px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+
+.storyteller-timeline-calendar-holiday {
+  overflow: hidden;
+  color: var(--storyteller-timeline-calendar-holiday-color, var(--interactive-accent));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.storyteller-timeline-calendar-chip {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin: 1px 2px;
+  padding: 0 6px;
+  overflow: hidden;
+  border-left: 3px solid var(--storyteller-timeline-calendar-chip-color, var(--interactive-accent));
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--storyteller-timeline-calendar-chip-color, var(--interactive-accent)) 22%, transparent);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.storyteller-timeline-calendar-chip.is-continued-before {
+  border-left-width: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.storyteller-timeline-calendar-chip.is-continued-after {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.storyteller-timeline-calendar-chip.is-selected {
+  box-shadow: inset 0 0 0 1px var(--interactive-accent);
+  font-weight: 600;
+}
+
+.storyteller-timeline-calendar-chip.is-draggable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.storyteller-timeline-calendar-chip.is-dragging {
+  z-index: 3;
+  opacity: 0.85;
+  pointer-events: none;
+  box-shadow: var(--shadow-s);
+}
+
+.storyteller-timeline-calendar-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.storyteller-timeline-calendar-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+.storyteller-timeline-calendar-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+img.storyteller-timeline-calendar-icon {
+  object-fit: cover;
+  border-radius: 2px;
+}
+
+.storyteller-timeline-calendar-more {
+  z-index: 1;
+  margin: 1px 2px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Narrow panes: the month as a list of the days that have something on them. */
+.storyteller-timeline-calendar-agenda {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.storyteller-timeline-calendar-agenda-day {
+  padding-top: 6px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-timeline-calendar-agenda-heading {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.storyteller-timeline-calendar-agenda-day.is-today .storyteller-timeline-calendar-agenda-heading {
+  color: var(--interactive-accent);
+}
+
+.storyteller-timeline-calendar-agenda-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: none;
+  border-left: 3px solid var(--storyteller-timeline-calendar-chip-color, var(--interactive-accent));
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--storyteller-timeline-calendar-chip-color, var(--interactive-accent)) 22%, transparent);
+  color: var(--text-normal);
+  text-align: left;
+  cursor: pointer;
+}
+
+.storyteller-timeline-calendar-empty {
+  padding: 16px 0;
+  color: var(--text-muted);
+}
+
 /* Hover card for a timeline item. Canvas has no per-region title attribute, so
    the detail the old renderer put in a tooltip is drawn in this element. */
 .sts-native-timeline-tooltip {
@@ -11646,6 +12012,52 @@ body.mod-rtl .storyteller-group-members {
   font-size: 12px;
   line-height: 1.4;
   pointer-events: none;
+}
+
+/* Icons and cover images on the timeline tooltip */
+.sts-native-timeline-tooltip-banner {
+  display: block;
+  width: calc(100% + 20px);
+  height: 110px;
+  margin: -8px -10px 8px;
+  object-fit: cover;
+  border-radius: 6px 6px 0 0;
+}
+
+.sts-native-timeline-tooltip-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sts-native-timeline-tooltip-head .sts-native-timeline-tooltip-title {
+  min-width: 0;
+}
+
+.sts-native-timeline-tooltip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.sts-native-timeline-tooltip-icon .storyteller-icon-picker-preview {
+  width: 28px;
+  height: 28px;
+}
+
+.sts-native-timeline-tooltip-icon .storyteller-icon-picker-preview svg {
+  width: 26px;
+  height: 26px;
+}
+
+.sts-native-timeline-tooltip-icon img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .sts-native-timeline-tooltip-title {
@@ -11710,11 +12122,16 @@ body.mod-rtl .storyteller-group-members {
   padding: 0.4rem 0.5rem;
 }
 
+/* A band wraps its own fields and never wider than the pane, so a narrow
+   pane breaks a band onto two lines rather than running past its edge. */
 .storyteller-toolbar-group {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.3rem;
   position: relative;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* A hairline between bands, rather than a gap the eye has to measure. */
@@ -11739,6 +12156,8 @@ body.mod-rtl .storyteller-group-members {
   display: flex;
   align-items: center;
   gap: 0.3rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .storyteller-toolbar-field-label {
@@ -11747,9 +12166,12 @@ body.mod-rtl .storyteller-group-members {
   white-space: nowrap;
 }
 
+/* Dropdowns cap at 11rem but may shrink below that, so the Track picker
+   narrows inside a 400 px pane instead of pushing past its edge. */
 .storyteller-toolbar-field select,
 .storyteller-toolbar-field .dropdown {
-  max-width: 11rem;
+  max-width: min(11rem, 100%);
+  min-width: 0;
 }
 
 /* Top-level view switch plus the orientation switch owned by Timeline. */
@@ -11761,6 +12183,28 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-timeline-orientation-segment.is-hidden {
   display: none;
+}
+
+/* Minimal toggle: Timeline only, pressed while on. */
+.storyteller-calendar-hidden {
+    display: none !important;
+}
+
+.storyteller-minimal-toggle.is-hidden {
+  display: none;
+}
+
+.storyteller-minimal-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: auto;
+  padding: 0 8px;
+}
+
+.storyteller-minimal-toggle.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
 }
 
 .storyteller-segment {
@@ -11984,23 +12428,27 @@ body.mod-rtl .storyteller-group-members {
 }
 
 /* ── Timeline empty state ─────────────────────────────────────────────────
-   A blank canvas explains nothing. Say what the view is for. */
+   A blank canvas explains nothing. Say what the view is for. The message is
+   an opaque card centred over the canvas: gridlines, the today line and the
+   axis labels are drawn beneath it and must not run through the text. */
 
 .storyteller-timeline-empty {
   position: absolute;
-  inset: 0;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  width: min(420px, calc(100% - 2rem));
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 0.5rem;
-  padding: 2rem;
+  padding: 1.5rem 1.75rem;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l, 8px);
+  box-shadow: var(--shadow-s);
   text-align: center;
-  pointer-events: none;
-}
-
-.storyteller-timeline-empty > * {
-  pointer-events: auto;
 }
 
 .storyteller-timeline-empty-icon {
@@ -12047,6 +12495,13 @@ body.mod-rtl .storyteller-group-members {
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
   overflow: hidden;
+}
+
+/* The block's one control, a New event button sitting just above its top edge. */
+.sts-timeline-block-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0.75em 0 -0.5em;
 }
 
 /* Typos in a block's settings, listed above it. Loud on purpose: a filter that
@@ -12197,3 +12652,3026 @@ body.mod-rtl .storyteller-group-members {
 .leaflet-container:not(.st-grid-enabled) .st-edit-location-area { display: none; }
 .leaflet-container:not(.st-grid-enabled) .st-grid-editor { display: none; }
 .leaflet-container:not(.st-grid-enabled) .st-grid-canvas { pointer-events: none !important; }
+
+/* wave5 campaign-ui */
+.storyteller-campaign-quick { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.5rem; margin-bottom: 0.5rem; border: 1px solid var(--background-modifier-border); border-radius: 8px; background: color-mix(in srgb, var(--background-secondary) 60%, transparent); }
+.storyteller-campaign-quick-actors,
+.storyteller-campaign-quick-modes,
+.storyteller-campaign-quick-tags,
+.storyteller-campaign-quick-npc,
+.storyteller-campaign-quick-line,
+.storyteller-campaign-quick-roll { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; }
+.storyteller-campaign-quick-line .storyteller-campaign-quick-input { flex: 1; min-width: 120px; }
+.storyteller-campaign-quick-chip { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.1rem 0.45rem; border: 1px solid var(--background-modifier-border); border-radius: 999px; background: var(--background-primary); color: var(--text-normal); font-size: 0.72rem; cursor: pointer; }
+.storyteller-campaign-quick-chip.is-active { border-color: var(--interactive-accent); background: color-mix(in srgb, var(--interactive-accent) 18%, transparent); }
+.storyteller-campaign-quick-order { font-size: 0.65rem; font-weight: 700; color: var(--interactive-accent); }
+.storyteller-campaign-quick-mode { padding: 0.15rem 0.5rem; border-radius: 6px; font-family: var(--font-monospace); font-size: 0.72rem; }
+.storyteller-campaign-quick-mode.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
+.storyteller-campaign-quick-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.storyteller-campaign-quick-preview { min-height: 1em; font-family: var(--font-monospace); font-size: 0.72rem; color: var(--text-muted); word-break: break-word; }
+.storyteller-campaign-quick-preview.is-error { font-family: inherit; font-style: italic; color: var(--text-faint); }
+.storyteller-campaign-scene-kind { max-width: 130px; }
+.storyteller-campaign-clock-row.is-clock .storyteller-campaign-clock-segments button.is-filled { border-color: var(--color-red); background: var(--color-red); }
+.storyteller-campaign-clock-row.is-track .storyteller-campaign-clock-segments button.is-filled { border-color: var(--interactive-accent); background: var(--interactive-accent); }
+.storyteller-campaign-clock-row.is-timer .storyteller-campaign-clock-segments button.is-filled { border-color: var(--color-orange); background: var(--color-orange); }
+.storyteller-campaign-clock-row.is-timer .storyteller-campaign-clock-value { color: var(--color-orange); font-weight: 600; }
+.storyteller-campaign-thread-state { margin-left: auto; padding: 0 4px; border: 1px solid var(--background-modifier-border); border-radius: 4px; font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); white-space: nowrap; }
+.storyteller-campaign-party-group { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.6rem; padding-top: 0.45rem; border-top: 1px solid var(--background-modifier-border); }
+.storyteller-campaign-party-group-hdr { display: flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); }
+.storyteller-campaign-party-group-hdr .storyteller-campaign-progress-actions { margin-left: auto; }
+.storyteller-campaign-resource-row,
+.storyteller-campaign-loot-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; font-size: 0.78rem; }
+.storyteller-campaign-resource-name,
+.storyteller-campaign-loot-name { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.storyteller-campaign-resource-value { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.storyteller-campaign-resource-row .storyteller-campaign-input.is-small { width: 56px; }
+.storyteller-campaign-standing-tier,
+.storyteller-campaign-standing-text { font-size: 0.7rem; color: var(--text-muted); }
+.storyteller-campaign-standing-notes { padding-left: 0.2rem; font-size: 0.7rem; font-style: italic; color: var(--text-faint); }
+.storyteller-campaign-end-advancements { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.5rem; }
+.storyteller-campaign-end-advancement { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+
+/* Lorelog dashboard and quick capture */
+.storyteller-lore-dashboard { padding: 0 16px 24px; overflow-x: hidden; }
+.storyteller-lore-dashboard h3 { margin-top: 1.2rem; }
+.storyteller-lore-muted { color: var(--text-muted); font-size: 0.8rem; }
+.storyteller-lore-toolbar { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.6rem 0; }
+.storyteller-lore-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 0.4rem; }
+.storyteller-lore-stat { padding: 0.4rem 0.5rem; border: 1px solid var(--background-modifier-border); border-radius: 6px; }
+.storyteller-lore-stat-value { font-size: 1.2rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.storyteller-lore-stat-label { font-size: 0.7rem; color: var(--text-muted); }
+.storyteller-lore-section ul { padding-left: 1.1rem; margin: 0.3rem 0; }
+.storyteller-lore-section li { overflow-wrap: anywhere; margin-bottom: 0.2rem; }
+.storyteller-lore-line-link,
+.storyteller-lore-entity-link { cursor: pointer; }
+.storyteller-lore-badge { font-size: 0.65rem; text-transform: uppercase; color: var(--text-faint); border: 1px solid var(--background-modifier-border); border-radius: 4px; padding: 0 4px; margin-left: 0.3rem; }
+.storyteller-lore-ripples { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.5rem; }
+.storyteller-lore-ripple-row { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.storyteller-lore-ripple-row input[type="text"] { flex: 1 1 120px; min-width: 0; }
+.storyteller-lore-sync-item { margin-bottom: 0.6rem; }
+.storyteller-lore-sync-item ul { padding-left: 1.4rem; font-size: 0.85rem; }
+/* The overlay ignores pointer input, but its Cancel button must stay tappable. */
+.storyteller-placement-overlay .placement-cancel {
+    pointer-events: auto;
+    margin-left: 8px;
+    padding: 2px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+/* ---- Group chips (EntityGroupSelector) ---- */
+.selected-groups {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 6px 0;
+}
+.group-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 10px;
+    border-radius: 999px;
+    background: var(--background-modifier-border);
+    color: var(--text-normal);
+    font-size: 0.82em;
+}
+.remove-group-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 1em;
+    line-height: 1;
+    cursor: pointer;
+}
+.remove-group-btn:hover,
+.remove-group-btn:focus-visible {
+    color: var(--text-error);
+    background: var(--background-modifier-hover);
+}
+.remove-group-btn:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 1px;
+}
+/* Touch screens get a target close to the 44px guideline. */
+@media (pointer: coarse) {
+    .remove-group-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+}
+
+/* ==========================================================================
+   ink-ui: Map Ink toolbar, inspector, colour picker and stroke style picker.
+   Compact 28px controls, 8px panels, subtle borders, clear focus rings.
+   Obsidian variables first, plain fallbacks after.
+   ========================================================================== */
+.ink-toolbar,
+.ink-inspector,
+.ink-popover,
+.ink-stamp-flyout,
+.ink-dock,
+.ink-side {
+	--ink-bg: var(--background-primary, #1e1e1e);
+	--ink-bg-raised: var(--background-secondary, #262626);
+	--ink-border: var(--background-modifier-border, #3a3a3a);
+	--ink-text: var(--text-normal, #dcdcdc);
+	--ink-muted: var(--text-muted, #9a9a9a);
+	--ink-accent: var(--interactive-accent, #7c5cff);
+	--ink-on-accent: var(--text-on-accent, #ffffff);
+	--ink-hover: var(--background-modifier-hover, rgba(127, 127, 127, 0.14));
+	--ink-focus: var(--interactive-accent, #7c5cff);
+	--ink-control-h: 28px;
+	--ink-radius-panel: 8px;
+	--ink-radius-control: 6px;
+	color: var(--ink-text);
+	font-size: var(--font-ui-small, 12px);
+	line-height: 1.3;
+}
+
+.ink-toolbar [hidden],
+.ink-inspector [hidden],
+.ink-popover[hidden],
+.ink-stamp-flyout[hidden] {
+	display: none !important;
+}
+
+.ink-toolbar button:focus-visible,
+.ink-inspector button:focus-visible,
+.ink-inspector input:focus-visible,
+.ink-inspector select:focus-visible,
+.ink-inspector textarea:focus-visible,
+.ink-popover button:focus-visible,
+.ink-popover input:focus-visible,
+.ink-stamp-flyout button:focus-visible,
+.ink-stamp-flyout input:focus-visible {
+	outline: 2px solid var(--ink-focus);
+	outline-offset: 1px;
+}
+
+/* ---- toolbar -------------------------------------------------------------- */
+
+.ink-toolbar {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 4px;
+	padding: 6px;
+	width: 40px;
+	background: var(--ink-bg);
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-panel);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+	box-sizing: border-box;
+}
+
+.ink-tool {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--ink-control-h);
+	height: var(--ink-control-h);
+	padding: 0;
+	margin: 0;
+	border: 1px solid transparent;
+	border-radius: var(--ink-radius-control);
+	background: transparent;
+	color: var(--ink-muted);
+	cursor: pointer;
+}
+
+.ink-tool:hover:not(:disabled) {
+	background: var(--ink-hover);
+	color: var(--ink-text);
+}
+
+.ink-tool:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.ink-tool.ink-tool-active {
+	background: var(--ink-accent);
+	border-color: var(--ink-accent);
+	color: var(--ink-on-accent);
+}
+
+.ink-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	flex-shrink: 0;
+}
+
+.ink-icon svg {
+	width: 16px;
+	height: 16px;
+}
+
+.ink-toolbar-sep {
+	width: 22px;
+	height: 1px;
+	margin: 2px 0;
+	background: var(--ink-border);
+}
+
+/* Tooltip: shows the name and shortcut to the right of the button. */
+.ink-tool[data-tooltip]::after {
+	content: attr(data-tooltip);
+	position: absolute;
+	left: calc(100% + 10px);
+	top: 50%;
+	transform: translateY(-50%);
+	padding: 3px 7px;
+	border-radius: var(--ink-radius-control);
+	background: var(--ink-bg-raised);
+	border: 1px solid var(--ink-border);
+	color: var(--ink-text);
+	font-size: 11px;
+	white-space: nowrap;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.12s ease;
+	z-index: 60;
+}
+
+.ink-tool[data-tooltip]:hover::after,
+.ink-tool[data-tooltip]:focus-visible::after {
+	opacity: 1;
+}
+
+/* Stamp picker flyout, beside the toolbar. */
+.ink-stamp-flyout {
+	position: absolute;
+	left: calc(100% + 10px);
+	top: 0;
+	width: 232px;
+	max-height: 420px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px;
+	background: var(--ink-bg);
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-panel);
+	box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+	box-sizing: border-box;
+	z-index: 55;
+}
+
+.ink-stamp-search {
+	height: var(--ink-control-h);
+	padding: 0 8px;
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-control);
+	background: var(--ink-bg-raised);
+	color: var(--ink-text);
+	box-sizing: border-box;
+	font-size: inherit;
+}
+
+.ink-stamp-scroll {
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.ink-stamp-heading {
+	margin: 6px 0 2px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--ink-muted);
+}
+
+.ink-stamp-grid {
+	display: grid;
+	grid-template-columns: repeat(6, 1fr);
+	gap: 3px;
+}
+
+.ink-stamp-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	aspect-ratio: 1;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: var(--ink-radius-control);
+	background: transparent;
+	color: var(--ink-text);
+	cursor: pointer;
+}
+
+.ink-stamp-btn:hover {
+	background: var(--ink-hover);
+}
+
+.ink-stamp-btn.ink-stamp-active {
+	border-color: var(--ink-accent);
+	background: var(--ink-hover);
+	color: var(--ink-accent);
+}
+
+.ink-stamp-btn svg {
+	width: 20px;
+	height: 20px;
+}
+
+/* ---- shared controls -------------------------------------------------------- */
+
+.ink-hint {
+	margin: 4px 0;
+	font-size: 11px;
+	color: var(--ink-muted);
+}
+
+.ink-input,
+.ink-select,
+.ink-textarea,
+.ink-hex {
+	height: var(--ink-control-h);
+	padding: 0 8px;
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-control);
+	background: var(--ink-bg-raised);
+	color: var(--ink-text);
+	font-size: inherit;
+	box-sizing: border-box;
+	min-width: 0;
+}
+
+.ink-textarea {
+	height: auto;
+	min-height: 56px;
+	padding: 6px 8px;
+	resize: vertical;
+	width: 100%;
+}
+
+.ink-select {
+	padding-right: 4px;
+}
+
+.ink-number {
+	width: 84px;
+}
+
+.ink-input[aria-invalid="true"],
+.ink-hex[aria-invalid="true"] {
+	border-color: #d9534f;
+}
+
+.ink-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: var(--ink-control-h);
+	padding: 0 10px;
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-control);
+	background: var(--ink-bg-raised);
+	color: var(--ink-text);
+	font-size: inherit;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.ink-btn:hover:not(:disabled) {
+	background: var(--ink-hover);
+}
+
+.ink-btn:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.ink-slider {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+.ink-range {
+	flex: 1 1 auto;
+	min-width: 0;
+	margin: 0;
+	accent-color: var(--ink-accent);
+}
+
+.ink-range-value {
+	min-width: 44px;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	color: var(--ink-muted);
+}
+
+.ink-check {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: var(--ink-control-h);
+	cursor: pointer;
+}
+
+.ink-check input {
+	margin: 0;
+	accent-color: var(--ink-accent);
+}
+
+/* ---- colour picker ----------------------------------------------------------- */
+
+.ink-color {
+	position: relative;
+	display: inline-flex;
+	flex: 0 0 auto;
+}
+
+.ink-color-trigger {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--ink-control-h);
+	height: var(--ink-control-h);
+	padding: 4px;
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-control);
+	background: var(--ink-bg-raised);
+	cursor: pointer;
+	box-sizing: border-box;
+}
+
+.ink-color-trigger[aria-expanded="true"] {
+	border-color: var(--ink-accent);
+}
+
+.ink-chip {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border-radius: 4px;
+	background: var(--ink-bg);
+	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.ink-chip-none {
+	background: linear-gradient(
+		to top right,
+		transparent calc(50% - 1px),
+		#d9534f calc(50% - 1px),
+		#d9534f calc(50% + 1px),
+		transparent calc(50% + 1px)
+	) !important;
+}
+
+.ink-chip-mixed {
+	background: repeating-linear-gradient(45deg, #9a9a9a 0 4px, #5a5a5a 4px 8px) !important;
+}
+
+.ink-popover {
+	position: absolute;
+	top: calc(100% + 6px);
+	left: 0;
+	z-index: 50;
+	width: 232px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px;
+	background: var(--ink-bg);
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-panel);
+	box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+	box-sizing: border-box;
+}
+
+.ink-popover-section {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.ink-popover-title {
+	font-size: 11px;
+	color: var(--ink-muted);
+}
+
+.ink-swatches {
+	display: grid;
+	grid-template-columns: repeat(8, 1fr);
+	gap: 4px;
+}
+
+.ink-swatch {
+	width: 100%;
+	aspect-ratio: 1;
+	padding: 0;
+	border: 1px solid rgba(0, 0, 0, 0.25);
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.ink-swatch:hover {
+	transform: scale(1.08);
+}
+
+.ink-swatch[aria-pressed="true"] {
+	box-shadow: 0 0 0 2px var(--ink-bg), 0 0 0 4px var(--ink-accent);
+}
+
+.ink-none-btn {
+	height: var(--ink-control-h);
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-control);
+	background: var(--ink-bg-raised);
+	color: var(--ink-text);
+	cursor: pointer;
+}
+
+.ink-popover-section .ink-hex,
+.ink-hex {
+	width: 100%;
+	font-family: var(--font-monospace, monospace);
+}
+
+.ink-native {
+	width: 100%;
+	height: var(--ink-control-h);
+	padding: 2px;
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-control);
+	background: var(--ink-bg-raised);
+	box-sizing: border-box;
+	cursor: pointer;
+}
+
+.ink-opacity-row {
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+}
+
+.ink-opacity-row .ink-label {
+	flex: 0 0 auto;
+}
+
+.ink-opacity-row .ink-range {
+	flex: 1 1 auto;
+}
+
+/* ---- stroke style picker ------------------------------------------------------ */
+
+.ink-stroke-style {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.ink-dropdown {
+	position: relative;
+	min-width: 0;
+}
+
+.ink-dropdown-trigger {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	height: var(--ink-control-h);
+	padding: 0 8px;
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-control);
+	background: var(--ink-bg-raised);
+	color: var(--ink-text);
+	font-size: inherit;
+	box-sizing: border-box;
+	cursor: pointer;
+}
+
+.ink-dropdown-trigger[aria-expanded="true"] {
+	border-color: var(--ink-accent);
+}
+
+.ink-dash-slot {
+	display: inline-flex;
+	align-items: center;
+	flex: 0 0 64px;
+	color: var(--ink-text);
+}
+
+.ink-dropdown-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ink-listbox {
+	position: absolute;
+	top: calc(100% + 4px);
+	left: 0;
+	right: 0;
+	width: auto;
+	z-index: 50;
+	gap: 2px;
+	padding: 4px;
+}
+
+.ink-option {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	height: var(--ink-control-h);
+	padding: 0 6px;
+	border: 1px solid transparent;
+	border-radius: var(--ink-radius-control);
+	background: transparent;
+	color: var(--ink-text);
+	font-size: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.ink-option:hover,
+.ink-option:focus-visible {
+	background: var(--ink-hover);
+}
+
+.ink-option.ink-option-active {
+	border-color: var(--ink-accent);
+}
+
+.ink-option-name {
+	white-space: nowrap;
+}
+
+/* ---- inspector ----------------------------------------------------------------- */
+
+.ink-inspector {
+	display: flex;
+	flex-direction: column;
+	width: 240px;
+	max-height: 100%;
+	background: var(--ink-bg);
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-panel);
+	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+	box-sizing: border-box;
+	overflow: hidden;
+}
+
+.ink-inspector-body {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	padding: 6px 8px 8px;
+	overflow-y: auto;
+	min-height: 0;
+}
+
+.ink-summary {
+	margin: 0 0 2px;
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--ink-text);
+}
+
+.ink-section {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	padding: 4px 0;
+	border-top: 1px solid var(--ink-border);
+}
+
+.ink-section-head,
+.ink-group-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 4px;
+	min-height: 20px;
+	cursor: pointer;
+	user-select: none;
+}
+
+.ink-section-title {
+	margin: 0;
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--ink-muted);
+}
+
+.ink-group-title {
+	margin: 0;
+	font-size: 10px;
+	font-weight: 500;
+	color: var(--ink-muted);
+}
+
+.ink-fold {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--ink-muted);
+	cursor: pointer;
+}
+
+.ink-fold:hover {
+	background: var(--ink-hover);
+	color: var(--ink-text);
+}
+
+.ink-fold .ink-icon {
+	width: 12px;
+	height: 12px;
+	transition: transform 0.12s ease;
+}
+
+.ink-folded > .ink-section-head .ink-fold .ink-icon,
+.ink-folded > .ink-group-head .ink-fold .ink-icon {
+	transform: rotate(-90deg);
+}
+
+.ink-fold-body {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.ink-group {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	margin-top: 2px;
+}
+
+.ink-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-height: var(--ink-control-h);
+}
+
+.ink-row > .ink-label {
+	flex: 0 0 56px;
+	color: var(--ink-muted);
+	font-size: 11px;
+	line-height: 1.2;
+}
+
+.ink-row > .ink-slider {
+	flex: 1 1 auto;
+}
+
+.ink-inspector .ink-row > .ink-number {
+	flex: 0 0 52px;
+	width: 52px;
+	padding: 0 4px;
+}
+
+.ink-unit {
+	flex: 0 0 auto;
+	font-size: 10px;
+	color: var(--ink-muted);
+}
+
+.ink-toggle-group {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-control);
+	background: var(--ink-bg-raised);
+}
+
+.ink-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 20px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--ink-muted);
+	cursor: pointer;
+}
+
+.ink-toggle:hover {
+	background: var(--ink-hover);
+	color: var(--ink-text);
+}
+
+.ink-toggle[aria-pressed="true"] {
+	background: var(--ink-accent);
+	color: var(--ink-on-accent);
+}
+
+.ink-toggle[aria-pressed="mixed"] {
+	box-shadow: inset 0 0 0 1px var(--ink-accent);
+	color: var(--ink-text);
+}
+
+.ink-toggle .ink-icon {
+	width: 13px;
+	height: 13px;
+}
+
+.ink-row > .ink-input,
+.ink-row > .ink-select {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.ink-row > .ink-select {
+	width: 100%;
+}
+
+.ink-row > .ink-textarea {
+	flex: 1 1 auto;
+}
+
+.ink-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.ink-preset-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.ink-preset {
+	height: 24px;
+	padding: 0 8px;
+	border: 1px solid var(--ink-border);
+	border-radius: 999px;
+	background: var(--ink-bg-raised);
+	color: var(--ink-text);
+	font-size: 11px;
+	cursor: pointer;
+}
+
+.ink-preset:hover {
+	border-color: var(--ink-accent);
+}
+
+.ink-save-row {
+	display: flex;
+	gap: 6px;
+}
+
+.ink-save-row .ink-input {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.ink-inspector .ink-row > .ink-color,
+.ink-inspector .ink-row > .ink-stroke-style {
+	flex: 1 1 auto;
+}
+
+.ink-inspector .ink-row > .ink-color {
+	flex: 0 0 auto;
+}
+
+/* Inspector density: 24px controls, tight rows. The panel is 240px wide. */
+.ink-side .ink-inspector {
+	--ink-control-h: 24px;
+}
+
+.ink-inspector .ink-input,
+.ink-inspector .ink-select,
+.ink-inspector .ink-textarea {
+	font-size: 11px;
+	padding-top: 0;
+	padding-bottom: 0;
+}
+
+.ink-inspector .ink-select {
+	padding-left: 6px;
+}
+
+.ink-inspector .ink-range-value {
+	min-width: 28px;
+	font-size: 11px;
+}
+
+.ink-inspector .ink-slider {
+	gap: 6px;
+}
+
+.ink-inspector .ink-check {
+	min-height: 20px;
+	font-size: 11px;
+}
+
+.ink-inspector .ink-check input {
+	width: 13px;
+	height: 13px;
+}
+
+.ink-inspector .ink-hint {
+	margin: 0;
+	font-size: 10px;
+}
+
+.ink-inspector .ink-color-trigger {
+	width: 24px;
+	height: 24px;
+	padding: 3px;
+}
+
+.ink-inspector .ink-btn {
+	height: 24px;
+	padding: 0 6px;
+	font-size: 11px;
+	gap: 4px;
+}
+
+.ink-inspector .ink-preset {
+	height: 20px;
+	padding: 0 6px;
+	font-size: 10px;
+}
+
+.ink-inspector .ink-textarea {
+	min-height: 40px;
+	padding: 4px 6px;
+}
+
+@media (max-width: 600px) {
+	.ink-inspector {
+		width: 100%;
+	}
+	.ink-stamp-flyout {
+		width: 200px;
+	}
+}
+
+/* =================================================================
+   MAP INK: SVG layer, items and selection overlay (src/leaflet/ink)
+   ================================================================= */
+.ink-svg {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1px;
+    height: 1px;
+    overflow: visible;
+    pointer-events: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.ink-item .ink-stroke,
+.ink-item .ink-fill,
+.ink-item .ink-pattern {
+    shape-rendering: geometricPrecision;
+}
+
+.ink-item text {
+    font-kerning: normal;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.ink-sel {
+    pointer-events: none;
+}
+
+.ink-sel-box {
+    fill: transparent;
+    stroke: var(--interactive-accent, #7c5cff);
+    cursor: move;
+}
+
+.ink-sel-line {
+    stroke: var(--interactive-accent, #7c5cff);
+}
+
+.ink-handle,
+.ink-handle-rot,
+.ink-vertex {
+    fill: var(--background-primary, #ffffff);
+    stroke: var(--interactive-accent, #7c5cff);
+}
+
+.ink-handle[data-ink-handle="nw"],
+.ink-handle[data-ink-handle="se"] {
+    cursor: nwse-resize;
+}
+
+.ink-handle[data-ink-handle="ne"],
+.ink-handle[data-ink-handle="sw"] {
+    cursor: nesw-resize;
+}
+
+.ink-handle[data-ink-handle="n"],
+.ink-handle[data-ink-handle="s"] {
+    cursor: ns-resize;
+}
+
+.ink-handle[data-ink-handle="e"],
+.ink-handle[data-ink-handle="w"] {
+    cursor: ew-resize;
+}
+
+.ink-handle-rot {
+    cursor: grab;
+}
+
+.ink-vertex {
+    cursor: crosshair;
+}
+
+.ink-mid {
+    fill: var(--background-primary, #ffffff);
+    stroke: var(--interactive-accent, #7c5cff);
+    opacity: 0.55;
+    cursor: copy;
+}
+
+/* ---- editor docks: toolbar on the left, panels on the right (InkEditor) ---- */
+/* Drafts sit over the map and take no pointer input. */
+.ink-preview-pane {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	z-index: 640;
+}
+
+.ink-dock {
+	position: absolute;
+	z-index: 1000;
+	top: 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-height: calc(100% - 20px);
+	box-sizing: border-box;
+	pointer-events: auto;
+}
+
+.ink-dock-left {
+	left: 10px;
+}
+
+.ink-dock-right {
+	right: 10px;
+	width: 240px;
+	min-height: 0;
+}
+
+/* Collapsed right panels: a slim strip with the tab icons only. */
+.ink-dock-right.ink-dock-collapsed {
+	width: auto;
+}
+
+.ink-side {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+	background: var(--ink-bg);
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-panel);
+	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+	overflow: hidden;
+}
+
+.ink-side-tabs {
+	display: flex;
+	flex: 0 0 auto;
+	border-bottom: 1px solid var(--ink-border);
+}
+
+.ink-side-collapse {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--ink-muted);
+	cursor: pointer;
+}
+
+.ink-side-collapse:hover {
+	background: var(--ink-hover);
+	color: var(--ink-text);
+}
+
+.ink-side-collapse:focus-visible {
+	outline: 2px solid var(--ink-focus);
+	outline-offset: -2px;
+}
+
+.ink-side-collapsed {
+	width: auto;
+}
+
+.ink-side-collapsed .ink-side-tabs {
+	flex-direction: column;
+	border-bottom: none;
+}
+
+.ink-side-collapsed .ink-side-collapse {
+	order: -1;
+	width: auto;
+	height: 26px;
+	border-bottom: 1px solid var(--ink-border);
+}
+
+.ink-side-collapsed .ink-side-tab {
+	flex: 0 0 auto;
+	width: 34px;
+	min-height: 30px;
+	padding: 0;
+}
+
+.ink-side-collapsed .ink-side-tab-label {
+	display: none;
+}
+
+.ink-side-collapsed .ink-side-tab-active {
+	box-shadow: inset 2px 0 0 var(--ink-accent);
+}
+
+.ink-side-tab {
+	flex: 1 1 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	min-height: var(--ink-control-h);
+	padding: 4px 8px;
+	border: none;
+	background: transparent;
+	color: var(--ink-muted);
+	font-size: 0.85em;
+	cursor: pointer;
+}
+
+.ink-side-tab:hover {
+	background: var(--ink-hover);
+	color: var(--ink-text);
+}
+
+.ink-side-tab-active {
+	color: var(--ink-text);
+	box-shadow: inset 0 -2px 0 var(--ink-accent);
+}
+
+.ink-side-tab:focus-visible {
+	outline: 2px solid var(--ink-focus);
+	outline-offset: -2px;
+}
+
+.ink-side-panel {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	flex: 1 1 auto;
+	overflow: hidden;
+}
+
+.ink-side-panel[hidden] {
+	display: none;
+}
+
+.ink-side .ink-inspector {
+	flex: 1 1 auto;
+	width: auto;
+	max-height: none;
+	min-height: 0;
+	border: none;
+	border-radius: 0;
+	box-shadow: none;
+}
+
+.ink-side .ink-layers {
+	border: none;
+	border-radius: 0;
+}
+
+.ink-finish {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	min-height: var(--ink-control-h);
+	padding: 4px 10px;
+	border: 1px solid var(--ink-accent);
+	border-radius: var(--ink-radius-control);
+	background: var(--ink-accent);
+	color: var(--ink-on-accent);
+	font-size: 0.9em;
+	cursor: pointer;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.ink-finish[hidden] {
+	display: none;
+}
+
+.ink-finish:focus-visible {
+	outline: 2px solid var(--ink-focus);
+	outline-offset: 2px;
+}
+
+/* Narrow screens (tablets, phones): the panels take less width so the map stays visible. */
+@media (max-width: 600px) {
+	.ink-dock-right {
+		width: min(240px, calc(100% - 70px));
+	}
+}
+
+/* ===== ink-tokens ===== */
+/* Map Ink tokens: round entity markers (characters, locations, items, events...). Built by src/leaflet/ink/tokens.ts. */
+
+.ink-token-marker.has-entities {
+    filter: none;
+}
+
+.ink-token-wrap {
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+}
+
+.ink-token {
+    position: relative;
+    display: block;
+    width: var(--ink-token-size, 28px);
+    height: var(--ink-token-size, 28px);
+    color: #ffffff;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.ink-token-disc {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--ink-token-color, #6b7280);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92), 0 2px 6px rgba(0, 0, 0, 0.38);
+    transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+.ink-token-glyph {
+    display: block;
+    flex: none;
+    pointer-events: none;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
+
+.ink-token-portrait {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.ink-token-count {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    z-index: 2;
+    min-width: 18px;
+    height: 18px;
+    box-sizing: border-box;
+    padding: 0 5px;
+    border: 2px solid #ffffff;
+    border-radius: 9px;
+    background: #1f2937;
+    color: #ffffff;
+    font: 600 11px/14px system-ui, -apple-system, "Segoe UI", sans-serif;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+}
+
+.ink-token-label {
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font: 600 12px/1.2 Georgia, "Times New Roman", serif;
+    color: #2a2118;
+    text-shadow: 0 0 2px #fbf6e9, 0 0 2px #fbf6e9, 0 0 4px #fbf6e9;
+    pointer-events: none;
+}
+
+/* Hover: a slight lift and a brighter ring. */
+.ink-token:hover .ink-token-disc {
+    transform: translateY(-2px);
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgba(255, 255, 255, 0.35), 0 6px 12px rgba(0, 0, 0, 0.42);
+}
+
+/* Current (scene location): a soft green glow. */
+.ink-token.is-current .ink-token-disc,
+.leaflet-marker-icon.is-current .ink-token-disc {
+    box-shadow: 0 0 0 2px #ffffff, 0 0 12px 4px rgba(34, 197, 94, 0.55), 0 2px 6px rgba(0, 0, 0, 0.38);
+}
+
+/* Selected: a 2 px accent ring and a 1.15 scale. Listed after current so the selected ring wins. */
+.ink-token.is-selected .ink-token-disc,
+.leaflet-marker-icon.is-selected .ink-token-disc {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 2px var(--interactive-accent, #7c3aed), 0 3px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* The campaign board scales its wrappers for pin state. Tokens carry their own state, so turn that off here. */
+.storyteller-campaign-board-map .storyteller-location-marker.is-current .storyteller-marker-wrapper.ink-token-wrap,
+.storyteller-campaign-board-map .storyteller-location-marker.is-selected .storyteller-marker-wrapper.ink-token-wrap {
+    transform: none;
+    filter: none;
+}
+
+/* Zoom density (ink-tokens-z1..z4 on the map container). The container carries scale variables per
+   role; the values come from src/leaflet/ink/tokenLayout.ts. A token is laid out at its full size and
+   scaled down. Counts are counter-scaled so the pill keeps its size. */
+.storyteller-location-marker .ink-token,
+.storyteller-portal-marker .ink-token {
+    transform: scale(var(--ink-scale-location, 1));
+}
+
+.storyteller-entity-marker .ink-token {
+    transform: scale(var(--ink-scale-entity, 1));
+}
+
+.storyteller-entity-marker.has-image .ink-token {
+    transform: scale(var(--ink-scale-portrait, 1));
+}
+
+.storyteller-location-marker .ink-token-count,
+.storyteller-portal-marker .ink-token-count {
+    transform: scale(var(--ink-counter-location, 1));
+    transform-origin: top right;
+}
+
+.storyteller-entity-marker .ink-token-count {
+    transform: scale(var(--ink-counter-entity, 1));
+    transform-origin: top right;
+}
+
+.storyteller-entity-marker.has-image .ink-token-count {
+    transform: scale(var(--ink-counter-portrait, 1));
+}
+
+/* A location dot: a 10 px disc, no glyph, pill or portrait. The hit area stays at 24 px. */
+.storyteller-location-marker.ink-token-dot .ink-token {
+    transform: scale(var(--ink-scale-dot, 0.2778));
+}
+
+.storyteller-location-marker.ink-token-dot .ink-token-glyph,
+.storyteller-location-marker.ink-token-dot .ink-token-portrait,
+.storyteller-location-marker.ink-token-dot .ink-token-count {
+    display: none;
+}
+
+.storyteller-location-marker.ink-token-dot .ink-token-wrap::after {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    border-radius: 50%;
+}
+
+/* Entities folded into their location (collapsed zoom, or the location is a dot). */
+.storyteller-entity-marker.ink-token-collapsed {
+    display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ink-token-disc {
+        transition: none;
+    }
+
+    .ink-token:hover .ink-token-disc {
+        transform: none;
+    }
+}
+
+/* ===== ink-layers ===== */
+/* ==========================================================================
+   ink-layers: the Map Ink layers panel and the map legend.
+   Compact 28px rows, 8px panels, subtle borders, clear focus rings.
+   Obsidian variables first, plain fallbacks after.
+   ========================================================================== */
+.ink-layers,
+.ink-legend-panel,
+.ink-legend-toggle {
+	--ink-bg: var(--background-primary, #1e1e1e);
+	--ink-bg-raised: var(--background-secondary, #262626);
+	--ink-border: var(--background-modifier-border, #3a3a3a);
+	--ink-text: var(--text-normal, #dcdcdc);
+	--ink-muted: var(--text-muted, #9a9a9a);
+	--ink-accent: var(--interactive-accent, #7c5cff);
+	--ink-hover: var(--background-modifier-hover, rgba(127, 127, 127, 0.14));
+	--ink-focus: var(--interactive-accent, #7c5cff);
+	--ink-danger: var(--text-error, #e0645a);
+	--ink-radius-panel: 8px;
+	--ink-radius-control: 6px;
+	color: var(--ink-text);
+	font-size: var(--font-ui-small, 12px);
+	line-height: 1.3;
+}
+
+.ink-layers button:focus-visible,
+.ink-layers input:focus-visible,
+.ink-legend-toggle:focus-visible,
+.ink-legend-panel button:focus-visible {
+	outline: 2px solid var(--ink-focus);
+	outline-offset: 1px;
+}
+
+.ink-sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* ---- layers panel --------------------------------------------------------- */
+
+.ink-layers {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px;
+	background: var(--ink-bg);
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-panel);
+	box-sizing: border-box;
+}
+
+.ink-layers-title {
+	padding: 0 2px;
+	color: var(--ink-muted);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.ink-layers-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ink-layer-row {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-height: var(--ink-control-h, 28px);
+	padding: 2px 4px;
+	box-sizing: border-box;
+	border: 1px solid transparent;
+	border-radius: var(--ink-radius-control);
+}
+
+.ink-layer-row:hover {
+	background: var(--ink-hover);
+}
+
+.ink-layer-row.ink-layer-active {
+	background: var(--ink-bg-raised);
+	border-color: var(--ink-accent);
+}
+
+.ink-layer-row.ink-layer-off .ink-layer-name,
+.ink-layer-row.ink-layer-off .ink-layer-count {
+	opacity: 0.55;
+}
+
+.ink-layer-row.ink-layer-dragging {
+	opacity: 0.45;
+}
+
+.ink-layer-row.ink-layer-drop-before::before,
+.ink-layer-row.ink-layer-drop-after::after {
+	content: '';
+	position: absolute;
+	left: 4px;
+	right: 4px;
+	height: 2px;
+	border-radius: 1px;
+	background: var(--ink-accent);
+	pointer-events: none;
+}
+
+.ink-layer-row.ink-layer-drop-before::before {
+	top: -2px;
+}
+
+.ink-layer-row.ink-layer-drop-after::after {
+	bottom: -2px;
+}
+
+.ink-layer-icon-btn,
+.ink-layer-handle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 24px;
+	height: 24px;
+	margin: 0;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: var(--ink-radius-control);
+	background: transparent;
+	color: var(--ink-muted);
+	cursor: pointer;
+}
+
+.ink-layer-icon-btn:hover:not(:disabled),
+.ink-layer-handle:hover {
+	background: var(--ink-hover);
+	color: var(--ink-text);
+}
+
+.ink-layer-icon-btn:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.ink-layer-delete:hover:not(:disabled) {
+	color: var(--ink-danger);
+}
+
+.ink-layer-handle {
+	cursor: grab;
+	touch-action: none;
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+.ink-layer-handle:active {
+	cursor: grabbing;
+}
+
+.ink-layer-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 2px 4px;
+	overflow: hidden;
+	text-align: left;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	border: none;
+	border-radius: var(--ink-radius-control);
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+
+.ink-layer-row.ink-layer-active .ink-layer-name {
+	font-weight: 600;
+}
+
+.ink-layer-rename {
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 24px;
+	box-sizing: border-box;
+}
+
+.ink-layer-count {
+	flex: 0 0 auto;
+	min-width: 18px;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: var(--ink-hover);
+	color: var(--ink-muted);
+	font-variant-numeric: tabular-nums;
+	text-align: center;
+}
+
+.ink-layers-add {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	width: 100%;
+	height: var(--ink-control-h, 28px);
+	margin: 0;
+	padding: 0 8px;
+	box-sizing: border-box;
+	border: 1px dashed var(--ink-border);
+	border-radius: var(--ink-radius-control);
+	background: transparent;
+	color: var(--ink-muted);
+	cursor: pointer;
+}
+
+.ink-layers-add:hover {
+	background: var(--ink-hover);
+	color: var(--ink-text);
+}
+
+/* ---- legend --------------------------------------------------------------- */
+
+.ink-legend {
+	position: absolute;
+	right: 12px;
+	bottom: 12px;
+	z-index: 900;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 6px;
+}
+
+.ink-legend-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: var(--ink-control-h, 28px);
+	margin: 0;
+	padding: 0 10px;
+	box-sizing: border-box;
+	background: var(--ink-bg);
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-panel);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+	color: var(--ink-text);
+	cursor: pointer;
+}
+
+.ink-legend-toggle:hover {
+	background: var(--ink-hover);
+}
+
+.ink-legend-toggle[aria-expanded="true"] {
+	border-color: var(--ink-accent);
+}
+
+.ink-legend-panel {
+	width: 240px;
+	max-width: calc(100vw - 32px);
+	max-height: 50vh;
+	overflow-y: auto;
+	padding: 10px;
+	box-sizing: border-box;
+	background: var(--ink-bg);
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-panel);
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.ink-legend-panel[hidden] {
+	display: none !important;
+}
+
+.ink-legend-title {
+	margin-bottom: 4px;
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.ink-legend-heading {
+	margin: 8px 0 4px;
+	color: var(--ink-muted);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.ink-legend-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ink-legend-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 22px;
+}
+
+.ink-legend-swatch {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 36px;
+	height: 22px;
+}
+
+.ink-legend-swatch svg {
+	display: block;
+	max-width: 100%;
+	height: auto;
+}
+
+.ink-legend-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ink-legend-count {
+	flex: 0 0 auto;
+	color: var(--ink-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.ink-legend-empty {
+	margin: 4px 0;
+	color: var(--ink-muted);
+}
+
+@media (max-width: 600px) {
+	.ink-legend {
+		right: 8px;
+		bottom: 8px;
+	}
+}
+
+/* ===== ink-brushes ===== */
+/* Brush picker flyout (beside the toolbar, while Path, Freehand or Area is active),
+   the brush controls in the inspector, grouped presets and the legend brush rows.
+   Matches the stamp flyout: same panel, search and spacing. */
+.ink-brush-flyout {
+	position: absolute;
+	left: calc(100% + 10px);
+	top: 0;
+	width: 232px;
+	max-height: 420px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px;
+	background: var(--ink-bg);
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-panel);
+	box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+	box-sizing: border-box;
+	color: var(--ink-text);
+	font-size: var(--font-ui-small, 12px);
+	line-height: 1.3;
+	z-index: 55;
+}
+
+.ink-brush-flyout[hidden] {
+	display: none !important;
+}
+
+.ink-brush-flyout button:focus-visible,
+.ink-brush-flyout input:focus-visible {
+	outline: 2px solid var(--ink-focus);
+	outline-offset: 1px;
+}
+
+.ink-brush-search {
+	height: var(--ink-control-h, 28px);
+	padding: 0 8px;
+	border: 1px solid var(--ink-border);
+	border-radius: var(--ink-radius-control, 6px);
+	background: var(--ink-bg-raised);
+	color: var(--ink-text);
+	box-sizing: border-box;
+	font-size: inherit;
+}
+
+.ink-brush-scroll {
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.ink-brush-heading {
+	margin: 6px 0 2px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--ink-muted);
+}
+
+.ink-brush-btn {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-height: 26px;
+	padding: 2px 6px;
+	border: 1px solid transparent;
+	border-radius: var(--ink-radius-control, 6px);
+	background: transparent;
+	color: var(--ink-text);
+	font-size: inherit;
+	text-align: left;
+	cursor: pointer;
+	box-sizing: border-box;
+}
+
+.ink-brush-btn:hover {
+	background: var(--ink-hover);
+}
+
+.ink-brush-btn.ink-brush-active {
+	border-color: var(--ink-accent);
+	background: var(--ink-hover);
+	color: var(--ink-accent);
+}
+
+.ink-brush-thumb {
+	display: inline-flex;
+	flex: 0 0 56px;
+	align-items: center;
+	justify-content: center;
+	width: 56px;
+	height: 16px;
+}
+
+.ink-brush-thumb svg {
+	display: block;
+	width: 56px;
+	height: 16px;
+}
+
+.ink-brush-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ink-brush-empty {
+	margin: 4px 0;
+	font-size: 11px;
+	color: var(--ink-muted);
+}
+
+.ink-stroke-style-disabled .ink-dropdown-trigger:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.ink-preset-heading {
+	margin: 8px 0 4px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--ink-muted);
+}
+
+.ink-preset-heading:first-child {
+	margin-top: 0;
+}
+
+@media (max-width: 600px) {
+	.ink-brush-flyout {
+		width: 200px;
+	}
+}
+
+/* Colour row at the top of the stamp and brush flyouts: label, quick swatches, full picker. */
+.ink-flyout-colour {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding-bottom: 6px;
+	border-bottom: 1px solid var(--ink-border, rgba(127, 127, 127, 0.3));
+}
+.ink-flyout-colour-label {
+	font-size: 12px;
+	color: var(--ink-muted, var(--text-muted, #888));
+	flex: none;
+}
+.ink-flyout-swatches {
+	display: flex;
+	gap: 3px;
+	flex: 1 1 auto;
+	flex-wrap: nowrap;
+}
+/* Brush and stamp previews take the flyout colour, so they show what the next item looks like. */
+.ink-brush-thumb,
+.ink-stamp-btn svg {
+	color: var(--ink-flyout-colour, currentColor);
+}
+.ink-flyout-swatch {
+	width: 13px;
+	height: 13px;
+	min-width: 0;
+	padding: 0;
+	border-radius: 50%;
+	border: 1px solid rgba(0, 0, 0, 0.25);
+	box-shadow: none;
+	cursor: pointer;
+}
+.ink-flyout-swatch:hover {
+	transform: scale(1.12);
+}
+.ink-flyout-swatch-active,
+.ink-flyout-swatch:focus-visible {
+	outline: 2px solid var(--interactive-accent, #7b6cd9);
+	outline-offset: 1px;
+}
+.ink-flyout-colour .ink-popover {
+	left: auto;
+	right: 0;
+}
+
+/* Map breadcrumb: Lucide chevrons between pill crumbs, each crumb centred on one line. */
+.storyteller-map-breadcrumb { align-items: center; gap: 6px; padding: 4px 8px; flex-wrap: nowrap; }
+.storyteller-map-breadcrumb .breadcrumb-separator { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--text-faint); line-height: 0; }
+.storyteller-map-breadcrumb .breadcrumb-separator svg { width: 14px; height: 14px; }
+.storyteller-map-breadcrumb .breadcrumb-item { display: inline-flex; align-items: center; gap: 6px; height: 26px; margin: 0; padding: 0 10px; border-radius: 999px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-muted); font-size: var(--font-ui-small); line-height: 1; white-space: nowrap; flex-shrink: 0; box-shadow: none; }
+.storyteller-map-breadcrumb .breadcrumb-item-icon { display: inline-flex; align-items: center; line-height: 0; }
+.storyteller-map-breadcrumb .breadcrumb-item-icon svg { width: 14px; height: 14px; }
+.storyteller-map-breadcrumb .breadcrumb-item-label { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.storyteller-map-breadcrumb .breadcrumb-item-clickable { cursor: pointer; }
+.storyteller-map-breadcrumb .breadcrumb-item-clickable:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.storyteller-map-breadcrumb .breadcrumb-item-clickable:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
+.storyteller-map-breadcrumb .breadcrumb-item-current { cursor: default; color: var(--text-normal); font-weight: 600; background: color-mix(in srgb, var(--interactive-accent) 16%, transparent); border-color: color-mix(in srgb, var(--interactive-accent) 45%, transparent); }
+
+/* ===== icon-picker ===== */
+.modal.storyteller-icon-picker-modal {
+    width: min(680px, 94vw);
+    max-width: 94vw;
+}
+
+.storyteller-icon-picker {
+    display: flex;
+    flex-direction: column;
+    max-height: min(70vh, 640px);
+    min-height: 0;
+}
+
+.storyteller-icon-picker [hidden] {
+    display: none !important;
+}
+
+/* Tab bar */
+.storyteller-icon-picker-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0 0 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+    overflow-x: auto;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-tab {
+    padding: 6px 12px;
+    border-radius: var(--radius-m);
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-tab:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-tab.is-active {
+    background: var(--background-secondary-alt, var(--background-secondary));
+    border-color: var(--background-modifier-border);
+    color: var(--text-normal);
+    font-weight: 600;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-tab:focus-visible,
+.storyteller-icon-picker .storyteller-icon-picker-cell:focus-visible,
+.storyteller-icon-picker .storyteller-icon-picker-swatch:focus-visible,
+.storyteller-icon-picker .storyteller-icon-picker-action:focus-visible,
+.storyteller-icon-picker .storyteller-icon-picker-more:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
+}
+
+/* Scrolling body; the tab bar and footer stay put */
+.storyteller-icon-picker-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 2px;
+}
+
+.storyteller-icon-picker-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.storyteller-icon-picker-sticky {
+    position: sticky;
+    top: -12px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 0 10px;
+    background: var(--background-primary);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-search,
+.storyteller-icon-picker .storyteller-icon-picker-emoji-input,
+.storyteller-icon-picker .storyteller-icon-picker-url {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    border-radius: var(--radius-m);
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: var(--font-ui-medium);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-search:focus,
+.storyteller-icon-picker .storyteller-icon-picker-emoji-input:focus,
+.storyteller-icon-picker .storyteller-icon-picker-url:focus,
+.storyteller-icon-picker .storyteller-icon-picker-hex:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+/* Colour row */
+.storyteller-icon-picker-colour {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.storyteller-icon-picker-colour-label {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    min-width: 44px;
+}
+
+.storyteller-icon-picker-swatches {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-swatch {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    background: var(--storyteller-icon-picker-swatch, #888);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-swatch:hover {
+    transform: scale(1.08);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-swatch.is-selected {
+    border-color: var(--text-normal);
+    box-shadow: 0 0 0 2px var(--background-primary), 0 0 0 4px var(--text-normal);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-hex {
+    width: 96px;
+    padding: 4px 8px;
+    border-radius: var(--radius-m);
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-family: var(--font-monospace);
+    font-size: var(--font-ui-small);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-colour-input {
+    width: 32px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    background: transparent;
+    cursor: pointer;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-none {
+    font-size: var(--font-ui-small);
+}
+
+/* Counts, hints and status lines */
+.storyteller-icon-picker-count,
+.storyteller-icon-picker-hint,
+.storyteller-icon-picker-status,
+.storyteller-icon-picker-help {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+}
+
+.storyteller-icon-picker-hint:empty,
+.storyteller-icon-picker-status:empty {
+    display: none;
+}
+
+.storyteller-icon-picker-empty {
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 24px 8px;
+    text-align: center;
+}
+
+.storyteller-icon-picker-group-title {
+    margin: 10px 0 2px;
+    font-size: var(--font-ui-small);
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* Grid of 40px cells */
+.storyteller-icon-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    gap: 4px;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-cell {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-m);
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-normal);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-cell:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-cell.is-selected {
+    background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+    border-color: var(--interactive-accent);
+    box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+
+.storyteller-icon-picker-grid-emoji .storyteller-icon-picker-cell {
+    font-size: 22px;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-more {
+    align-self: center;
+    margin-top: 4px;
+}
+
+/* Glyphs, shared by cells, the footer and the settings chip */
+.storyteller-icon-picker-glyph,
+.storyteller-icon-picker-preview {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.storyteller-icon-picker-glyph svg,
+.storyteller-icon-picker-preview svg {
+    width: 22px;
+    height: 22px;
+}
+
+.storyteller-icon-picker-preview-img,
+.storyteller-icon-picker-img,
+.storyteller-icon-picker-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.storyteller-icon-picker-mask {
+    display: block;
+    width: 100%;
+    height: 100%;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+}
+
+.storyteller-icon-picker-emoji {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.storyteller-icon-picker-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-faint);
+}
+
+.storyteller-icon-picker-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-m);
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    margin-right: 8px;
+}
+
+.storyteller-icon-picker-chip .storyteller-icon-picker-preview {
+    width: 24px;
+    height: 24px;
+}
+
+/* Image tab */
+.storyteller-icon-picker-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: var(--radius-m);
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    cursor: pointer;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-action:hover {
+    background: var(--background-modifier-hover);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-action[aria-expanded="true"] {
+    border-color: var(--interactive-accent);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-action-icon {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+}
+
+.storyteller-icon-picker-image-current {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius-m);
+    background: var(--background-secondary);
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    word-break: break-all;
+}
+
+.storyteller-icon-picker-image-chip {
+    display: inline-flex;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-m);
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    overflow: hidden;
+}
+
+.storyteller-icon-picker-image-chip .storyteller-icon-picker-preview {
+    width: 36px;
+    height: 36px;
+}
+
+.storyteller-icon-picker-web {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border-radius: var(--radius-m);
+    border: 1px dashed var(--background-modifier-border);
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-url-preview {
+    display: flex;
+    justify-content: center;
+    min-height: 0;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-url-preview:empty {
+    display: none;
+}
+
+.storyteller-icon-picker .storyteller-icon-picker-url-img {
+    max-width: 100%;
+    max-height: 160px;
+    object-fit: contain;
+    border-radius: var(--radius-s);
+    background: var(--background-primary);
+}
+
+.storyteller-icon-picker-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--font-ui-small);
+    cursor: pointer;
+}
+
+/* Footer */
+.storyteller-icon-picker-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+}
+
+.storyteller-icon-picker-current {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1 1 200px;
+}
+
+.storyteller-icon-picker-footer-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border-radius: var(--radius-m);
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-icon-picker-footer-chip .storyteller-icon-picker-preview {
+    width: 28px;
+    height: 28px;
+}
+
+.storyteller-icon-picker-footer-label {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.storyteller-icon-picker-footer-buttons {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+@media (max-width: 520px) {
+    .storyteller-icon-picker-grid {
+        grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    }
+
+    .storyteller-icon-picker-footer-buttons {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
+
+/* ===== Timeline toolbar: two fixed rows, one control height, one surface ===== */
+.storyteller-timeline-view .storyteller-timeline-toolbar {
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 8px 10px;
+  container-type: inline-size;
+}
+
+.storyteller-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 22px;
+  min-width: 0;
+}
+
+/* Groups are set apart by space, not hairlines: a hairline ends up at the
+   start of a line whenever a narrow pane wraps the row. */
+.storyteller-toolbar-row > .storyteller-toolbar-group::before {
+  display: none;
+}
+
+.storyteller-toolbar-row > .storyteller-toolbar-group {
+  gap: 6px;
+}
+
+/* The right-hand group stays together, so the overflow button never drops to a line of its own. */
+.storyteller-toolbar-row > .storyteller-toolbar-trailing {
+  margin-inline-start: auto;
+  flex-wrap: nowrap;
+}
+
+/* One height for every control. */
+.storyteller-timeline-view .storyteller-timeline-toolbar button,
+.storyteller-timeline-view .storyteller-timeline-toolbar select,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-segment,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-control,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-timeline-search-wrap {
+  height: 30px;
+  min-height: 30px;
+  box-sizing: border-box;
+}
+
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-segment-btn,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-control button,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-readout {
+  height: 100%;
+  min-height: 0;
+}
+
+/* One surface: joined controls match Obsidian's buttons and dropdowns
+   instead of the darker page colour. */
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-segment,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-control {
+  background: var(--interactive-normal);
+  box-shadow: var(--input-shadow);
+  border-color: transparent;
+}
+
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-segment-btn,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-control .storyteller-toolbar-btn,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-readout {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-segment-btn.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-segment-btn + .storyteller-segment-btn,
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-zoom-readout {
+  border-color: var(--background-modifier-border);
+}
+
+.storyteller-timeline-view .storyteller-timeline-toolbar .storyteller-timeline-search-wrap {
+  background: var(--background-modifier-form-field);
+  border-color: var(--background-modifier-border);
+  margin-left: 0;
+}
+
+/* Dropdowns as wide as their longest option, not a fixed slab. */
+.storyteller-timeline-view .storyteller-toolbar-field select,
+.storyteller-timeline-view .storyteller-toolbar-field .dropdown {
+  width: auto;
+  max-width: 12rem;
+  padding-inline-end: 1.9rem;
+}
+
+.storyteller-timeline-view .storyteller-toolbar-field-label {
+  margin-inline-start: 2px;
+}
+
+/* Narrow panes: the right-hand groups take their own line, full width. */
+@container (max-width: 640px) {
+  .storyteller-toolbar-row > .storyteller-toolbar-trailing {
+    margin-inline-start: 0;
+    flex: 1 1 100%;
+  }
+
+}
+
+/* Player screen: read from across a room, so the base text is large.
+   Parts carry data-sts-part names (player-screen, player-board, player-vote, player-party,
+   player-clocks, player-roll, player-story, player-popup) for restyling. */
+.workspace-leaf-content .view-content.storyteller-player-screen-host,
+.storyteller-player-screen-host { padding: 0; overflow: hidden; }
+.storyteller-player-screen {
+  --sts-player-accent: var(--interactive-accent);
+  --sts-player-path: var(--color-green);
+  position: relative;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 1.25em;
+  color: var(--text-normal);
+  background: var(--background-primary);
+  overflow: hidden;
+}
+.storyteller-player-screen.is-blank { background: #000; }
+.storyteller-player-screen-header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; flex-shrink: 0; }
+.storyteller-player-screen-header-scene { font-size: 1.5em; font-weight: 700; overflow-wrap: anywhere; }
+.storyteller-player-screen-header-date { color: var(--text-muted); }
+.storyteller-player-screen-badge { margin-left: auto; padding: 2px 12px; border-radius: 999px; background: var(--sts-player-path); color: var(--text-on-accent); font-weight: 700; font-size: 0.8em; }
+.storyteller-player-screen-empty { display: flex; align-items: center; justify-content: center; flex: 1; font-size: 2.2em; color: var(--text-faint); text-align: center; }
+.storyteller-player-screen-main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 22%); gap: 18px; }
+.storyteller-player-screen-stage { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+.storyteller-player-screen-scene-title { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 2.6em; font-weight: 700; text-align: center; color: var(--text-normal); min-height: 40vh; }
+.storyteller-player-screen-side { min-width: 0; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+.storyteller-player-screen-section-label { font-size: 0.7em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 8px; }
+.storyteller-player-screen-block { padding: 12px 14px; border-radius: 12px; background: var(--background-secondary); border: 1px solid var(--background-modifier-border); }
+
+/* The board under fog */
+.storyteller-player-screen-board { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.storyteller-player-screen-board-canvas { position: relative; max-width: 100%; max-height: 100%; width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
+.storyteller-player-screen-board-image { display: block; width: 100%; height: 100%; object-fit: cover; user-select: none; pointer-events: none; }
+.storyteller-player-screen-fog { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.storyteller-player-screen-paths { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.storyteller-player-screen-path { stroke: var(--sts-player-path); stroke-width: 4px; stroke-dasharray: 12 9; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.storyteller-player-screen-path.is-into-fog { stroke-dasharray: 4 9; opacity: 0.8; }
+.storyteller-player-screen-choice { position: absolute; transform: translate(-50%, -50%); display: inline-flex; align-items: center; justify-content: center; width: 1.7em; height: 1.7em; border-radius: 50%; background: var(--sts-player-path); color: var(--text-on-accent); font-weight: 800; font-size: 0.9em; border: 3px solid var(--background-primary); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); }
+.storyteller-player-screen-choice.is-inline { position: static; transform: none; flex-shrink: 0; font-size: 0.8em; border-width: 2px; }
+.storyteller-player-screen-unknown { position: absolute; transform: translate(-50%, -50%); font-size: 1.8em; font-weight: 800; color: var(--sts-player-path); text-shadow: 0 0 8px #000; }
+.storyteller-player-screen-place { position: absolute; transform: translate(-7px, -7px); display: flex; align-items: center; gap: 6px; pointer-events: none; }
+.storyteller-player-screen-place-dot { width: 14px; height: 14px; border-radius: 50%; background: #3b6fb6; border: 2px solid #fff; flex-shrink: 0; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
+.storyteller-player-screen-place.is-current .storyteller-player-screen-place-dot { background: var(--color-orange); }
+.storyteller-player-screen-place-label { font-size: 0.75em; font-weight: 700; color: #fff; text-shadow: 0 1px 3px #000, 0 0 6px #000; white-space: nowrap; }
+.storyteller-player-screen-party { position: absolute; bottom: calc(100% + 6px); left: 7px; transform: translateX(-50%); display: flex; gap: 3px; }
+.storyteller-player-screen-party span { display: inline-flex; align-items: center; justify-content: center; width: 1.5em; height: 1.5em; border-radius: 50%; background: var(--sts-player-accent); color: var(--text-on-accent); border: 2px solid #fff; font-size: 0.75em; font-weight: 800; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5); }
+
+/* Side column */
+.storyteller-player-screen-roll { padding: 14px 16px; border-radius: 12px; background: color-mix(in srgb, var(--color-orange) 18%, var(--background-secondary)); border: 2px solid var(--color-orange); }
+.storyteller-player-screen-roll-title { font-size: 0.75em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.storyteller-player-screen-roll-row { display: flex; align-items: baseline; gap: 12px; margin-top: 4px; }
+.storyteller-player-screen-roll-total { font-size: 2em; font-weight: 800; color: var(--color-orange); }
+.storyteller-player-screen-roll-result { font-weight: 700; }
+.storyteller-player-screen-vote { border-color: var(--sts-player-path); }
+.storyteller-player-screen-vote-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.storyteller-player-screen-member + .storyteller-player-screen-member { margin-top: 10px; }
+.storyteller-player-screen-member-top { display: flex; justify-content: space-between; gap: 8px; }
+.storyteller-player-screen-member-name { font-weight: 700; }
+.storyteller-player-screen-member-hp { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.storyteller-player-screen-hp { height: 8px; margin-top: 4px; border-radius: 999px; background: var(--background-modifier-border); overflow: hidden; }
+.storyteller-player-screen-hp-fill { height: 100%; background: var(--color-green); }
+.storyteller-player-screen-hp-fill.is-low { background: var(--color-red); }
+.storyteller-player-screen-conditions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.storyteller-player-screen-conditions span { font-size: 0.7em; padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--color-red) 20%, transparent); color: var(--color-red); }
+.storyteller-player-screen-clock + .storyteller-player-screen-clock { margin-top: 8px; }
+.storyteller-player-screen-clock-name { display: block; font-size: 0.85em; }
+.storyteller-player-screen-clock-segments { display: flex; gap: 3px; margin-top: 4px; }
+.storyteller-player-screen-clock-segments span { flex: 1; height: 10px; border-radius: 3px; background: var(--background-modifier-border); }
+.storyteller-player-screen-clock-segments span.is-filled { background: var(--sts-player-accent); }
+
+/* Pushed text */
+.storyteller-player-screen-story { display: flex; flex-direction: column; gap: 12px; flex-shrink: 0; }
+.storyteller-player-screen-card { border: 1px solid var(--background-modifier-border); border-radius: 12px; background: var(--background-secondary); padding: 14px 18px; }
+.storyteller-player-screen-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.storyteller-player-screen-card-title { margin: 0 0 8px; font-size: 1.2em; overflow-wrap: anywhere; }
+.storyteller-player-screen-card-body { font-size: 1em; line-height: 1.55; }
+.storyteller-player-screen-dismiss { flex: 0 0 auto; color: var(--text-muted); }
+.storyteller-player-screen-overlay { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--background-modifier-cover); }
+.storyteller-player-screen-popup { box-sizing: border-box; width: min(900px, 100%); max-height: 100%; overflow-y: auto; border-radius: 14px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); box-shadow: var(--shadow-l); padding: 30px 36px; }
+.storyteller-player-screen-popup-foot { display: flex; align-items: center; justify-content: flex-end; gap: 16px; margin-top: 24px; }
+.storyteller-player-screen-queue { margin-right: auto; font-size: 0.8em; color: var(--text-muted); }
+
+@media (max-width: 800px) {
+  .storyteller-player-screen { padding: 12px; font-size: 1.05em; overflow-y: auto; }
+  .storyteller-player-screen-main { grid-template-columns: minmax(0, 1fr); }
+  .storyteller-player-screen-popup { padding: 20px; }
+}
+
+/* ── Campaign play: the map is the board ─────────────────────────────────
+   Board, choices and encounter on the left with the log docked under them;
+   one rail with Read, Party, Progress and World tabs on the right. Parts carry
+   data-sts-part names so snippets can restyle them. */
+.storyteller-campaign-view .storyteller-campaign-main { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.storyteller-campaign-stage-col { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.storyteller-campaign-view .storyteller-campaign-scene-panel { flex: 1; min-height: 0; overflow-y: auto; padding: 0.75rem 1rem 1rem; display: flex; flex-direction: column; align-items: stretch; gap: 0.75rem; }
+.storyteller-campaign-view .storyteller-campaign-scene-panel > :not(.storyteller-dice-overlay) { width: 100%; }
+
+/* Top bar */
+.storyteller-campaign-view .storyteller-campaign-toolbar { gap: 0.4rem; padding: 0.45rem 0.75rem; flex-wrap: wrap; }
+.storyteller-campaign-trail { display: flex; align-items: center; gap: 0.3rem; min-width: 0; flex-wrap: wrap; }
+.storyteller-campaign-trail-step { background: none; box-shadow: none; border: none; padding: 0.1rem 0.2rem; color: var(--text-muted); font-size: 0.85rem; cursor: pointer; }
+.storyteller-campaign-trail-step:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.storyteller-campaign-trail-sep { color: var(--text-faint); }
+.storyteller-campaign-toolbar-btn { display: inline-flex; align-items: center; gap: 0.35rem; }
+.storyteller-campaign-players-count { min-width: 1.2rem; padding: 0 0.3rem; border-radius: 999px; background: var(--interactive-accent); color: var(--text-on-accent); font-size: 0.7rem; font-weight: 700; text-align: center; }
+
+/* Stage heading */
+.storyteller-campaign-stage-head { display: flex; flex-direction: column; gap: 0.15rem; }
+.storyteller-campaign-stage-title { display: flex; align-items: center; gap: 0.4rem; }
+.storyteller-campaign-stage-title h2 { margin: 0; font-size: 1.3rem; line-height: 1.2; }
+.storyteller-campaign-view .storyteller-campaign-open-note-btn { padding: 0.2rem; color: var(--text-muted); }
+.storyteller-campaign-stage-head .storyteller-campaign-synopsis { margin: 0; color: var(--text-muted); font-size: 0.88rem; }
+
+/* The board */
+.storyteller-campaign-view .storyteller-campaign-board { margin: 0; padding: 0; gap: 0.35rem; border: none; border-radius: 0; background: none; box-shadow: none; }
+.storyteller-campaign-view .storyteller-campaign-board-header { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; font-size: 0.82rem; }
+.storyteller-campaign-board-icon { display: inline-flex; color: var(--text-muted); }
+.storyteller-campaign-view .storyteller-campaign-board-title { font-size: 0.9rem; font-weight: 700; margin: 0; }
+.storyteller-campaign-view .storyteller-campaign-board-meta { color: var(--text-muted); font-size: 0.8rem; }
+.storyteller-campaign-view .storyteller-campaign-board-nav { display: inline-flex; gap: 0.3rem; flex-wrap: wrap; }
+.storyteller-campaign-board-open { margin-left: auto; padding: 0.2rem; color: var(--text-muted); }
+.storyteller-campaign-board-canvas { position: relative; }
+.storyteller-campaign-view .storyteller-campaign-board-map { height: clamp(420px, 62vh, 1100px); max-height: none; border-radius: 10px; }
+/* With a board, the stage does not scroll: the map takes the room left after the heading and the choices. */
+.storyteller-campaign-view .storyteller-campaign-scene-panel.has-board { overflow: hidden; padding-bottom: 0.6rem; }
+.storyteller-campaign-scene-panel.has-board > .storyteller-campaign-board { flex: 1 1 0; min-height: 280px; display: flex; flex-direction: column; }
+.storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-canvas { flex: 1 1 0; min-height: 0; overflow: auto; border-radius: 10px; }
+.storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-map { position: absolute; inset: 0; height: auto; min-height: 0; }
+.storyteller-campaign-scene-panel.has-board > .storyteller-campaign-play-row { flex: 0 1 auto; max-height: 42%; overflow-y: auto; }
+.storyteller-campaign-view .storyteller-campaign-board-frame { border-radius: 10px; }
+.storyteller-campaign-view .storyteller-campaign-board-caption { font-size: 0.78rem; color: var(--text-muted); }
+.storyteller-campaign-view .storyteller-campaign-board-inspector { position: absolute; top: 0.6rem; right: 0.6rem; z-index: 1000; width: min(320px, calc(100% - 1.2rem)); max-height: calc(100% - 1.2rem); overflow-y: auto; margin: 0; background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 10px; box-shadow: var(--shadow-s); }
+.storyteller-campaign-view .storyteller-campaign-board-inspector-actions { display: flex; gap: 0.15rem; }
+
+/* Choices and the party on the board */
+.storyteller-campaign-board-map .leaflet-storyteller-choice-paths-pane { z-index: 450; pointer-events: none; }
+.storyteller-campaign-board-map .storyteller-campaign-board-path { stroke: var(--color-green); }
+.storyteller-campaign-board-map .storyteller-campaign-board-path.is-blocked { stroke: var(--text-faint); }
+.storyteller-campaign-board-choice { background: none; border: none; }
+.storyteller-campaign-board-choice span,
+.storyteller-campaign-choice-number { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; flex-shrink: 0; border-radius: 50%; background: var(--color-green); color: var(--text-on-accent); font-size: 0.8rem; font-weight: 700; }
+.storyteller-campaign-board-choice span { width: 26px; height: 26px; border: 2px solid var(--background-primary); box-shadow: var(--shadow-s); cursor: pointer; }
+.storyteller-campaign-board-choice.is-blocked span,
+.storyteller-campaign-play-branch.is-blocked .storyteller-campaign-choice-number { background: var(--text-faint); }
+.storyteller-campaign-board-party { display: flex; gap: 2px; background: none; border: none; }
+.storyteller-campaign-board-party span { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--interactive-accent); color: var(--text-on-accent); border: 2px solid var(--background-primary); box-shadow: var(--shadow-s); font-size: 0.7rem; font-weight: 700; }
+.storyteller-campaign-board-party.is-static { position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); pointer-events: none; }
+.storyteller-campaign-board-pin-choices { position: absolute; top: -0.4rem; right: -0.6rem; padding: 0 0.3rem; border-radius: 999px; background: var(--color-green); color: var(--text-on-accent); font-size: 0.68rem; font-weight: 700; }
+
+/* Choices and encounter under the board */
+.storyteller-campaign-play-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.75rem; align-items: start; }
+.storyteller-campaign-choices { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+.storyteller-campaign-view .storyteller-campaign-branch-header { display: flex; align-items: center; gap: 0.35rem; margin: 0; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.storyteller-campaign-view .storyteller-campaign-branch-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0.45rem; }
+.storyteller-campaign-view .storyteller-campaign-play-branch-label { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; font-weight: 600; }
+.storyteller-campaign-view .storyteller-campaign-play-row .storyteller-campaign-encounter { margin: 0; }
+.storyteller-campaign-view .storyteller-campaign-dead-end { display: flex; align-items: center; gap: 0.35rem; color: var(--text-muted); }
+
+/* Compact cards so the board keeps the room */
+.storyteller-campaign-view .storyteller-campaign-play-row { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.6rem; }
+.storyteller-campaign-view .storyteller-campaign-play-branch { padding: 0.4rem 0.6rem; gap: 0.2rem; }
+.storyteller-campaign-view .storyteller-campaign-play-branch-label { font-size: 0.9rem; gap: 0.35rem; }
+.storyteller-campaign-view .storyteller-campaign-play-branch-label .storyteller-campaign-play-branch-target { font-weight: 400; }
+.storyteller-campaign-view .storyteller-campaign-choice-number { width: 1.35rem; height: 1.35rem; font-size: 0.72rem; }
+.storyteller-campaign-view .storyteller-campaign-play-branch-tags:empty { display: none; }
+.storyteller-campaign-view .storyteller-campaign-play-row .storyteller-campaign-encounter { padding: 0.5rem 0.6rem; gap: 0.3rem; font-size: 0.88rem; }
+.storyteller-campaign-view .storyteller-campaign-encounter-row { padding: 0.2rem 0.4rem; gap: 0.5rem; }
+.storyteller-campaign-view .storyteller-campaign-encounter-range { min-width: 2rem; }
+.storyteller-campaign-view .storyteller-campaign-stage-title h2 { font-size: 1.15rem; }
+.storyteller-campaign-view .storyteller-campaign-scene-panel { gap: 0.5rem; }
+
+/* Log docked under the board */
+.storyteller-campaign-log-dock { flex-shrink: 0; max-height: 45%; overflow-y: auto; display: flex; flex-direction: column; gap: 0.3rem; padding: 0.35rem 1rem 0.45rem; border-top: 1px solid var(--background-modifier-border); background: color-mix(in srgb, var(--background-secondary) 70%, transparent); }
+.storyteller-campaign-log-dock-hdr { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--text-muted); }
+.storyteller-campaign-log-dock-title { font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.72rem; }
+.storyteller-campaign-log-dock-hdr .storyteller-campaign-progress-actions { margin-left: auto; }
+.storyteller-campaign-log-dock-hdr .storyteller-campaign-scene-kind { max-width: none; width: auto; font-size: 0.78rem; padding: 1px 6px; }
+.storyteller-campaign-log-dock:not(:focus-within) .storyteller-campaign-quick { flex-direction: row; align-items: center; flex-wrap: wrap; }
+.storyteller-campaign-log-dock:not(:focus-within) .storyteller-campaign-quick-line { flex: 1; min-width: 240px; }
+.storyteller-campaign-log-dock .storyteller-campaign-quick { margin: 0; padding: 0.35rem 0.5rem; }
+/* Until the DM clicks into it, the quick entry is one line: the kinds and the text box. */
+.storyteller-campaign-log-dock:not(:focus-within) .storyteller-campaign-quick > :is(.storyteller-campaign-quick-actors, .storyteller-campaign-quick-npc, .storyteller-campaign-quick-tags, .storyteller-campaign-quick-preview) { display: none; }
+.storyteller-campaign-log-dock .storyteller-campaign-log-list { max-height: 3.2rem; }
+.storyteller-campaign-log-dock .storyteller-campaign-log-list.is-expanded { max-height: 16rem; }
+
+/* Rail */
+.storyteller-campaign-view .storyteller-campaign-rail { width: clamp(300px, 27vw, 400px); overflow: hidden; }
+.storyteller-campaign-rail-tabs { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--background-modifier-border); background: var(--background-primary); }
+.storyteller-campaign-rail-tab { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; padding: 0.55rem 0.3rem; background: none; box-shadow: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted); font-size: 0.8rem; cursor: pointer; }
+.storyteller-campaign-rail-tab:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.storyteller-campaign-rail-tab.is-active { color: var(--text-normal); font-weight: 700; border-bottom-color: var(--interactive-accent); }
+.storyteller-campaign-rail-body { flex: 1; min-height: 0; overflow-y: auto; }
+.storyteller-campaign-rail-empty { padding: 1rem; }
+
+/* Read tab */
+.storyteller-campaign-read { display: flex; flex-direction: column; gap: 0.6rem; }
+.storyteller-campaign-read .storyteller-campaign-scene-context { margin: 0; }
+.storyteller-campaign-read-list { display: flex; flex-direction: column; gap: 0.15rem; }
+.storyteller-campaign-read-heading { display: flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.3rem; border-radius: 6px; }
+.storyteller-campaign-read-heading:hover { background: var(--background-modifier-hover); }
+.storyteller-campaign-read-title { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 0.3rem; padding: 0; background: none; box-shadow: none; border: none; color: var(--text-normal); font-size: 0.88rem; font-weight: 600; text-align: left; cursor: pointer; }
+.storyteller-campaign-read-title .svg-icon { color: var(--text-faint); flex-shrink: 0; }
+.storyteller-campaign-read-heading.is-selected .storyteller-campaign-read-title { color: var(--interactive-accent); }
+.storyteller-campaign-read-on-screen { font-size: 0.68rem; padding: 1px 6px; border-radius: 999px; background: color-mix(in srgb, var(--interactive-accent) 18%, transparent); color: var(--interactive-accent); }
+.storyteller-campaign-read-push { flex-shrink: 0; display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); box-shadow: none; color: var(--text-muted); font-size: 0.75rem; cursor: pointer; }
+.storyteller-campaign-read-push:hover { color: var(--interactive-accent); border-color: var(--interactive-accent); }
+.storyteller-campaign-read-detail { margin: 0.1rem 0 0.4rem; padding: 0.6rem 0.75rem; border-left: 3px solid var(--interactive-accent); border-radius: 0 8px 8px 0; background: var(--background-primary); font-size: 0.92rem; line-height: 1.55; }
+.storyteller-campaign-read-detail p:first-child { margin-top: 0; }
+.storyteller-campaign-read-push-bar { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.6rem; }
+.storyteller-campaign-read-push-bar button { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; }
+
+@media (max-width: 1060px) {
+    .storyteller-campaign-view .storyteller-campaign-main { flex-direction: column; overflow-y: auto; }
+    .storyteller-campaign-stage-col { flex: 0 0 auto; }
+    .storyteller-campaign-view .storyteller-campaign-scene-panel { overflow: visible; }
+    .storyteller-campaign-log-dock { max-height: none; }
+    .storyteller-campaign-view .storyteller-campaign-rail { width: 100%; overflow: visible; }
+    .storyteller-campaign-rail-body { overflow: visible; }
+    .storyteller-campaign-view .storyteller-campaign-board-map { height: clamp(320px, 55vh, 700px); }
+    .storyteller-campaign-view .storyteller-campaign-scene-panel.has-board { overflow: visible; }
+    .storyteller-campaign-scene-panel.has-board > .storyteller-campaign-board { flex: 0 0 auto; }
+    .storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-canvas { flex: 0 0 auto; overflow: visible; }
+    .storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-map { position: relative; inset: auto; height: clamp(320px, 55vh, 700px); }
+    .storyteller-campaign-scene-panel.has-board > .storyteller-campaign-play-row { max-height: none; overflow: visible; }
+}
+
+/* Dashboard: a tab drawing, and a tab that failed to draw */
+.storyteller-dashboard-content.is-loading:empty::before { content: "Loading…"; display: block; padding: 1.5rem; color: var(--text-muted); font-style: italic; }
+.storyteller-dashboard-tab-error { margin: 1rem; padding: 0.9rem 1rem; border: 1px solid var(--color-red); border-radius: 8px; background: color-mix(in srgb, var(--color-red) 8%, transparent); }
+.storyteller-dashboard-tab-error p { margin: 0.4rem 0 0.7rem; color: var(--text-muted); font-family: var(--font-monospace); font-size: 0.85rem; white-space: pre-wrap; }
+
+/* Campaign view: drawn off-screen, then swapped in (see CampaignView.render) */
+.workspace-leaf-content .view-content.storyteller-campaign-host,
+.storyteller-campaign-host { position: relative; padding: 0; overflow: hidden; }
+.storyteller-campaign-host > .storyteller-campaign-view { position: absolute; inset: 0; height: auto; }
+/* Hidden with opacity, not visibility: the map's tile layer sets visibility: visible on its own
+   tiles and panes, which would show through a visibility-hidden parent and draw a second map
+   over the live one while the new screen loads. Children cannot undo a parent's opacity. */
+.storyteller-campaign-host > .storyteller-campaign-view.is-building { opacity: 0; pointer-events: none; z-index: -1; }
+.storyteller-campaign-host > .storyteller-campaign-loading { padding: 1.5rem; color: var(--text-muted); font-style: italic; }
+.storyteller-campaign-players-flag { padding: 0 0.35rem; border-radius: 999px; background: var(--background-modifier-border); color: var(--text-muted); font-size: 0.7rem; font-weight: 700; }
+.storyteller-campaign-players-flag.is-vote { background: var(--color-green); color: var(--text-on-accent); }
+.storyteller-campaign-clock-share.is-shown { color: var(--interactive-accent); }
+.storyteller-campaign-board-inspector-actions .clickable-icon.is-active { color: var(--interactive-accent); }
+
+/* ── Campaign play as a virtual tabletop ───────────────────────────────────
+   The board fills the stage; the HUD, tool strip, floating panels and quick bar
+   sit over it. Restyle with these tokens or the data-sts-part names:
+   table, hud, tools, play-panel, combat-panel, quick-bar, rail. */
+.storyteller-campaign-view {
+  --sts-hud-bg: color-mix(in srgb, var(--background-primary) 84%, transparent);
+  --sts-hud-border: color-mix(in srgb, var(--background-modifier-border) 90%, transparent);
+  --sts-hud-shadow: 0 6px 22px rgba(0, 0, 0, 0.32);
+  --sts-hud-radius: 12px;
+  --sts-table-bg: #0d0f13;
+}
+.storyteller-campaign-table { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.storyteller-campaign-view .storyteller-campaign-stage-col { flex: 1; min-width: 0; position: relative; overflow: hidden; background: var(--sts-table-bg); }
+.storyteller-campaign-view .storyteller-campaign-stage-col > .storyteller-campaign-scene-panel { position: absolute; inset: 0; padding: 0; gap: 0; overflow: hidden; display: block; }
+.storyteller-campaign-view .storyteller-campaign-stage-col > .storyteller-campaign-scene-panel:not(.has-board) { overflow-y: auto; padding: 120px 24px 170px; display: flex; flex-direction: column; align-items: center; background: var(--background-primary); }
+.storyteller-campaign-stage-col > .storyteller-campaign-scene-panel:not(.has-board) > * { width: min(100%, 760px); }
+
+/* The board edge to edge */
+.storyteller-campaign-stage-col .storyteller-campaign-scene-panel.has-board > .storyteller-campaign-board { position: absolute; inset: 0; display: block; min-height: 0; margin: 0; padding: 0; }
+.storyteller-campaign-stage-col .storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-canvas { position: absolute; inset: 0; border-radius: 0; overflow: auto; }
+.storyteller-campaign-stage-col .storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-map { position: absolute; inset: 0; height: auto; min-height: 0; max-height: none; border: none; border-radius: 0; background: var(--sts-table-bg); }
+.storyteller-campaign-stage-col .storyteller-campaign-board-frame { border: none; border-radius: 0; min-height: 100%; background: var(--sts-table-bg); }
+.storyteller-campaign-stage-col .storyteller-campaign-board-header { position: absolute; right: 12px; bottom: 62px; z-index: 520; padding: 3px 10px; border-radius: 999px; background: var(--sts-hud-bg); backdrop-filter: blur(8px); border: 1px solid var(--sts-hud-border); font-size: 0.75rem; }
+.storyteller-campaign-stage-col .storyteller-campaign-board-caption { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); z-index: 520; padding: 4px 12px; border-radius: 999px; background: var(--sts-hud-bg); }
+.storyteller-campaign-stage-col .storyteller-campaign-board-inspector { top: 58px; right: 12px; }
+.storyteller-campaign-stage-col .storyteller-campaign-board-empty { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 420px; text-align: center; color: var(--text-muted); }
+
+/* Heads-up display */
+.storyteller-campaign-hud { position: absolute; z-index: 600; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.storyteller-campaign-hud > * { pointer-events: auto; }
+.storyteller-campaign-hud.is-left { top: 16px; left: 12px; max-width: calc(100% - 320px); align-items: flex-start; }
+.storyteller-campaign-hud.is-right { top: 16px; right: 12px; flex-direction: row; align-items: center; }
+.storyteller-campaign-hud-row { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 4px 8px; border-radius: var(--sts-hud-radius); background: var(--sts-hud-bg); backdrop-filter: blur(8px); border: 1px solid var(--sts-hud-border); box-shadow: var(--sts-hud-shadow); }
+.storyteller-campaign-hud-row.is-meta { padding: 3px 6px; }
+.storyteller-campaign-hud-row.is-meta:empty { display: none; }
+.storyteller-campaign-hud .storyteller-campaign-scene-name { font-size: 1.05rem; font-weight: 800; }
+.storyteller-campaign-hud-synopsis { max-width: 520px; padding: 4px 10px; border-radius: 10px; background: var(--sts-hud-bg); backdrop-filter: blur(8px); color: var(--text-muted); font-size: 0.8rem; line-height: 1.35; }
+.storyteller-campaign-hud-btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 5px 10px; border-radius: 10px; background: var(--sts-hud-bg); backdrop-filter: blur(8px); border: 1px solid var(--sts-hud-border); box-shadow: var(--sts-hud-shadow); color: var(--text-normal); cursor: pointer; font-size: 0.85rem; }
+.storyteller-campaign-hud-btn:hover { background: var(--background-modifier-hover); }
+.storyteller-campaign-hud-btn:disabled { opacity: 0.4; cursor: default; }
+.storyteller-campaign-hud-row .storyteller-campaign-hud-btn { padding: 3px 6px; background: none; border: none; box-shadow: none; backdrop-filter: none; }
+.storyteller-campaign-hud-btn.is-quiet { color: var(--text-muted); }
+/* Button rules out-rank Obsidian's and theme button styles, which otherwise paint mod-warning red under red text. */
+.storyteller-campaign-view button.storyteller-campaign-hud-btn { background: var(--sts-hud-bg); color: var(--text-normal); border: 1px solid var(--sts-hud-border); box-shadow: var(--sts-hud-shadow); }
+.storyteller-campaign-view button.storyteller-campaign-hud-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.storyteller-campaign-view button.storyteller-campaign-hud-btn svg { color: currentColor; }
+.storyteller-campaign-view .storyteller-campaign-hud-row button.storyteller-campaign-hud-btn { background: none; border: none; box-shadow: none; }
+.storyteller-campaign-view .storyteller-campaign-hud-row button.storyteller-campaign-hud-btn:hover { background: var(--background-modifier-hover); }
+.storyteller-campaign-view button.storyteller-campaign-hud-btn.is-quiet { color: var(--text-muted); }
+.storyteller-campaign-view button.storyteller-campaign-hud-btn.mod-warning { background: var(--sts-hud-bg); color: var(--text-error, var(--color-red)); font-weight: 700; }
+.storyteller-campaign-view button.storyteller-campaign-hud-btn.mod-warning:hover { background: var(--background-modifier-error); color: var(--text-on-accent); }
+.storyteller-campaign-hud .storyteller-campaign-toolbar-btn { padding: 2px 8px; background: none; border: none; box-shadow: none; }
+.storyteller-campaign-hud .storyteller-campaign-actor-control { border: none; background: none; padding: 0 4px; }
+.storyteller-campaign-hud .storyteller-campaign-actor-select { min-width: 0; }
+
+/* Tool strip */
+.storyteller-campaign-tools { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); z-index: 600; display: flex; flex-direction: column; gap: 3px; padding: 5px; border-radius: 14px; background: var(--sts-hud-bg); backdrop-filter: blur(8px); border: 1px solid var(--sts-hud-border); box-shadow: var(--sts-hud-shadow); }
+.storyteller-campaign-tool { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; padding: 0; border-radius: 10px; background: none; border: none; box-shadow: none; color: var(--text-muted); cursor: pointer; }
+.storyteller-campaign-tool:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.storyteller-campaign-tool.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
+.storyteller-campaign-tools-sep { height: 1px; margin: 3px 5px; background: var(--background-modifier-border); }
+.storyteller-campaign-board-stage.is-ping-tool,
+.storyteller-campaign-board-map.is-ping-tool.leaflet-container,
+.storyteller-campaign-board-map.is-ping-tool .leaflet-grab,
+.storyteller-campaign-board-map.is-ping-tool .leaflet-interactive { cursor: crosshair; }
+
+/* Choices and the encounter in the Scene tab */
+.storyteller-campaign-scene-play { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.4rem 0; padding-top: 0.6rem; border-top: 1px solid var(--background-modifier-border); }
+.storyteller-campaign-view .storyteller-campaign-scene-play .storyteller-campaign-branch-list { grid-template-columns: minmax(0, 1fr); }
+.storyteller-campaign-view .storyteller-campaign-scene-play .storyteller-campaign-encounter { margin: 0; padding: 0.45rem 0.55rem; gap: 0.3rem; font-size: 0.85rem; }
+
+/* Combat at the top of the Party tab */
+.storyteller-campaign-combat-section { border-left: 3px solid var(--interactive-accent); }
+.storyteller-campaign-combat-body { display: flex; flex-direction: column; gap: 6px; }
+
+/* Quick bar */
+.storyteller-campaign-quickbar { position: absolute; left: 60px; right: 12px; bottom: 10px; z-index: 640; display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 14px; background: var(--sts-hud-bg); backdrop-filter: blur(8px); border: 1px solid var(--sts-hud-border); box-shadow: var(--sts-hud-shadow); }
+.storyteller-campaign-stage-col:not(.has-board) .storyteller-campaign-quickbar { left: 12px; }
+.storyteller-campaign-quickbar .storyteller-campaign-quick { flex: 1; min-width: 0; margin: 0; padding: 0; border: none; background: none; }
+/* Folded: the summary chip, the line and Add. Open: who, type, extra fields, line, preview and tags. */
+.storyteller-campaign-quickbar:not(.is-open) .storyteller-campaign-quick { flex-direction: row; align-items: center; flex-wrap: nowrap; }
+.storyteller-campaign-quickbar:not(.is-open) .storyteller-campaign-quick > :not(.storyteller-campaign-quick-summary, .storyteller-campaign-quick-line) { display: none; }
+.storyteller-campaign-quickbar:not(.is-open) .storyteller-campaign-quick-line { flex: 1; min-width: 160px; flex-wrap: nowrap; }
+.storyteller-campaign-quickbar.is-open { align-items: flex-end; padding: 10px 12px; }
+.storyteller-campaign-quickbar.is-open .storyteller-campaign-quick { gap: 8px; }
+.storyteller-campaign-quickbar.is-open .storyteller-campaign-quick-summary { display: none; }
+.storyteller-campaign-quickbar.is-open .storyteller-campaign-quickbar-last { padding-bottom: 6px; }
+.storyteller-campaign-quickbar .storyteller-campaign-quick-label { flex: 0 0 44px; }
+.storyteller-campaign-quickbar .storyteller-campaign-quick-roll,
+.storyteller-campaign-quickbar .storyteller-campaign-quick-line,
+.storyteller-campaign-quickbar .storyteller-campaign-quick-preview { padding-left: calc(44px + 0.3rem); }
+.storyteller-campaign-quickbar .storyteller-campaign-quick-preview { display: flex; align-items: baseline; gap: 0.3rem; padding-left: 0; }
+.storyteller-campaign-quickbar.is-open .storyteller-campaign-quick-line { padding-left: calc(44px + 0.3rem); }
+.storyteller-campaign-quickbar:not(.is-open) .storyteller-campaign-quick-line { padding-left: 0; }
+.storyteller-campaign-view button.storyteller-campaign-quick-summary { flex: 0 1 auto; max-width: 40%; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--sts-hud-border); background: var(--background-secondary); box-shadow: none; color: var(--text-normal); font-size: 0.78rem; cursor: pointer; white-space: nowrap; }
+.storyteller-campaign-view button.storyteller-campaign-quick-summary:hover { background: var(--background-modifier-hover); }
+.storyteller-campaign-quick-summary-who { overflow: hidden; text-overflow: ellipsis; }
+.storyteller-campaign-quick-summary-mode { color: var(--interactive-accent); font-weight: 600; }
+.storyteller-campaign-quickbar .storyteller-campaign-quick-npc-input { width: 120px; }
+.storyteller-campaign-quickbar select.storyteller-campaign-quick-select { width: auto; min-width: 0; flex: 0 0 auto; height: auto; padding-top: 2px; padding-bottom: 2px; font-size: 0.75rem; }
+.storyteller-campaign-quick-field { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; color: var(--text-muted); }
+.storyteller-campaign-quick-field input { width: 124px; }
+.storyteller-campaign-quickbar .storyteller-campaign-quick-tag-name { width: 140px; }
+.storyteller-campaign-quick-hint { font-size: 0.7rem; color: var(--text-faint); }
+.storyteller-campaign-view button.storyteller-campaign-quick-chip { padding: 2px 9px; border-radius: 999px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); box-shadow: none; color: var(--text-normal); font-size: 0.75rem; }
+.storyteller-campaign-view button.storyteller-campaign-quick-chip.is-active { border-color: var(--interactive-accent); background: color-mix(in srgb, var(--interactive-accent) 22%, transparent); }
+.storyteller-campaign-view button.storyteller-campaign-quick-mode { padding: 2px 9px; border-radius: 6px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); box-shadow: none; color: var(--text-normal); font-family: inherit; font-size: 0.75rem; }
+.storyteller-campaign-view button.storyteller-campaign-quick-mode.is-active { background: var(--interactive-accent); border-color: var(--interactive-accent); color: var(--text-on-accent); }
+.storyteller-campaign-quickbar-last { max-width: 32%; font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.storyteller-campaign-quickbar-last:hover { color: var(--text-normal); }
+
+/* Rail: icons over labels, folds to an icon column */
+.storyteller-campaign-view .storyteller-campaign-rail { transition: width 0.15s ease; }
+.storyteller-campaign-view .storyteller-campaign-rail-tab { flex-direction: column; gap: 2px; padding: 0.45rem 0.15rem 0.35rem; font-size: 0.68rem; }
+.storyteller-campaign-view .storyteller-campaign-rail-tabs { padding-top: 8px; }
+.storyteller-campaign-view button.storyteller-campaign-rail-tab { background: none; box-shadow: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-muted); }
+.storyteller-campaign-view button.storyteller-campaign-rail-tab:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.storyteller-campaign-view button.storyteller-campaign-rail-tab.is-active { color: var(--text-normal); border-bottom-color: var(--interactive-accent); }
+.storyteller-campaign-view .storyteller-campaign-rail.is-collapsed button.storyteller-campaign-rail-tab { border-bottom: none; }
+.storyteller-campaign-view button.storyteller-campaign-rail-fold { background: none; border: none; box-shadow: none; color: var(--text-muted); }
+.storyteller-campaign-view button.storyteller-campaign-rail-fold:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.storyteller-campaign-rail-fold { flex: 0 0 34px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: none; box-shadow: none; color: var(--text-muted); cursor: pointer; }
+.storyteller-campaign-rail-fold:hover { color: var(--text-normal); }
+.storyteller-campaign-view .storyteller-campaign-rail.is-collapsed { width: 48px; }
+.storyteller-campaign-rail.is-collapsed .storyteller-campaign-rail-tabs { flex-direction: column; border-bottom: none; height: 100%; padding-top: 6px; }
+.storyteller-campaign-rail.is-collapsed .storyteller-campaign-rail-tab { flex: 0 0 auto; padding: 10px 0; border-bottom: none; }
+.storyteller-campaign-rail.is-collapsed .storyteller-campaign-rail-tab-label { display: none; }
+.storyteller-campaign-rail.is-collapsed .storyteller-campaign-rail-fold { flex: 0 0 auto; padding: 10px 0; margin-top: auto; }
+.storyteller-campaign-log-kind { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 0.8rem; color: var(--text-muted); }
+.storyteller-campaign-log-tab .storyteller-campaign-log-list.is-expanded { max-height: none; }
+
+/* Pings */
+.storyteller-campaign-ping, .storyteller-player-screen-ping { pointer-events: none; }
+.storyteller-campaign-ping.is-static, .storyteller-player-screen-ping { position: absolute; width: 60px; height: 60px; transform: translate(-50%, -50%); z-index: 30; }
+.storyteller-campaign-ping span, .storyteller-player-screen-ping span { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--color-orange); box-shadow: 0 0 12px var(--color-orange); animation: sts-ping 1.1s ease-out 3; opacity: 0; }
+.storyteller-campaign-ping span + span, .storyteller-player-screen-ping span + span { animation-delay: 0.35s; }
+@keyframes sts-ping { from { transform: scale(0.15); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+
+/* Combat panel */
+.storyteller-campaign-combat-turns { display: flex; align-items: center; gap: 6px; }
+.storyteller-campaign-combat-turns button { display: inline-flex; align-items: center; gap: 2px; }
+.storyteller-campaign-combat-acting { flex: 1; font-weight: 700; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.storyteller-campaign-combat-list { display: flex; flex-direction: column; gap: 3px; }
+.storyteller-campaign-combat-row { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto auto; align-items: center; gap: 6px; padding: 3px 5px; border-radius: 8px; border: 1px solid transparent; }
+.storyteller-campaign-combat-row.is-acting { border-color: var(--interactive-accent); background: color-mix(in srgb, var(--interactive-accent) 14%, transparent); }
+.storyteller-campaign-combat-row.is-player .storyteller-campaign-combat-name { color: var(--interactive-accent); }
+.storyteller-campaign-combat-row.is-out { opacity: 0.45; }
+.storyteller-campaign-combat-row.is-out .storyteller-campaign-combat-name { text-decoration: line-through; }
+.storyteller-campaign-combat-row.is-hidden .storyteller-campaign-combat-name { font-style: italic; }
+.storyteller-campaign-combat-row.is-hidden .storyteller-campaign-combat-name::after { content: " (hidden)"; color: var(--text-faint); font-weight: 400; }
+.storyteller-campaign-combat-init { width: 38px; padding: 2px; text-align: center; font-weight: 700; }
+.storyteller-campaign-combat-main { min-width: 0; display: flex; flex-direction: column; }
+.storyteller-campaign-combat-name { font-size: 0.85rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.storyteller-campaign-combat-conditions { font-size: 0.7rem; color: var(--color-red); }
+.storyteller-campaign-combat-hp { display: flex; align-items: center; gap: 3px; }
+.storyteller-campaign-combat-hp-text { font-size: 0.78rem; font-variant-numeric: tabular-nums; color: var(--text-muted); min-width: 3.2em; text-align: right; }
+.storyteller-campaign-combat-amount { width: 34px; padding: 2px 3px; font-size: 0.78rem; }
+.storyteller-campaign-combat-mini { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 5px; font-size: 0.8rem; }
+.storyteller-campaign-combat-mini.is-damage { color: var(--color-red); }
+.storyteller-campaign-combat-mini.is-heal { color: var(--color-green); }
+.storyteller-campaign-combat-add { display: flex; gap: 6px; padding-top: 6px; border-top: 1px solid var(--background-modifier-border); }
+.storyteller-campaign-combat-add input { flex: 1; min-width: 0; }
+
+/* Player screen turn order */
+.storyteller-player-screen-turn { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 8px; }
+.storyteller-player-screen-turn.is-acting { background: var(--sts-player-accent); color: var(--text-on-accent); font-weight: 800; }
+.storyteller-player-screen-turn.is-player .storyteller-player-screen-turn-name { font-weight: 700; }
+.storyteller-player-screen-turn.is-out { opacity: 0.4; text-decoration: line-through; }
+.storyteller-player-screen-turn-health { font-size: 0.7em; padding: 1px 8px; border-radius: 999px; background: var(--background-modifier-border); }
+.storyteller-player-screen-turn-health.is-unhurt { color: var(--color-green); }
+.storyteller-player-screen-turn-health.is-hurt { color: var(--color-yellow); }
+.storyteller-player-screen-turn-health.is-bloodied { color: var(--color-orange); }
+.storyteller-player-screen-turn-health.is-down { color: var(--color-red); }
+
+@media (max-width: 1060px) {
+  .storyteller-campaign-table { flex-direction: column; overflow-y: auto; }
+  .storyteller-campaign-view .storyteller-campaign-stage-col { flex: 0 0 auto; height: 78vh; }
+  .storyteller-campaign-view .storyteller-campaign-rail, .storyteller-campaign-view .storyteller-campaign-rail.is-collapsed { width: 100%; overflow: visible; }
+  .storyteller-campaign-rail.is-collapsed .storyteller-campaign-rail-tabs { flex-direction: row; height: auto; }
+  .storyteller-campaign-hud.is-left { max-width: calc(100% - 24px); }
+  .storyteller-campaign-hud.is-right { top: auto; bottom: 60px; }
+}
+
+/* The plain-image board covers the stage too: the frame is a size container and the image is
+   at least as wide and as tall as it, centred, with the overflow scrollable. */
+.storyteller-campaign-stage-col .storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-frame { position: absolute; inset: 0; min-height: 0; overflow: auto; container-type: size; }
+.storyteller-campaign-stage-col .storyteller-campaign-scene-panel.has-board .storyteller-campaign-board-stage {
+  min-height: 0;
+  width: max(100cqw, calc(100cqh * var(--sts-board-ratio, 1.5)));
+  max-width: none;
+}

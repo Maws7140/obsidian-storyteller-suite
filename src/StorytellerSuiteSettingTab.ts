@@ -6,6 +6,7 @@ import {
     TFolder,
     setIcon,
     SettingPage,
+    TextComponent,
     type SettingDefinitionItem,
 } from 'obsidian';
 import StorytellerSuitePlugin from './main';
@@ -14,6 +15,17 @@ import { EditStoryModal } from './modals/EditStoryModal';
 import type { StoryFolderOverrides } from './folders/FolderResolver';
 import type { TimelineGroupMode } from './types';
 import { MODAL_FIELD_SETS, isModalFieldVisible, setModalFieldHidden } from './modals/entity/ModalFieldVisibility';
+import { getConfigurableSectionFields, getFrontmatterSectionFields } from './utils/SectionFieldPlacement';
+import {
+    CUSTOM_FIELD_LINK_TARGETS,
+    CUSTOM_FIELD_TYPE_LABELS,
+    CUSTOM_FIELD_TYPES,
+    CustomFieldDefinition,
+    CustomFieldType,
+    checkDefaultCustomFieldNames,
+    isLinkFieldType,
+    validateCustomFieldKey,
+} from './modals/entity/CustomFieldDefinitions';
 import { FolderSuggestModal } from './modals/FolderSuggestModal';
 import { CustomSheetTemplateModal } from './modals/CustomSheetTemplateModal';
 import { getGettingStartedGuide, renderGuideDocument } from './tutorial/StorytellerGuideContent';
@@ -22,7 +34,10 @@ import { setLocale, t, getAvailableLanguages, getLanguageName, isLanguageAvailab
 import { VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 import { confirmWithModal } from './modals/ui/ConfirmModal';
 import type { TemplateEntityType } from './templates/TemplateTypes';
+import type { EntityType } from './yaml/EntitySections';
 import { CalendarRegistry } from './calendar/CalendarRegistry';
+import { parseReferenceDate } from './utils/DateParsing';
+import { iconColorKey, isSafeFrontmatterKey } from './utils/EntityIcon';
 import { encodeShareCode, makeCalendarDocument, makeThemeDocument } from './calendar/TimelineDocuments';
 import { CalendarManagerModal } from './modals/CalendarManagerModal';
 import { TimelineThemeManagerModal, openActiveTimelineThemeEditor } from './modals/TimelineThemeModal';
@@ -35,13 +50,57 @@ const TUTORIAL_VIDEO_URL = 'https://www.youtube.com/watch?v=HL0i6bUpVn0';
 
 interface TabDef { id: TabId; icon: string; label: string; }
 
-/** Entity types whose modals honour the section toggles. */
-const MODAL_CUSTOMIZABLE_ENTITY_TYPES = ['character', 'event', 'item'] as const;
+/** Entity types whose modals honour the field toggles. */
+const MODAL_CUSTOMIZABLE_ENTITY_TYPES = [
+    'character', 'event', 'item', 'location', 'faction', 'culture', 'economy', 'magicSystem',
+    'compendiumEntry', 'reference', 'scene', 'chapter', 'book', 'map',
+] as const;
+
+/**
+ * Entity types whose body-section fields can be stored as frontmatter. Each
+ * one's save path honours sectionFieldsInFrontmatter (main.ts saveX methods).
+ * Faction (Group) and timeline types write through other paths and are left out.
+ */
+const SECTION_FIELD_ENTITY_TYPES: ReadonlyArray<EntityType> = [
+    'character', 'location', 'map', 'event', 'item', 'reference', 'chapter', 'book', 'scene',
+    'culture', 'economy', 'compendiumEntry', 'magicSystem',
+];
+
+/** Entity types whose modals lay out the "Default custom fields" list on creation. */
+const DEFAULT_CUSTOM_FIELD_ENTITY_TYPES: readonly string[] = ['character', 'event', 'item'];
+
+/** Entity types whose modal can ask for typed fields (matches the modal editors). */
+const DEFINED_FIELD_ENTITY_TYPES: ReadonlyArray<{ value: EntityType; label: string }> = [
+    { value: 'character', label: 'Character' },
+    { value: 'location', label: 'Location' },
+    { value: 'event', label: 'Event' },
+    { value: 'item', label: 'Item' },
+    { value: 'reference', label: 'Reference' },
+    { value: 'chapter', label: 'Chapter' },
+    { value: 'map', label: 'Map' },
+    { value: 'culture', label: 'Culture' },
+    { value: 'economy', label: 'Economy' },
+    { value: 'magicSystem', label: 'Magic system' },
+    { value: 'compendiumEntry', label: 'Compendium entry' },
+    { value: 'book', label: 'Book' },
+    { value: 'faction', label: 'Group' },
+];
 
 const MODAL_ENTITY_LABELS: Record<(typeof MODAL_CUSTOMIZABLE_ENTITY_TYPES)[number], string> = {
     character: 'Character',
     event: 'Event',
     item: 'Item',
+    location: 'Location',
+    faction: 'Group',
+    culture: 'Culture',
+    economy: 'Economy',
+    magicSystem: 'Magic system',
+    compendiumEntry: 'Compendium entry',
+    reference: 'Reference',
+    scene: 'Scene',
+    chapter: 'Chapter',
+    book: 'Book',
+    map: 'Map',
 };
 
 interface ReopenableView {
@@ -608,6 +667,49 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
     }
 
+    /**
+     * One toggle per body-section field of a type. On: the field is stored as a
+     * frontmatter property (Bases and Properties can query it). Off: a body section.
+     */
+    private renderSectionFieldToggles(container: HTMLElement, entityType: EntityType): void {
+        const fields = getConfigurableSectionFields(entityType);
+        if (fields.length === 0) return;
+        container.createEl('p', {
+            cls: 'setting-item-description',
+            text: 'Some text fields can be stored as a property instead of a "## Heading" section in the note body. ' +
+                'Notes already saved keep working either way: a property is read first and the section is used when the property is missing. ' +
+                'Turning a switch on moves the text into the property on the next save, and turning it off moves it back into the section on the next save.',
+        });
+        const configured = getFrontmatterSectionFields(this.plugin.settings.sectionFieldsInFrontmatter, entityType);
+        for (const { field, sectionName } of fields) {
+            new Setting(container)
+                .setName(`Store ${sectionName} as a property instead of a note section`)
+                .addToggle(toggle => toggle
+                    .setValue(configured.includes(field))
+                    .setTooltip(configured.includes(field) ? 'Stored as a property' : 'Stored as a section')
+                    .onChange(async (value) => {
+                        const current = getFrontmatterSectionFields(this.plugin.settings.sectionFieldsInFrontmatter, entityType);
+                        const next = value
+                            ? [...current.filter(name => name !== field), field]
+                            : current.filter(name => name !== field);
+                        const map = { ...(this.plugin.settings.sectionFieldsInFrontmatter ?? {}) };
+                        if (next.length > 0) map[entityType] = next;
+                        else delete map[entityType];
+                        this.plugin.settings.sectionFieldsInFrontmatter = map;
+                        // Remember fields switched off, so their property copies move back into
+                        // the body on save; hand-written properties on other fields are untouched.
+                        const released = { ...(this.plugin.settings.sectionFieldsReleasedToBody ?? {}) };
+                        const releasedForType = (released[entityType] ?? []).filter(name => name !== field);
+                        if (!value) releasedForType.push(field);
+                        if (releasedForType.length > 0) released[entityType] = releasedForType;
+                        else delete released[entityType];
+                        this.plugin.settings.sectionFieldsReleasedToBody = released;
+                        await this.plugin.saveSettings();
+                    })
+                );
+        }
+    }
+
     // ─── Tab: Modals ──────────────────────────────────────────────────────────
     private renderModalsTab(container: HTMLElement): void {
         container.createEl('p', {
@@ -635,6 +737,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 );
                 new Setting(container)
                     .setName(field.label)
+                    .setDesc(field.description ?? '')
                     .addToggle(toggle => toggle
                         .setValue(isVisible)
                         .setTooltip(isVisible ? 'Shown' : 'Hidden')
@@ -650,34 +753,203 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     );
             }
 
-            const defaults = this.plugin.settings.defaultCustomFields?.[entityType] ?? [];
-            const defaultsSetting = new Setting(container)
-                .setName('Default custom fields')
-                .setDesc('One field name per line, for example intent or parents. Every new ' +
-                    MODAL_ENTITY_LABELS[entityType].toLowerCase() +
-                    ' starts with these fields ready to fill in. Existing entities are left alone.')
-                .addTextArea(text => {
-                    text.setPlaceholder('One field name per line')
-                        .setValue(defaults.join('\n'))
-                        .onChange(async (value) => {
-                            const names = value
-                                .split('\n')
-                                .map(name => name.trim())
-                                .filter((name, i, all) => name.length > 0 && all.indexOf(name) === i);
-                            const map = { ...(this.plugin.settings.defaultCustomFields ?? {}) };
-                            if (names.length > 0) map[entityType] = names;
-                            else delete map[entityType];
-                            this.plugin.settings.defaultCustomFields = map;
-                            await this.plugin.saveSettings();
-                        });
-                    text.inputEl.rows = 4;
-                });
-            this.addInfoToggle(defaultsSetting,
-                'Custom fields are written as ordinary frontmatter properties when "Custom fields mode" is set to flatten, ' +
-                'which is the default. A field named intent becomes an intent: property on the note, editable from ' +
-                'Obsidian\'s own Properties panel and queryable from Bases and Dataview.'
-            );
+            if (SECTION_FIELD_ENTITY_TYPES.includes(entityType)) {
+                this.renderSectionFieldToggles(container, entityType);
+            }
+
+            if (DEFAULT_CUSTOM_FIELD_ENTITY_TYPES.includes(entityType)) {
+                const defaults = this.plugin.settings.defaultCustomFields?.[entityType] ?? [];
+                const defaultsSetting = new Setting(container)
+                    .setName('Default custom fields')
+                    .setDesc('One field name per line, for example intent or parents. Every new ' +
+                        MODAL_ENTITY_LABELS[entityType].toLowerCase() +
+                        ' starts with these fields ready to fill in. Existing entities are left alone.')
+                    .addTextArea(text => {
+                        text.setPlaceholder('One field name per line')
+                            .setValue(defaults.join('\n'))
+                            .onChange(async (value) => {
+                                const check = checkDefaultCustomFieldNames(
+                                    entityType,
+                                    value.split('\n'),
+                                    this.plugin.getCustomFieldDefinitions(entityType),
+                                    this.plugin.getSectionFrontmatterFields(entityType)
+                                );
+                                for (const refused of check.rejected) {
+                                    new Notice(`Default field "${refused.name}" was not saved. ${refused.problem}`);
+                                }
+                                const names = check.accepted;
+                                const map = { ...(this.plugin.settings.defaultCustomFields ?? {}) };
+                                if (names.length > 0) map[entityType] = names;
+                                else delete map[entityType];
+                                this.plugin.settings.defaultCustomFields = map;
+                                await this.plugin.saveSettings();
+                            });
+                        text.inputEl.rows = 4;
+                    });
+                this.addInfoToggle(defaultsSetting,
+                    'Custom fields are written as ordinary frontmatter properties when "Custom fields mode" is set to flatten, ' +
+                    'which is the default. A field named intent becomes an intent: property on the note, editable from ' +
+                    'Obsidian\'s own Properties panel and queryable from Bases and Dataview.'
+                );
+            }
         }
+
+        this.renderDefinedFieldsSettings(container);
+    }
+
+    /** Typed fields the entity modals ask for, per entity type (issue #138). */
+    private renderDefinedFieldsSettings(container: HTMLElement): void {
+        new Setting(container).setName('Defined fields').setHeading();
+        container.createEl('p', {
+            text: 'Ask for your own properties with the right input. Text, long text and number work as you expect. A list is comma separated. A link picks one note from the active story, and links picks several. Values are written as top-level properties, for example aliases with a list of names or parents with links. Long text keeps its line breaks in frontmatter, written as a multi-line YAML value. Clearing a field removes its property from the note.',
+            cls: 'setting-item-description'
+        });
+
+        const host = container.createDiv();
+        let selected: EntityType = 'character';
+        const render = (): void => {
+            host.empty();
+            new Setting(host)
+                .setName('Entity type')
+                .addDropdown(dropdown => {
+                    for (const option of DEFINED_FIELD_ENTITY_TYPES) {
+                        dropdown.addOption(option.value, option.label);
+                    }
+                    dropdown.setValue(selected).onChange(value => {
+                        selected = value as EntityType;
+                        render();
+                    });
+                });
+            this.renderDefinedFieldRows(host, selected, render);
+        };
+        render();
+    }
+
+    private renderDefinedFieldRows(host: HTMLElement, entityType: EntityType, rerender: () => void): void {
+        const current = (): CustomFieldDefinition[] =>
+            [...(this.plugin.settings.customFieldDefinitions?.[entityType] ?? [])];
+        const persist = async (next: CustomFieldDefinition[]): Promise<void> => {
+            const map = { ...(this.plugin.settings.customFieldDefinitions ?? {}) };
+            if (next.length > 0) map[entityType] = next;
+            else delete map[entityType];
+            this.plugin.settings.customFieldDefinitions = map;
+            await this.plugin.saveSettings();
+        };
+        const update = async (index: number, patch: Partial<CustomFieldDefinition>): Promise<void> => {
+            const next = current();
+            if (!next[index]) return;
+            next[index] = { ...next[index], ...patch };
+            await persist(next);
+            rerender();
+        };
+
+        const list = current();
+        if (list.length === 0) {
+            host.createEl('p', { cls: 'setting-item-description', text: 'No defined fields for this entity type yet.' });
+        }
+
+        list.forEach((definition, index) => {
+            const setting = new Setting(host).setName(`Field ${index + 1}`);
+
+            setting.addText(text => {
+                text.setPlaceholder('Property name')
+                    .setValue(definition.key)
+                    .onChange(async (value) => {
+                        const key = value.trim();
+                        const taken = current().filter((_, i) => i !== index).map(d => d.key);
+                        // Only a valid name is saved. The error is shown when the field is left.
+                        if (key !== '' && validateCustomFieldKey(key, entityType, taken) !== null) return;
+                        const next = current();
+                        if (!next[index]) return;
+                        next[index] = { ...next[index], key };
+                        await persist(next);
+                    });
+                text.inputEl.addEventListener('blur', () => {
+                    const key = (current()[index]?.key ?? '');
+                    const taken = current().filter((_, i) => i !== index).map(d => d.key);
+                    const error = validateCustomFieldKey(text.getValue().trim(), entityType, taken);
+                    if (error && text.getValue().trim() !== '') {
+                        new Notice(error);
+                        text.setValue(key);
+                    }
+                });
+            });
+
+            setting.addText(text => text
+                .setPlaceholder('Label (optional)')
+                .setValue(definition.label ?? '')
+                .onChange(async (value) => {
+                    const next = current();
+                    if (!next[index]) return;
+                    const edited: CustomFieldDefinition = { ...next[index] };
+                    delete edited.label;
+                    const label = value.trim();
+                    if (label) edited.label = label;
+                    next[index] = edited;
+                    await persist(next);
+                }));
+
+            setting.addDropdown(dropdown => {
+                for (const type of CUSTOM_FIELD_TYPES) {
+                    dropdown.addOption(type, CUSTOM_FIELD_TYPE_LABELS[type]);
+                }
+                dropdown.setValue(definition.type).onChange(async (value) => {
+                    const type = value as CustomFieldType;
+                    const patch: Partial<CustomFieldDefinition> = { type };
+                    if (isLinkFieldType(type) && !definition.target) patch.target = 'character';
+                    await update(index, patch);
+                });
+            });
+
+            if (isLinkFieldType(definition.type)) {
+                setting.addDropdown(dropdown => {
+                    for (const target of CUSTOM_FIELD_LINK_TARGETS) {
+                        dropdown.addOption(target.value, target.label);
+                    }
+                    dropdown.setValue(definition.target ?? 'character').onChange(async (value) => {
+                        await update(index, { target: value });
+                    });
+                });
+            }
+
+            setting.addExtraButton(button => button
+                .setIcon('arrow-up')
+                .setTooltip('Move up')
+                .setDisabled(index === 0)
+                .onClick(async () => {
+                    const next = current();
+                    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                    await persist(next);
+                    rerender();
+                }));
+            setting.addExtraButton(button => button
+                .setIcon('arrow-down')
+                .setTooltip('Move down')
+                .setDisabled(index === list.length - 1)
+                .onClick(async () => {
+                    const next = current();
+                    [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                    await persist(next);
+                    rerender();
+                }));
+            setting.addExtraButton(button => button
+                .setIcon('trash')
+                .setTooltip('Remove field')
+                .onClick(async () => {
+                    const next = current().filter((_, i) => i !== index);
+                    await persist(next);
+                    rerender();
+                }));
+        });
+
+        new Setting(host).addButton(button => button
+            .setButtonText('Add field')
+            .setIcon('plus')
+            .onClick(async () => {
+                // A blank row is kept until it is named, and ignored at runtime until then.
+                await persist([...current(), { key: '', type: 'text' }]);
+                rerender();
+            }));
     }
 
     // ─── Tab: Folders ─────────────────────────────────────────────────────────
@@ -1072,8 +1344,14 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .setPlaceholder(t('customTodayPh'))
                 .setValue(this.plugin.settings.customTodayISO || '')
                 .onChange(async (value) => {
-                    this.plugin.settings.customTodayISO = value.trim() || undefined;
+                    const trimmed = value.trim();
+                    this.plugin.settings.customTodayISO = trimmed || undefined;
                     await this.plugin.saveSettings();
+                    // Say so when the value cannot be read, rather than silently using the system clock.
+                    if (trimmed && !parseReferenceDate(trimmed)) {
+                        new Notice(`Could not read "${trimmed}" as a date. Use a form such as 2026-03-15, 44 BCE or -0044-03-15. Today is the system date until this is fixed.`);
+                    }
+                    this.plugin.refreshTimelineViews();
                 }))
             .addExtraButton(btn => btn
                 .setIcon('reset')
@@ -1081,6 +1359,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onClick(async () => {
                     this.plugin.settings.customTodayISO = undefined;
                     await this.plugin.saveSettings();
+                    this.plugin.refreshTimelineViews();
                     this.refreshSettingsView();
                 }));
 
@@ -1204,6 +1483,73 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             'Alternative to the watch property: tag any note with this tag (e.g. #timeline) ' +
             'and give it a "date" frontmatter field to include it on the timeline.'
         );
+
+        this.renderTimelineIconSettings(container);
+    }
+
+    /** Timeline icons: which frontmatter keys hold an event or scene icon, and what the timeline shows. */
+    private renderTimelineIconSettings(container: HTMLElement): void {
+        new Setting(container).setName('Timeline icons').setHeading();
+
+        let colorText: TextComponent | undefined;
+        const iconSetting = new Setting(container)
+            .setName('Icon property')
+            .setDesc('Frontmatter key that holds an event or scene icon. Changing it does not rewrite existing notes; the plugin reads and writes the new key from then on.');
+        const errorEl = iconSetting.descEl.createDiv({ cls: 'mod-warning' });
+        errorEl.style.display = 'none';
+        iconSetting.addText(text => text
+            .setPlaceholder('icon')
+            .setValue(this.plugin.settings.timelineIconProperty || 'icon')
+            .onChange(async (v) => {
+                const value = v.trim() || 'icon';
+                if (!isSafeFrontmatterKey(value)) {
+                    errorEl.setText('Use letters, digits, "-" or "_", starting with a letter. Core entity keys such as "name" are not allowed.');
+                    errorEl.style.display = '';
+                    return;
+                }
+                errorEl.style.display = 'none';
+                this.plugin.settings.timelineIconProperty = value;
+                colorText?.setPlaceholder(iconColorKey(value));
+                await this.plugin.saveSettings();
+            }));
+
+        new Setting(container)
+            .setName('Icon colour property')
+            .setDesc('Frontmatter key that holds the icon colour. Leave empty to use the icon property name with "Color" added.')
+            .addText(text => {
+                colorText = text;
+                text
+                    .setPlaceholder(iconColorKey(this.plugin.settings.timelineIconProperty || 'icon'))
+                    .setValue(this.plugin.settings.timelineIconColorProperty || '')
+                    .onChange(async (v) => {
+                        const value = v.trim();
+                        if (value && !isSafeFrontmatterKey(value)) return;
+                        this.plugin.settings.timelineIconColorProperty = value;
+                        await this.plugin.saveSettings();
+                    });
+            });
+
+        new Setting(container)
+            .setName('Show icons on timelines')
+            .setDesc('Draw each event or scene icon on the timeline. When off, markers are plain dots.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.timelineShowIcons ?? true)
+                .onChange(async (v) => {
+                    this.plugin.settings.timelineShowIcons = v;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshTimelineViews();
+                }));
+
+        new Setting(container)
+            .setName('Use the cover image when there is no icon')
+            .setDesc('Show the cover image as a round thumbnail for events and scenes that have no icon.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.timelineUseCoverImage ?? true)
+                .onChange(async (v) => {
+                    this.plugin.settings.timelineUseCoverImage = v;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshTimelineViews();
+                }));
     }
 
     // ─── Timeline storage section ─────────────────────────────────────────────
@@ -1360,9 +1706,62 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     this.plugin.settings.tiling.showProgressNotifications = value;
                     await this.plugin.saveSettings();
                 }));
+        this.renderMapDrawingSettings(container);
     }
 
     // ─── Tab: Templates ───────────────────────────────────────────────────────
+
+    /** Map Ink defaults for new drawing, and the presets saved from the inspector. */
+    private renderMapDrawingSettings(container: HTMLElement): void {
+        new Setting(container).setName('Map drawing').setHeading();
+
+        new Setting(container)
+            .setName('Scale new items with the map')
+            .setDesc('New items grow and shrink with the map, like ink on paper. Turn this off for icons that should keep their size on screen. Each item can still change this.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.inkScaleWithMap !== false)
+                .onChange(async (value) => {
+                    this.plugin.settings.inkScaleWithMap = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(container)
+            .setName('Default text font')
+            .setDesc('The font for new text. Applies to maps opened after the change.')
+            .addDropdown(dropdown => dropdown
+                .addOptions({ serif: 'Serif', sans: 'Sans serif', hand: 'Handwritten', mono: 'Monospace' })
+                .setValue(this.plugin.settings.inkTextFont ?? 'serif')
+                .onChange(async (value) => {
+                    this.plugin.settings.inkTextFont = value as 'serif' | 'sans' | 'hand' | 'mono';
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(container).setName('Saved presets').setHeading();
+        const presets = this.plugin.settings.inkPresets ?? [];
+        if (presets.length === 0) {
+            new Setting(container)
+                .setName('No saved presets yet')
+                .setDesc('Select an item on a map, open the Map drawing inspector, and save its style as a preset. Presets are listed here.');
+        }
+        for (const preset of presets) {
+            const fit = preset.fits === 'path' ? 'lines' : preset.fits === 'area' ? 'areas' : preset.fits === 'text' ? 'text' : 'stamps';
+            new Setting(container)
+                .setName(preset.name)
+                .setDesc(`For ${fit}`)
+                .addButton(button => button
+                    .setIcon('trash')
+                    .setTooltip(`Delete preset ${preset.name}`)
+                    .onClick(async () => {
+                        // Remove in place, so the settings keep the same array.
+                        const list = this.plugin.settings.inkPresets;
+                        const index = list.findIndex(existing => existing.id === preset.id);
+                        if (index >= 0) list.splice(index, 1);
+                        await this.plugin.saveSettings();
+                        this.display();
+                    }));
+        }
+    }
+
     private renderTemplatesTab(container: HTMLElement): void {
         new Setting(container).setName(t('defaultTemplates')).setHeading();
 

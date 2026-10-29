@@ -63,9 +63,16 @@ export interface GeneratedEventPreview {
  */
 export class TagTimelineGenerator {
     private app: App;
+    private getReferenceDate: () => Date;
 
-    constructor(app: App) {
+    /**
+     * @param getReferenceDate Supplies the "today" that relative phrases such as
+     * "next Friday" resolve against. Pass the plugin's custom-today reference so
+     * the timeline agrees with the native one. Defaults to the wall clock.
+     */
+    constructor(app: App, getReferenceDate: () => Date = () => new Date()) {
         this.app = app;
+        this.getReferenceDate = getReferenceDate;
     }
 
     /**
@@ -275,7 +282,7 @@ export class TagTimelineGenerator {
 
         // Try chrono-node for natural language dates
         try {
-            const parsed = chrono.parse(content, new Date(), { forwardDate: true });
+            const parsed = chrono.parse(content, this.getReferenceDate(), { forwardDate: true });
             if (parsed.length > 0) {
                 const firstDate = parsed[0];
                 return {

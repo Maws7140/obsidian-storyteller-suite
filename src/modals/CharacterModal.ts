@@ -12,11 +12,15 @@ import { TemplatePickerModal } from './TemplatePickerModal';
 import type { Template, TemplateEntity, TemplateVariableValue } from '../templates/TemplateTypes';
 import { CharacterSheetPreviewModal } from './CharacterSheetPreviewModal';
 import { getTrackedItemOwner, isSameName } from '../utils/ItemOwnership';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
 import { buildEntityNameIndex, getRelationshipTargetRef, resolveEntityRefName } from '../utils/EntityRefUtils';
+import { resolveDirection } from '../utils/RelationshipKinds';
+import { connectionForEditing, replaceConnectionAt } from '../utils/ConnectionEdits';
 import { isModalFieldVisible, seedDefaultCustomFields } from './entity/ModalFieldVisibility';
+import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
 import { confirmWithModal } from './ui/ConfirmModal';
+import { singleFlight } from '../utils/SingleFlight';
 // Placeholder imports for suggesters - these would need to be created
 // import { CharacterSuggestModal } from './CharacterSuggestModal';
 // import { LocationSuggestModal } from './LocationSuggestModal';
@@ -42,6 +46,10 @@ export class CharacterModal extends ResponsiveModal {
     private readonly customFieldsEditor: EntityCustomFieldsEditor;
     private readonly groupSelector: EntityGroupSelector;
     private entityNameIndex: Map<string, string> | null = null;
+    /** Bumped by every onOpen; a render that finds it moved on stops after its await. */
+    private renderSeq = 0;
+    /** The default template is applied once per modal, not again on each re-render. */
+    private defaultTemplateHandled = false;
 
     /**
      * Whether a field is turned on for this vault. A hidden field is simply not
@@ -50,6 +58,22 @@ export class CharacterModal extends ResponsiveModal {
      */
     private shows(fieldKey: string): boolean {
         return isModalFieldVisible(this.plugin.settings.hiddenModalFields, 'character', fieldKey);
+    }
+
+    /**
+     * The "Your fields" section. Only exists when the vault defines typed fields
+     * for characters: the editor renders nothing otherwise, and the empty
+     * section is then removed.
+     */
+    private renderDefinedFieldsSection(contentEl: HTMLElement): void {
+        const body = createCollapsibleModalSection(contentEl, {
+            title: 'Your fields',
+            description: 'Typed fields you defined in settings for characters',
+            icon: 'list-checks',
+            open: true,
+        });
+        this.customFieldsEditor.renderDefinedFields(body, { heading: false });
+        if (!body.hasChildNodes()) body.parentElement?.remove();
     }
 
     constructor(app: App, plugin: StorytellerSuitePlugin, character: Character | null, onSubmit: CharacterModalSubmitCallback, onDelete?: CharacterModalDeleteCallback) {
@@ -71,7 +95,7 @@ export class CharacterModal extends ResponsiveModal {
         if (this.isNew) {
             initialCharacter.customFields = seedDefaultCustomFields(
                 initialCharacter.customFields,
-                plugin.settings.defaultCustomFields?.['character']
+                plugin.getSeedableDefaultCustomFields('character')
             );
         }
         if (!initialCharacter.relationships) initialCharacter.relationships = [];
@@ -89,7 +113,8 @@ export class CharacterModal extends ResponsiveModal {
             });
         }
         this.character = initialCharacter;
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'character', this.character.customFields);
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'character', this.character.customFields,
+            customFieldEditorOptions(this.plugin, 'character', () => this.character));
         this.groupSelector = new EntityGroupSelector({
             plugin: this.plugin,
             description: t('groupsHelpCharacter'),
@@ -103,10 +128,10 @@ export class CharacterModal extends ResponsiveModal {
                 return (characters.find(character => (character.id || character.name) === identifier)?.groups || this.character.groups || []);
             },
             persistAdd: async groupId => {
-                await this.plugin.addMemberToGroup(groupId, 'character', this.character.id || this.character.name);
+                await this.plugin.addMemberToGroup(groupId, 'character', this.ensureCharacterId());
             },
             persistRemove: async groupId => {
-                await this.plugin.removeMemberFromGroup(groupId, 'character', this.character.id || this.character.name);
+                await this.plugin.removeMemberFromGroup(groupId, 'character', this.ensureCharacterId());
             }
         });
         this.onSubmit = onSubmit;
@@ -116,6 +141,10 @@ export class CharacterModal extends ResponsiveModal {
 
     onOpen() { void (async () => {
         super.onOpen(); // Call the parent's mobile optimizations
+        // Applying a template re-renders while this render may still be awaiting.
+        // Only the newest render draws, so a stale one cannot add a second footer.
+        const renderSeq = ++this.renderSeq;
+        const isCurrent = () => renderSeq === this.renderSeq;
 
         const rootEl = this.contentEl;
         rootEl.empty();
@@ -137,7 +166,8 @@ export class CharacterModal extends ResponsiveModal {
         // Auto-apply default template for new characters
         if (this.isNew && !this.character.name) {
             const defaultTemplateId = this.plugin.settings.defaultTemplates?.['character'];
-            if (defaultTemplateId) {
+            if (defaultTemplateId && !this.defaultTemplateHandled) {
+                this.defaultTemplateHandled = true;
                 const defaultTemplate = this.plugin.templateManager?.getTemplate(defaultTemplateId);
                 if (defaultTemplate) {
                     // If template has variables or multiple entities, use TemplateApplicationModal
@@ -180,6 +210,8 @@ export class CharacterModal extends ResponsiveModal {
                 }
             }
         }
+
+        if (!isCurrent()) return;
 
         // --- Template Selector (for new characters) ---
         if (this.isNew) {
@@ -290,36 +322,6 @@ export class CharacterModal extends ResponsiveModal {
             });
         }
 
-        // --- Traits ---
-        if (this.shows('traits')) {
-        new Setting(contentEl)
-            .setName(t('traits'))
-            .setDesc(t('traitsPlaceholder'))
-            .addText(text => text
-                .setPlaceholder(t('traitsPlaceholder'))
-                .setValue((this.character.traits || []).join(', '))
-                .onChange(value => {
-                    this.character.traits = value.split(',').map(t => t.trim()).filter(t => t.length > 0);
-                }));
-        }
-
-        // --- Backstory ---
-        if (this.shows('backstory')) {
-        new Setting(contentEl)
-            .setName(t('backstory'))
-            .setClass('storyteller-modal-setting-vertical')
-            .addTextArea(text => {
-                text
-                    .setPlaceholder(t('characterHistoryPh'))
-                    .setValue(this.character.backstory || '')
-                .onChange(value => {
-                    this.character.backstory = value;
-                });
-                text.inputEl.rows = 6;
-                text.inputEl.addClass('storyteller-modal-textarea');
-            });
-        }
-
         // --- Status ---
         if (this.shows('status')) {
         new Setting(contentEl)
@@ -340,11 +342,41 @@ export class CharacterModal extends ResponsiveModal {
                 .onChange(value => { this.character.affiliation = value || undefined; }));
         }
 
-        // --- Physical Attributes ---
-        if (this.shows('physicalAttributes')) {
-        contentEl.createEl('h3', { text: t('physicalAttributes') });
+        // Typed fields come straight after the core fields.
+        this.customFieldsEditor.setFields(this.character.customFields);
+        this.renderDefinedFieldsSection(contentEl);
 
-        const attrRow = contentEl.createDiv('storyteller-char-attr-row');
+        // --- Appearance and traits ---
+        const appearanceVisible = this.shows('traits') || this.shows('physicalAttributes') || this.shows('quirks');
+        const appearance = appearanceVisible
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Appearance and traits',
+                description: 'Personality traits, physical attributes, and quirks',
+                icon: 'user',
+                open: Boolean(
+                    this.character.traits?.length || this.character.gender || this.character.race
+                    || this.character.age || this.character.height || this.character.quirks
+                ),
+            })
+            : null;
+
+        if (appearance && this.shows('traits')) {
+        new Setting(appearance)
+            .setName(t('traits'))
+            .setDesc(t('traitsPlaceholder'))
+            .addText(text => text
+                .setPlaceholder(t('traitsPlaceholder'))
+                .setValue((this.character.traits || []).join(', '))
+                .onChange(value => {
+                    this.character.traits = value.split(',').map(t => t.trim()).filter(t => t.length > 0);
+                }));
+        }
+
+        // --- Physical Attributes ---
+        if (appearance && this.shows('physicalAttributes')) {
+        appearance.createEl('h4', { text: t('physicalAttributes') });
+
+        const attrRow = appearance.createDiv('storyteller-char-attr-row');
 
         const genderCol = attrRow.createDiv('storyteller-char-attr-col');
         new Setting(genderCol)
@@ -379,8 +411,8 @@ export class CharacterModal extends ResponsiveModal {
                 .onChange(value => { this.character.height = value || undefined; }));
         }
 
-        if (this.shows('quirks')) {
-        new Setting(contentEl)
+        if (appearance && this.shows('quirks')) {
+        new Setting(appearance)
             .setName(t('quirks'))
             .setClass('storyteller-modal-setting-vertical')
             .addTextArea(text => {
@@ -393,10 +425,38 @@ export class CharacterModal extends ResponsiveModal {
             });
         }
 
-        // --- Current Location ---
+        // --- Backstory ---
+        if (this.shows('backstory')) {
+        const backstorySection = createCollapsibleModalSection(contentEl, {
+            title: 'Backstory',
+            description: 'Where this character came from',
+            icon: 'book-open',
+            open: Boolean(this.character.backstory),
+        });
+        new Setting(backstorySection)
+            .setName(t('backstory'))
+            .setClass('storyteller-modal-setting-vertical')
+            .addTextArea(text => {
+                text
+                    .setPlaceholder(t('characterHistoryPh'))
+                    .setValue(this.character.backstory || '')
+                .onChange(value => {
+                    this.character.backstory = value;
+                });
+                text.inputEl.rows = 6;
+                text.inputEl.addClass('storyteller-modal-textarea');
+            });
+        }
+
+        // --- Whereabouts (current location and history) ---
         if (this.shows('location')) {
-        contentEl.createEl('h3', { text: 'Location' });
-        const locationContainer = contentEl.createDiv('storyteller-location-picker-container');
+        const whereaboutsBody = createCollapsibleModalSection(contentEl, {
+            title: 'Whereabouts',
+            description: 'Where this character is now and where they have been',
+            icon: 'map-pin',
+            open: Boolean(this.character.currentLocationId || this.character.locationHistory?.length),
+        });
+        const locationContainer = whereaboutsBody.createDiv('storyteller-location-picker-container');
         const locationService = new LocationService(this.plugin);
         new LocationPicker(
             this.plugin,
@@ -425,7 +485,7 @@ export class CharacterModal extends ResponsiveModal {
 
         // --- Location History ---
         if (this.character.locationHistory && this.character.locationHistory.length > 0) {
-            const historyContainer = contentEl.createDiv('storyteller-location-history');
+            const historyContainer = whereaboutsBody.createDiv('storyteller-location-history');
             historyContainer.createEl('h4', { text: 'Location history' });
             const historyList = historyContainer.createEl('ul', { cls: 'storyteller-location-history-list' });
             
@@ -434,6 +494,7 @@ export class CharacterModal extends ResponsiveModal {
                 locationService.getLocation(entry.locationId)
             );
             const locations = await Promise.all(locationPromises);
+            if (!isCurrent()) return;
             
             for (let i = 0; i < this.character.locationHistory.length; i++) {
                 const entry = this.character.locationHistory[i];
@@ -449,11 +510,25 @@ export class CharacterModal extends ResponsiveModal {
         }
         }
 
+        // --- World-building: cultures, finances and inventory, economies ---
+        const worldVisible = this.shows('cultures') || this.shows('inventory') || this.shows('economies');
+        const worldBody = worldVisible
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'World-building',
+                description: 'Cultures, wealth and items, and economies this character belongs to',
+                icon: 'globe',
+                open: Boolean(
+                    this.character.cultures?.length || this.character.balance || this.character.ledger?.length
+                    || this.character.ownedItems?.length || this.character.linkedEconomies?.length
+                ),
+            })
+            : null;
+
         // --- Cultures ---
-        if (this.shows('cultures')) {
-        contentEl.createEl('h3', { text: 'Cultures' });
+        if (worldBody && this.shows('cultures')) {
+        worldBody.createEl('h4', { text: 'Cultures' });
         if (!Array.isArray(this.character.cultures)) this.character.cultures = [];
-        const cultureChips = contentEl.createDiv('storyteller-linked-chips');
+        const cultureChips = worldBody.createDiv('storyteller-linked-chips');
         const renderCultureChips = () => {
             cultureChips.empty();
             for (const name of this.character.cultures!) {
@@ -469,7 +544,8 @@ export class CharacterModal extends ResponsiveModal {
         };
         renderCultureChips();
         const allCulturesForChar = await this.plugin.listCultures();
-        new Setting(contentEl)
+        if (!isCurrent()) return;
+        new Setting(worldBody)
             .setName('Add culture')
             .addDropdown(dd => {
                 dd.addOption('', '— select culture —');
@@ -485,31 +561,33 @@ export class CharacterModal extends ResponsiveModal {
         }
 
         // --- Finances ---
-        if (this.shows('inventory')) {
-        contentEl.createEl('h3', { text: 'Finances' });
-        new Setting(contentEl)
+        if (worldBody && this.shows('inventory')) {
+        worldBody.createEl('h4', { text: 'Finances' });
+        new Setting(worldBody)
             .setName('Balance')
             .setDesc('Current wealth (e.g. "50gp 25sp"). Auto-computed from ledger blocks if present in the note.')
             .addText(text => text
                 .setValue(this.character.balance || '')
-                .onChange(val => { this.character.balance = val.trim() || undefined; })
+                .onChange(val => { this.character.balance = val.trim() || undefined; this.character.balanceAuto = false; })
             );
         if (this.character.ledger && this.character.ledger.length > 0) {
-            const ledgerEl = contentEl.createDiv('storyteller-ledger-preview');
+            const ledgerEl = worldBody.createDiv('storyteller-ledger-preview');
             ledgerEl.createEl('p', { cls: 'storyteller-ledger-note', text: `${this.character.ledger.length} transaction(s) in note` });
         }
 
         // --- Inventory ---
-        contentEl.createEl('h3', { text: 'Inventory' });
+        worldBody.createEl('h4', { text: 'Inventory' });
         if (!Array.isArray(this.character.ownedItems)) this.character.ownedItems = [];
         const normalizeInventoryName = (value: string): string => value.trim().toLowerCase();
 
         const allCharactersForInventory = await this.plugin.listCharacters().catch(() => [] as Character[]);
+        if (!isCurrent()) return;
         const allPlotItems = await this.plugin.listPlotItems().catch(() => [] as PlotItem[]);
+        if (!isCurrent()) return;
         const sortedPlotItems = [...allPlotItems].sort((a, b) => a.name.localeCompare(b.name));
         const itemByName = new Map(sortedPlotItems.map(item => [normalizeInventoryName(item.name), item] as const));
 
-        const inventoryChips = contentEl.createDiv('storyteller-linked-chips');
+        const inventoryChips = worldBody.createDiv('storyteller-linked-chips');
         const renderInventoryChips = () => {
             inventoryChips.empty();
             for (const ownedName of (this.character.ownedItems ?? [])) {
@@ -525,7 +603,7 @@ export class CharacterModal extends ResponsiveModal {
         };
         renderInventoryChips();
 
-        new Setting(contentEl)
+        new Setting(worldBody)
             .setName('Add item to inventory')
             .addDropdown(dd => {
                 dd.addOption('', '-- select item --');
@@ -556,17 +634,17 @@ export class CharacterModal extends ResponsiveModal {
                     dd.setValue('');
                 });
             });
-        contentEl.createEl('p', {
+        worldBody.createEl('p', {
             cls: 'storyteller-modal-hint',
             text: 'Inventory is stored as character owned items and syncs with item ownership on save.'
         });
         }
 
         // --- Linked Economies ---
-        if (this.shows('economies')) {
-        contentEl.createEl('h3', { text: 'Economies' });
+        if (worldBody && this.shows('economies')) {
+        worldBody.createEl('h4', { text: 'Economies' });
         if (!Array.isArray(this.character.linkedEconomies)) this.character.linkedEconomies = [];
-        const charEconChips = contentEl.createDiv('storyteller-linked-chips');
+        const charEconChips = worldBody.createDiv('storyteller-linked-chips');
         const renderCharEconChips = () => {
             charEconChips.empty();
             for (const name of (this.character.linkedEconomies ?? [])) {
@@ -582,7 +660,8 @@ export class CharacterModal extends ResponsiveModal {
         };
         renderCharEconChips();
         const allEconomies = await this.plugin.listEconomies();
-        new Setting(contentEl)
+        if (!isCurrent()) return;
+        new Setting(worldBody)
             .setName('Add economy')
             .addDropdown(dd => {
                 dd.addOption('', '— select economy —');
@@ -598,32 +677,43 @@ export class CharacterModal extends ResponsiveModal {
             });
         }
 
+        // --- Relationships: groups and typed connections ---
+        const relationshipsVisible = this.shows('groups') || this.shows('connections');
+        const relationshipsBody = relationshipsVisible
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Relationships',
+                description: 'Groups and typed connections to other characters',
+                icon: 'users',
+                open: Boolean(this.character.groups?.length || this.character.connections?.length),
+            })
+            : null;
+
         // --- Groups ---
-        if (this.shows('groups')) {
-        const groupSelectorContainer = contentEl.createDiv('storyteller-group-selector-container');
+        if (relationshipsBody && this.shows('groups')) {
+        const groupSelectorContainer = relationshipsBody.createDiv('storyteller-group-selector-container');
         this.groupSelector.attach(groupSelectorContainer);
         }
 
         // --- Connections (Typed Relationships) ---
-        if (this.shows('connections')) {
-        contentEl.createEl('h3', { text: t('connections') });
+        if (relationshipsBody && this.shows('connections')) {
         
         // Initialize connections if not present
         if (!this.character.connections) {
             this.character.connections = [];
         }
 
-        const connectionsListContainer = contentEl.createDiv('storyteller-modal-linked-entities');
+        const connectionsListContainer = relationshipsBody.createDiv('storyteller-modal-linked-entities');
         // Older notes store connection targets as ids (targetId) — build an
         // id → name index so the list shows display names instead of raw ids.
         try {
             this.entityNameIndex = await buildEntityNameIndex(this.plugin);
+            if (!isCurrent()) return;
         } catch {
             this.entityNameIndex = null;
         }
         this.renderConnectionsList(connectionsListContainer);
 
-        new Setting(contentEl)
+        new Setting(relationshipsBody)
             .addButton(button => button
                 .setButtonText(t('addConnection'))
                 .setIcon('plus')
@@ -649,14 +739,25 @@ export class CharacterModal extends ResponsiveModal {
         // The editor is always loaded, hidden or not: getFields() supplies the
         // value written back on save, and skipping it would drop the entity's
         // existing custom fields.
-        this.customFieldsEditor.setFields(this.character.customFields);
         if (this.shows('customFields')) {
-            this.customFieldsEditor.renderSection(contentEl);
+            const customFieldsBody = createCollapsibleModalSection(contentEl, {
+                title: 'Custom fields',
+                description: 'Additional properties specific to this project',
+                icon: 'list-plus',
+                open: Boolean(Object.keys(this.character.customFields || {}).length),
+            });
+            this.customFieldsEditor.renderFreeFormSection(customFieldsBody, { heading: false });
         }
 
-        // --- D&D Stats (collapsible) ---
+        // --- D&D Stats ---
         if (this.shows('dndStats')) {
-            this.renderDndStatsSection(contentEl);
+            const dndBody = createCollapsibleModalSection(contentEl, {
+                title: 'D&D stats',
+                description: 'Class, ability scores, hit points, and conditions',
+                icon: 'swords',
+                open: Boolean(this.character.dndClass || this.character.dndStr || this.character.dndMaxHp),
+            });
+            this.renderDndStatsSection(dndBody);
         }
 
         // --- Action Buttons ---
@@ -721,7 +822,8 @@ export class CharacterModal extends ResponsiveModal {
             cls: 'storyteller-modal-btn mod-cta',
             attr: { type: 'button' }
         });
-        saveBtn.addEventListener('click', () => { void (async () => {
+        // A busy button ignores repeat clicks, so Create cannot run twice.
+        const submitCharacter = singleFlight(async () => {
                 if (!this.character.name?.trim()) {
                     new Notice(t('characterNameRequired'));
                     return;
@@ -740,7 +842,8 @@ export class CharacterModal extends ResponsiveModal {
                     
                     new Notice(t('failedToSave', t('character')));
                 }
-            })(); });
+            }, busy => { saveBtn.disabled = busy; });
+        saveBtn.addEventListener('click', submitCharacter);
     })(); }
 
     // Helper to render connections list
@@ -760,10 +863,32 @@ export class CharacterModal extends ResponsiveModal {
             const targetRef = getRelationshipTargetRef(conn);
             const targetName = resolveEntityRefName(targetRef, this.entityNameIndex);
             const infoSpan = item.createSpan();
-            infoSpan.setText(`${targetName} (${t(conn.type || 'custom')})`);
+            const arrow = resolveDirection(conn) === 'mutual' ? ' ↔ ' : ' → ';
+            const endedNote = conn.ended ? `, ${t('relationshipEndedMarker')}` : '';
+            infoSpan.setText(`${targetName}${arrow}(${t(conn.type || 'custom')}${endedNote})`);
             if (conn.label) {
                 infoSpan.appendText(` - ${conn.label}`);
             }
+
+            new ButtonComponent(item)
+                .setClass('storyteller-modal-list-edit')
+                .setTooltip(t('editRelationship'))
+                .setIcon('pencil')
+                .onClick(async () => {
+                    const current = this.character.connections?.[index];
+                    if (!current) return;
+                    const { RelationshipEditorModal } = await import('./RelationshipEditorModal');
+                    new RelationshipEditorModal(
+                        this.app,
+                        this.plugin,
+                        connectionForEditing(current, ref => resolveEntityRefName(ref, this.entityNameIndex)),
+                        'any',
+                        (relationship) => {
+                            this.character.connections = replaceConnectionAt(this.character.connections ?? [], index, relationship);
+                            this.renderConnectionsList(container);
+                        }
+                    ).open();
+                });
 
             new ButtonComponent(item)
                 .setClass('storyteller-modal-list-remove')
@@ -932,25 +1057,11 @@ export class CharacterModal extends ResponsiveModal {
         this.character.groups = [];
     }
 
-    private renderDndStatsSection(contentEl: HTMLElement): void {
+    /** Renders the D&D stat blocks into a section body. The section supplies the title and collapse. */
+    private renderDndStatsSection(sectionBody: HTMLElement): void {
         const ch = this.character;
 
-        // Collapsible header
-        const header = contentEl.createEl('h3', { cls: 'storyteller-dnd-section-header' });
-        const toggleIcon = header.createSpan({ cls: 'storyteller-dnd-toggle-icon' });
-        header.createSpan({ text: ' D&D Stats' });
-
-        const body = contentEl.createDiv({ cls: 'storyteller-dnd-section-body' });
-        let expanded = !!(ch.dndClass || ch.dndStr || ch.dndMaxHp);
-
-        const applyExpanded = () => {
-            body.setCssStyles({ display: expanded ? '' : 'none' });
-            setIcon(toggleIcon, expanded ? 'chevron-down' : 'chevron-right');
-        };
-        applyExpanded();
-
-        header.setCssStyles({ cursor: 'pointer' });
-        header.addEventListener('click', () => { expanded = !expanded; applyExpanded(); });
+        const body = sectionBody.createDiv({ cls: 'storyteller-dnd-section-body' });
 
         // Class / Subclass / Race / Level / Hit Dice row
         const row1 = body.createDiv('storyteller-dnd-row');
@@ -1057,6 +1168,18 @@ export class CharacterModal extends ResponsiveModal {
         mkChips(body, 'Conditions', () => ch.dndConditions, v => { ch.dndConditions = v.length ? v : undefined; }, CONDITIONS);
         mkChips(body, 'Skill Proficiencies', () => ch.dndSkillProficiencies, v => { ch.dndSkillProficiencies = v.length ? v : undefined; }, SKILLS);
         mkChips(body, 'Saving Throw Proficiencies', () => ch.dndSavingThrowProficiencies, v => { ch.dndSavingThrowProficiencies = v.length ? v : undefined; }, SAVES);
+    }
+
+    /**
+     * Group membership is keyed by the character's id. A new character gets its
+     * id here, before the first group write, so the membership recorded now is
+     * the one a later removal (after the note is saved) looks for.
+     */
+    private ensureCharacterId(): string {
+        if (!this.character.id) {
+            this.character.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        }
+        return this.character.id;
     }
 
     private refresh(): void {

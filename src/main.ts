@@ -17,11 +17,10 @@ import * as L from 'leaflet';
 // import 'leaflet.markercluster/dist/leaflet.markercluster';
 
 import { Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf, debounce } from 'obsidian';
-import { parseEventDate, toMillis } from './utils/DateParsing';
+import { parseEventDate, parseReferenceDate, toMillis } from './utils/DateParsing';
 import {
     EntityType,
     buildFrontmatter,
-    getWhitelistKeys,
     isStampedEntityTypeCompatible,
     normalizeEntityType,
     parseSectionsFromMarkdown,
@@ -33,7 +32,23 @@ import {
     WIKI_LINK_SCALAR_FIELDS,
 } from './yaml/EntitySections';
 import { stringifyYamlWithLogging, validateFrontmatterPreservation } from './utils/YamlSerializer';
+import {
+    CustomFieldDefinition,
+    checkDefaultCustomFieldNames,
+    definedFieldSaveOptions,
+    removedFreeFormKeys,
+    sanitizeCustomFieldDefinitions,
+    sweepCustomFieldsOnRead,
+} from './modals/entity/CustomFieldDefinitions';
 import { stripWikiLink } from './utils/WikiLinks';
+import {
+    GROUP_OWNED_FRONTMATTER_KEYS,
+    composeNote,
+    mergeOwnedFrontmatter,
+    replaceOwnedSections,
+    splitNoteContent,
+} from './utils/GroupNoteFile';
+import { findSessionLogSection, readSessionLogBody } from './campaign/SessionLogSection';
 import { StoryScoped, scopeToStory, stampStory, mergeStoryScoped, backfillStoryIds } from './utils/StoryScope';
 import { TimelineEntityStore } from './services/TimelineEntityStore';
 import { serializeCausalityRef, parseCausalityRefs, causalityRefTarget } from './utils/CausalityRefs';
@@ -63,6 +78,8 @@ import { AnalyticsDashboardView, VIEW_TYPE_ANALYTICS } from './views/AnalyticsDa
 import { MapView, VIEW_TYPE_MAP } from './views/MapView';
 import { WritingPanelView, VIEW_TYPE_WRITING_PANEL } from './views/WritingPanelView';
 import { CampaignView, VIEW_TYPE_CAMPAIGN } from './views/CampaignView';
+import { LoreDashboardView, VIEW_TYPE_LORE_DASHBOARD } from './views/LoreDashboardView';
+import { PlayerScreenView, VIEW_TYPE_PLAYER_SCREEN } from './views/PlayerScreenView';
 import { SceneGraphView, VIEW_TYPE_SCENE_GRAPH } from './views/SceneGraphView';
 import { StorytellerGuideModal } from './modals/StorytellerGuideModal';
 // DEPRECATED: Map functionality has been deprecated
@@ -81,11 +98,16 @@ import { MagicSystemListModal } from './modals/MagicSystemListModal';
 import { CompendiumEntryModal } from './modals/CompendiumEntryModal';
 import { CompendiumListModal } from './modals/CompendiumListModal';
 import { PlatformUtils } from './utils/PlatformUtils';
-import { getTemplateSections, BODY_SECTION_FIELD_MAP } from './utils/EntityTemplates';
+import { getTemplateSections } from './utils/EntityTemplates';
+import {
+    applySectionFieldPlanToFrontmatter,
+    applySectionFieldPlanToSections,
+    fillFieldsFromBodySections,
+    getFrontmatterSectionFields,
+    planSectionFieldPlacement,
+} from './utils/SectionFieldPlacement';
 import { getSvgSourceInfoFromArrayBuffer, isSvgArrayBuffer } from './utils/SvgImageUtils';
 import type { CanvasData as StoryBoardCanvasData } from './utils/StoryBoardGenerator';
-// Removed: Codeblock maps no longer supported - use MapView instead
-// import { LeafletCodeBlockProcessor } from './leaflet/processor';
 import { TemplateStorageManager } from './templates/TemplateStorageManager';
 import { TemplateNoteManager } from './templates/TemplateNoteManager';
 import { SaveNoteAsTemplateCommand } from './commands/SaveNoteAsTemplateCommand';
@@ -94,6 +116,7 @@ import type { EntityFileName, TemplateVariableValues } from './modals/TemplateAp
 import { StoryTemplateGalleryModal } from './templates/modals/StoryTemplateGalleryModal';
 import { upgradeLegacyModalLayout } from './modals/utils/LegacyModalLayout';
 import { TrackManagerModal } from './modals/TrackManagerModal';
+import { ImportExistingNotesModal } from './modals/ImportExistingNotesModal';
 import { TagTimelineModal } from './modals/TagTimelineModal';
 import { ConflictDetector } from './utils/ConflictDetector';
 import { TimelineTrackManager } from './utils/TimelineTrackManager';
@@ -102,9 +125,18 @@ import { LocationMigration } from './utils/LocationMigration';
 import { WordCountTracker } from './compile';
 import type { SessionStats } from './compile';
 import { createLedgerViewExtension, registerLedgerBlockProcessor } from './extensions/LedgerEditorExtension';
+import { isLedgerDerivedBalance } from './utils/LedgerParser';
 import { createBranchViewExtension, registerBranchBlockProcessors } from './extensions/BranchBlockExtension';
 import { registerTimelineBlockProcessor } from './extensions/TimelineBlockExtension';
 import { CampaignSession } from './types';
+import { LONELOG_NAME } from './campaign/PartylogImport';
+import { PARTYLOG_NAME } from './campaign/PartylogExport';
+import { PlayerScreenBus } from './campaign/PlayerPush';
+import { LORELOG_NAME } from './lore/WorldLog';
+import { buildCampaignSessionFrontmatter, normalizeCampaignSessionData } from './utils/CampaignModel';
+import { appendLogLines } from './campaign/PartylogSessionBridge';
+import { isSafeFrontmatterKey, readIconFromFrontmatter, resolveIconPropertyKeys, writeIconToFrontmatter } from './utils/EntityIcon';
+import type { IconPropertyKeys } from './utils/EntityIcon';
 
 /** Runtime-only flags added to entity objects during save/sync to prevent recursion. Not persisted. */
 type WithSyncFlags<T> = T & {
@@ -220,6 +252,12 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     calendarSystems?: import('./calendar/types').CalendarSystem[];
     /** User-installed portable timeline appearance themes. */
     timelineThemes?: import('./calendar/TimelineDocuments').TimelineTheme[];
+    /** Map Ink presets the user saved from the drawing inspector. Only the Map Ink host adds or replaces entries. */
+    inkPresets: import('./leaflet/ink/styles').InkPreset[];
+    /** Map Ink: new items scale with the map (on) or keep their size on screen (off). */
+    inkScaleWithMap: boolean;
+    /** Map Ink: the font for new text. */
+    inkTextFont: 'serif' | 'sans' | 'hand' | 'mono';
     galleryUploadFolder: string; // New setting for uploads
     galleryData: GalleryData; // Store gallery metadata here
     galleryWatchFolder?: string; // Folder to auto-scan for images
@@ -286,6 +324,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     networkGraphZoom?: number;
     /** Network graph view pan position (saved per session) */
     networkGraphPan?: { x: number; y: number };
+    /** Keys of implied-link suggestions the user dismissed in the graph view (see RelationshipSuggestions.ts) */
+    dismissedLinkSuggestions?: string[];
 
     /** Story board settings */
     storyBoardLayout?: 'chapters' | 'timeline' | 'status';
@@ -306,6 +346,17 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     /** Timeline watch settings for vault note inclusion */
     timelineWatchProperty?: string;
     timelineWatchTag?: string;
+
+    /** Timeline icons: frontmatter key read and written for an event or scene icon (default `icon`) */
+    timelineIconProperty?: string;
+    /** Frontmatter key for the icon colour. Empty means derived from the icon key (`icon` gives `iconColor`) */
+    timelineIconColorProperty?: string;
+    /** Draw icons on timeline markers, cards and tooltips */
+    timelineShowIcons?: boolean;
+    /** Show the cover image as a round thumbnail when an entity has no icon */
+    timelineUseCoverImage?: boolean;
+    /** Recently picked icon values, newest first (used by the icon picker) */
+    iconPickerRecent?: string[];
 
     /** Timeline & Causality */
     timelineForks?: TimelineFork[];
@@ -344,6 +395,15 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
      */
     hiddenModalFields?: Record<string, string[]>;
 
+    /**
+     * Entity type -> body-section fields (e.g. "description") stored as a
+     * frontmatter property instead of a `## Heading` section. Empty means every
+     * field stays a section, as before. See utils/SectionFieldPlacement.ts.
+     */
+    sectionFieldsInFrontmatter?: Record<string, string[]>;
+    /** Entity type -> section fields switched back from properties to sections (see SectionFieldPlacement.ts) */
+    sectionFieldsReleasedToBody?: Record<string, string[]>;
+
     /** World-Building */
     enableWorldBuilding?: boolean;
     cultureFolderPath?: string;
@@ -366,6 +426,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     hiddenDashboardTabs?: string[];
     /** Entity type → custom field names pre-added to every newly created entity */
     defaultCustomFields?: Record<string, string[]>;
+    /** Entity type → typed fields the entity modal asks for (see CustomFieldDefinitions.ts) */
+    customFieldDefinitions?: Record<string, CustomFieldDefinition[]>;
 
     /** Dashboard tab order - persisted array of tab IDs in user-defined order */
     dashboardTabOrder?: string[];
@@ -461,6 +523,9 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
  */
  const DEFAULT_SETTINGS: StorytellerSuiteSettings = {
     stories: [],
+    inkPresets: [],
+    inkScaleWithMap: true,
+    inkTextFont: 'serif',
     activeStoryId: '',
     galleryUploadFolder: 'StorytellerSuite/GalleryUploads',
     galleryData: { images: [] },
@@ -483,6 +548,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     sceneFolderPath: '',
     mapFolderPath: '',
     hiddenModalFields: {},
+    sectionFieldsInFrontmatter: {},
+    sectionFieldsReleasedToBody: {},
     groupFolderPath: '',
     compendiumFolderPath: '',
     bookFolderPath: '',
@@ -514,6 +581,11 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     entityTypeBackfilledVersion: '',
     timelineWatchProperty: 'timeline-date',
     timelineWatchTag: 'timeline',
+    timelineIconProperty: 'icon',
+    timelineIconColorProperty: '',
+    timelineShowIcons: true,
+    timelineUseCoverImage: true,
+    iconPickerRecent: [],
     timelineForks: [],
     causalityLinks: [],
     timelineConflicts: [],
@@ -534,6 +606,7 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
     enableSensoryProfiles: true,
     hiddenDashboardTabs: [],
     defaultCustomFields: {},
+    customFieldDefinitions: {},
     templateStorageFolder: 'StorytellerSuite/Templates',
     showBuiltInTemplates: true,
     showCommunityTemplates: false,
@@ -573,6 +646,8 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
  * a unified dashboard interface for story management
  */
 export default class StorytellerSuitePlugin extends Plugin {
+    /** What the DM has pushed to the player screen this run. */
+    playerScreen = new PlayerScreenBus();
     /** Quick guard to ensure an active story exists before creation actions. */
     private ensureActiveStoryOrGuide(): boolean {
         if (!this.getActiveStory()) {
@@ -638,64 +713,68 @@ export default class StorytellerSuitePlugin extends Plugin {
         entity: T
     ): T {
         if (!entity) return entity;
-        const whitelist = getWhitelistKeys(entityType);
-        const reserved = new Set<string>([...whitelist, 'customFields', 'filePath', 'sections', 'id']);
-        // Preserve derived section fields so they are not swept into customFields
-        const derivedByType: Record<string, string[]> = {
-            character: ['description', 'backstory'],
-            location: ['description', 'history'],
-            event: ['description', 'outcome'],
-            item: ['description', 'history'],
-            reference: ['content'],
-            chapter: ['summary'],
-            scene: ['content'],
-            map: ['description'],
-            culture: ['description', 'values', 'religion', 'socialStructure', 'history', 'namingConventions', 'customs'],
-            economy: ['description', 'industries', 'taxation'],
-            magicSystem: ['description', 'rules', 'source', 'costs', 'limitations', 'training', 'history']
-        };
-        for (const k of (derivedByType[entityType] || [])) reserved.add(k);
-        const src: Record<string, unknown> = entity;
-        const currentCustom: Record<string, string> = { ...(entity.customFields || {}) };
-
-        // Sweep non-whitelisted scalar keys into customFields (including null/empty values)
-        // This makes manually-added empty fields visible and editable in the modal
-        for (const [key, value] of Object.entries(src)) {
-            if (reserved.has(key)) continue;
-
-            // Handle null/undefined values - convert to empty string for editing
-            if (value === null || value === undefined) {
-                const hasConflict = Object.keys(currentCustom).some(k => k.toLowerCase() === key.toLowerCase());
-                if (!hasConflict) {
-                    currentCustom[key] = ''; // Convert null to empty string for modal editing
-                    delete src[key];
-                }
-                continue;
-            }
-
-            // Handle string values (including empty strings)
-            if (typeof value === 'string' && !value.includes('\n')) {
-                // Only move if not conflicting (case-insensitive) with existing customFields
-                const hasConflict = Object.keys(currentCustom).some(k => k.toLowerCase() === key.toLowerCase());
-                if (!hasConflict) {
-                    currentCustom[key] = value;
-                    delete src[key];
-                }
-            }
-        }
-
-        // Deduplicate case-insensitively within customFields
-        const deduped: Record<string, string> = {};
-        const seen: Set<string> = new Set();
-        for (const [k, v] of Object.entries(currentCustom)) {
-            const lower = k.toLowerCase();
-            if (seen.has(lower)) continue; // keep first occurrence
-            seen.add(lower);
-            deduped[k] = v;
-        }
-
-        src.customFields = deduped;
+        // Sweep logic lives in CustomFieldDefinitions.ts so it can be tested
+        // directly. Defined fields are excluded so they stay top-level.
+        sweepCustomFieldsOnRead(
+            entityType,
+            entity,
+            this.getCustomFieldDefinitions(entityType),
+            getFrontmatterSectionFields(this.settings.sectionFieldsInFrontmatter, entityType)
+        );
         return entity;
+    }
+
+    /** Sanitised typed-field definitions for an entity type (invalid entries dropped). */
+    getCustomFieldDefinitions(entityType: EntityType): CustomFieldDefinition[] {
+        return sanitizeCustomFieldDefinitions(entityType, this.settings.customFieldDefinitions?.[entityType]);
+    }
+
+    /** Body-section fields this vault stores as frontmatter for an entity type. */
+    getSectionFrontmatterFields(entityType: EntityType): string[] {
+        return getFrontmatterSectionFields(this.settings.sectionFieldsInFrontmatter, entityType);
+    }
+
+    /** Default custom field names that are safe to seed into a new entity of this type. */
+    getSeedableDefaultCustomFields(entityType: EntityType): string[] {
+        return checkDefaultCustomFieldNames(
+            entityType,
+            this.settings.defaultCustomFields?.[entityType] ?? [],
+            this.getCustomFieldDefinitions(entityType),
+            this.getSectionFrontmatterFields(entityType)
+        ).accepted;
+    }
+
+    /**
+     * Names of the entities a link or links field can point at, for the active
+     * story. Each list method already resolves the story folder.
+     */
+    async listCustomFieldTargetNames(target: string): Promise<string[]> {
+        const load = async (): Promise<Array<{ name?: string }>> => {
+            switch (target) {
+                case 'character': return this.listCharacters();
+                case 'location': return this.listLocations();
+                case 'event': return this.listEvents();
+                case 'item': return this.listPlotItems();
+                case 'culture': return this.listCultures();
+                case 'economy': return this.listEconomies();
+                case 'magicSystem': return this.listMagicSystems();
+                case 'compendiumEntry': return this.listCompendiumEntries();
+                case 'book': return this.listBooks();
+                case 'chapter': return this.listChapters();
+                case 'scene': return this.listScenes();
+                case 'map': return this.listMaps();
+                case 'reference': return this.listReferences();
+                default: return [];
+            }
+        };
+        try {
+            const names = (await load())
+                .map(entity => (typeof entity.name === 'string' ? entity.name.trim() : ''))
+                .filter(name => name.length > 0);
+            return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+        } catch {
+            return [];
+        }
     }
 
     /** Resolve all folders; if any error, return a summary message for the user. */
@@ -716,8 +795,6 @@ export default class StorytellerSuitePlugin extends Plugin {
     }
 	settings: StorytellerSuiteSettings;
     private folderResolver: FolderResolver | null = null;
-    // Removed: Codeblock maps no longer supported
-    // private leafletProcessor: LeafletCodeBlockProcessor;
     templateManager: TemplateStorageManager;
     templateNoteManager: TemplateNoteManager;
     trackManager: TimelineTrackManager;
@@ -794,19 +871,11 @@ export default class StorytellerSuitePlugin extends Plugin {
     getReferenceTodayDate(): Date {
         const iso = this.settings.customTodayISO;
         if (iso) {
-            // Handle BCE dates (negative years) in ISO format
-            const parsed = new Date(iso);
-            if (!isNaN(parsed.getTime())) {
-                // Validate that the parsed date matches the input for BCE dates
-                if (iso.startsWith('-') && parsed.getFullYear() >= 0) {
-                	// intentional
-                    
-                }
-                return parsed;
-            } else {
-            	// intentional
-                
-            }
+            // Read with the event date parser: `new Date` drops the sign of a BCE year ("-0044" became 2044)
+            // and cannot read "44 BCE" at all. Unreadable text falls back to the system clock, and the
+            // settings tab tells the user when they enter it.
+            const parsed = parseReferenceDate(iso);
+            if (parsed) return parsed;
         }
         return new Date();
     }
@@ -841,6 +910,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 
     private invalidateFrontmatterReferenceIndexes(): void {
         this.frontmatterReferenceIndexCache.clear();
+    }
+
+    /** After a bulk change to entity notes (e.g. importing existing notes): drop cached indexes and tell views. */
+    refreshEntitiesAfterBulkChange(): void {
+        this.invalidateFrontmatterReferenceIndexes();
+        this.app.workspace.trigger('storyteller:entities-changed');
     }
 
     private stripWikiLinkValue(value: unknown): string | undefined {
@@ -1612,12 +1687,18 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// cache re-reads the one file that changed; it holds no unsaved state
 		// of its own, so a re-read can never clobber anything.
 		this.registerEvent(this.app.metadataCache.on('changed', (file) => { void (async () => {
+			if (this.isEventNotePath(file.path)) this.refreshEventTimelines();
 			if (await this.timelineEntities.syncFile(file)) this.refreshTimelineViews();
 		})(); }));
+		this.registerEvent(this.app.vault.on('create', (file) => {
+			if (file instanceof TFile && this.isEventNotePath(file.path)) this.refreshEventTimelines();
+		}));
 		this.registerEvent(this.app.vault.on('delete', (file) => {
+			if (this.isEventNotePath(file.path)) this.refreshEventTimelines();
 			if (this.timelineEntities.forgetPath(file.path)) this.refreshTimelineViews();
 		}));
 		this.registerEvent(this.app.vault.on('rename', (file, oldPath) => { void (async () => {
+			if (this.isEventNotePath(file.path) || this.isEventNotePath(oldPath)) this.refreshEventTimelines();
 			this.timelineEntities.forgetPath(oldPath);
 			if (file instanceof TFile && await this.timelineEntities.syncFile(file)) this.refreshTimelineViews();
 		})(); }));
@@ -1626,11 +1707,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Apply mobile CSS classes to the activeDocument body
 		this.applyMobilePlatformClasses();
-
-		// Removed: Codeblock maps no longer supported - use MapView instead
-		// Initialize and register Leaflet code block processor
-		// this.leafletProcessor = new LeafletCodeBlockProcessor(this);
-		// this.leafletProcessor.register();
 
 		// Register the main dashboard view with Obsidian's workspace
 		this.registerView(
@@ -1671,6 +1747,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Register campaign play view and scene graph view
 		this.registerView(VIEW_TYPE_CAMPAIGN, (leaf) => new CampaignView(leaf, this));
 		this.registerView(VIEW_TYPE_SCENE_GRAPH, (leaf) => new SceneGraphView(leaf, this));
+		this.registerView(VIEW_TYPE_LORE_DASHBOARD, (leaf) => new LoreDashboardView(leaf, this));
+		this.registerView(VIEW_TYPE_PLAYER_SCREEN, (leaf) => new PlayerScreenView(leaf, this));
 
 		// DEPRECATED: Map functionality has been deprecated
 		// Register the map editor view for full-screen map editing
@@ -1735,6 +1813,19 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const isImage = file instanceof TFile && this.isGalleryImageExtension(file.extension);
 				if (!isFolder && !isImage) return;
 				await this.remapImagePathReferences(oldPath, file.path, isFolder);
+			})
+		);
+
+		// A session note renamed or moved in Obsidian: the open campaign view keeps pointing at the old
+		// path otherwise, and its next save would split the log into a new note.
+		this.registerEvent(
+			this.app.vault.on('rename', (file, oldPath) => {
+				if (!(file instanceof TFile) || file.extension !== 'md') return;
+				for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_CAMPAIGN)) {
+					if (!(leaf.view instanceof CampaignView)) continue;
+					const session = leaf.view.getLoadedSession();
+					if (session?.filePath === oldPath) session.filePath = file.path;
+				}
 			})
 		);
 
@@ -2395,15 +2486,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 			
 		}
 
-		// Removed: Codeblock maps no longer supported
-		// Cleanup all active maps
-		// try {
-		// 	if (this.leafletProcessor) {
-		// 		this.leafletProcessor.cleanup();
-		// 	}
-		// } catch (error) {
-		// 	
-		// }
 	}
 
 	/**
@@ -2447,6 +2529,14 @@ export default class StorytellerSuitePlugin extends Plugin {
         });
 
         this.addCommand({
+            id: 'import-existing-notes',
+            name: 'Import existing notes as entities',
+            callback: () => {
+                new ImportExistingNotesModal(this.app, this).open();
+            }
+        });
+
+        this.addCommand({
             id: 'show-update-highlights',
             name: 'Show update highlights',
             callback: () => {
@@ -2468,6 +2558,22 @@ export default class StorytellerSuitePlugin extends Plugin {
 			name: 'Open campaign session manager',
 			callback: async () => {
 				await this.openCampaignSessionManager();
+			}
+		});
+
+		this.addCommand({
+			id: 'open-player-screen',
+			name: 'Open player screen',
+			callback: () => {
+				void this.openPlayerScreen();
+			}
+		});
+
+		this.addCommand({
+			id: 'clear-player-screen',
+			name: 'Clear player screen',
+			callback: () => {
+				this.playerScreen.clear();
 			}
 		});
 
@@ -2536,7 +2642,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 							try {
 								targetSession.modified = new Date().toISOString();
 								await this.saveSession(targetSession);
-								await this.appendToSessionLog(targetSession.filePath!, `- ${value.trim()}`);
+								await this.appendToSessionLog(targetSession.filePath!, value.trim());
 								new Notice(`Added log entry to "${targetSession.name}".`);
 							} catch {
 								
@@ -2545,6 +2651,74 @@ export default class StorytellerSuitePlugin extends Plugin {
 						})();
 					}
 				}).open();
+			}
+		});
+
+		this.addCommand({
+			id: 'export-campaign-partylog',
+			name: `Export campaign as ${PARTYLOG_NAME}`,
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				const { ExportPartylogModal } = await import('./modals/ExportPartylogModal');
+				new ExportPartylogModal(this.app, this).open();
+			}
+		});
+
+		this.addCommand({
+			id: 'import-partylog-log',
+			name: `Import ${PARTYLOG_NAME} or ${LONELOG_NAME} log`,
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				const { ImportPartylogModal } = await import('./modals/ImportPartylogModal');
+				new ImportPartylogModal(this.app, this).open();
+			}
+		});
+
+		// --- Lorelog (worldbuilding decision log) ---
+		this.addCommand({
+			id: 'lorelog-new-world-log',
+			name: 'New world log',
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				const { createWorldLog, findWorldLogFile, openWorldLogAtLine } = await import('./lore/WorldLog');
+				const existed = findWorldLogFile(this) !== undefined;
+				const file = await createWorldLog(this);
+				if (existed) new Notice('This story already has a world log.');
+				await openWorldLogAtLine(this, file, 1);
+			}
+		});
+
+		this.addCommand({
+			id: 'lorelog-add-build-session',
+			name: 'Add build session',
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				const { addBuildSession } = await import('./lore/WorldLog');
+				try {
+					const number = await addBuildSession(this);
+					new Notice(`Added build ${number} to the world log.`);
+				} catch {
+					new Notice('Could not add a build session to the world log.');
+				}
+			}
+		});
+
+		this.addCommand({
+			id: 'lorelog-add-cycle',
+			name: `${LORELOG_NAME}: add cycle`,
+			callback: async () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				const { LorelogCycleModal } = await import('./modals/LorelogCycleModal');
+				new LorelogCycleModal(this).open();
+			}
+		});
+
+		this.addCommand({
+			id: 'lorelog-open-dashboard',
+			name: `Open ${LORELOG_NAME} dashboard`,
+			callback: () => {
+				if (!this.ensureActiveStoryOrGuide()) return;
+				void this.activateLoreDashboard();
 			}
 		});
 
@@ -3284,7 +3458,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 				const [events, characters, locations] = await Promise.all([
 					this.listEvents(), this.listCharacters(), this.listLocations(),
 				]);
-				const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
+				const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations, this.getReferenceTodayDate());
 				const conflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 				await this.setTimelineConflicts(conflicts);
@@ -3303,7 +3477,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 						const [events, characters, locations] = await Promise.all([
 							this.listEvents(), this.listCharacters(), this.listLocations(),
 						]);
-						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
+						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations, this.getReferenceTodayDate());
 						const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 						await this.setTimelineConflicts(newConflicts);
@@ -3336,7 +3510,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 						const [events, characters, locations] = await Promise.all([
 							this.listEvents(), this.listCharacters(), this.listLocations(),
 						]);
-						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations);
+						const detectedConflicts = ConflictDetector.detectAllConflicts(events, characters, locations, this.getReferenceTodayDate());
 						const newConflicts = ConflictDetector.toStorageFormat(detectedConflicts);
 
 						await this.setTimelineConflicts(newConflicts);
@@ -3647,23 +3821,77 @@ export default class StorytellerSuitePlugin extends Plugin {
 		void workspace.revealLeaf(leaf);
 	}
 
-    /** Activate or focus the Campaign view, optionally pre-loading a session. */
-    async activateCampaignView(session?: CampaignSession, startingScene?: import('./types').Scene): Promise<void> {
+    /** Opens (or reveals) the Lorelog dashboard in a tab. */
+    async activateLoreDashboard(): Promise<void> {
         const { workspace } = this.app;
-        let leaf: WorkspaceLeaf | null = null;
-        const leaves = workspace.getLeavesOfType(VIEW_TYPE_CAMPAIGN);
-        if (leaves.length > 0) {
-            leaf = leaves[0];
-        } else {
+        let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType(VIEW_TYPE_LORE_DASHBOARD)[0] ?? null;
+        if (!leaf) {
             leaf = workspace.getLeaf('tab');
-            if (leaf) await leaf.setViewState({ type: VIEW_TYPE_CAMPAIGN, active: true });
+            if (leaf) await leaf.setViewState({ type: VIEW_TYPE_LORE_DASHBOARD, active: true });
         }
         if (!leaf) return;
         void workspace.revealLeaf(leaf);
-        if (session) {
-            const view = leaf.view as CampaignView;
-            await view.loadSession(session, startingScene);
-            await view.render();
+    }
+
+    /** Opens the player screen in a pop-out window, or reveals the one already open. */
+    async openPlayerScreen(): Promise<void> {
+        const { workspace } = this.app;
+        const existing = workspace.getLeavesOfType(VIEW_TYPE_PLAYER_SCREEN)[0];
+        if (existing) {
+            void workspace.revealLeaf(existing);
+            return;
+        }
+        const leaf = workspace.getLeaf('window');
+        await leaf.setViewState({ type: VIEW_TYPE_PLAYER_SCREEN, active: true });
+        void workspace.revealLeaf(leaf);
+    }
+
+    /** A session handed to a Campaign tab that is still opening; it loads it before its first draw. */
+    private pendingCampaignOpen: { session: CampaignSession; startingScene?: Scene; isNew?: boolean } | null = null;
+
+    /** Called by a Campaign view as it opens. */
+    takePendingCampaignOpen(): { session: CampaignSession; startingScene?: Scene; isNew?: boolean } | null {
+        const pending = this.pendingCampaignOpen;
+        this.pendingCampaignOpen = null;
+        return pending;
+    }
+
+    /**
+     * Activate or focus the Campaign view, optionally loading a session. `isNew` marks a session
+     * just created, which enters its starting scene; any other session resumes where it was left.
+     */
+    async activateCampaignView(session?: CampaignSession, startingScene?: Scene, options: { isNew?: boolean } = {}): Promise<void> {
+        const { workspace } = this.app;
+        const existing = workspace.getLeavesOfType(VIEW_TYPE_CAMPAIGN)[0];
+        if (existing) {
+            // A tab restored at startup is a placeholder until shown; load the real view first.
+            await existing.loadIfDeferred();
+            void workspace.revealLeaf(existing);
+            if (session && existing.view instanceof CampaignView) {
+                await existing.view.loadSession(session, startingScene, options);
+                await existing.view.render();
+            }
+            return;
+        }
+
+        const leaf = workspace.getLeaf('tab');
+        // The new view loads the session as it opens, so the session list is never drawn first.
+        this.pendingCampaignOpen = session ? { session, startingScene, isNew: options.isNew } : null;
+        let unclaimed: { session: CampaignSession; startingScene?: Scene; isNew?: boolean } | null = null;
+        try {
+            await leaf.setViewState({ type: VIEW_TYPE_CAMPAIGN, active: true });
+        } finally {
+            unclaimed = this.pendingCampaignOpen;
+            this.pendingCampaignOpen = null;
+        }
+        void workspace.revealLeaf(leaf);
+        // Not opened yet (Obsidian deferred it): load the session the usual way once it is.
+        if (unclaimed) {
+            await leaf.loadIfDeferred();
+            if (leaf.view instanceof CampaignView) {
+                await leaf.view.loadSession(unclaimed.session, unclaimed.startingScene, { isNew: unclaimed.isNew });
+                await leaf.view.render();
+            }
         }
     }
 
@@ -3698,8 +3926,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         new CampaignSessionModal(
             this.app,
             this,
-            (session) => { void (async () => {
-                await this.activateCampaignView(session, preferredStartingScene);
+            (session, isNew) => { void (async () => {
+                await this.activateCampaignView(session, preferredStartingScene, { isNew });
             })(); },
             preferredStartingScene
         ).open();
@@ -4097,8 +4325,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 	): Promise<T | null> {
 		try {
 			// External file moves/deletes can leave stale TFile handles briefly; skip safely.
-			const fileStillExists = await this.app.vault.adapter.exists(normalizePath(file.path));
-			if (!fileStillExists) {
+			// The vault's own index is checked rather than the disk: a disk check per note made
+			// every list (and every dashboard redraw) wait on one file-system call per entity.
+			if (!(this.app.vault.getAbstractFileByPath(normalizePath(file.path)) instanceof TFile)) {
 				return null;
 			}
 
@@ -4152,13 +4381,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 
             // Map well-known body sections to entity fields per type.
             // Earlier entries in the map are canonical; later ones act as legacy fallbacks.
-            const sectionFieldMap = BODY_SECTION_FIELD_MAP[entityType] ?? {};
-            for (const [sectionName, fieldName] of Object.entries(sectionFieldMap)) {
-                if (!(sectionName in allSections)) continue;
-                const existing = data[fieldName];
-                if (existing !== undefined && existing !== null && existing !== '') continue;
-                data[fieldName] = allSections[sectionName];
-            }
+            // A field stored as a property keeps its property value, even when empty;
+            // the body section only fills fields that are missing (see SectionFieldPlacement.ts).
+            fillFieldsFromBodySections(entityType, this.settings.sectionFieldsInFrontmatter, data, frontmatter, allSections);
 
             // An item written before owners existed carries a single currentOwner.
             // Hoist it so the rest of the plugin only ever sees the plural form.
@@ -4184,6 +4409,18 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
             if (Array.isArray(data['locationHistory'])) {
                 data['locationHistory'] = parseLocationHistory(data['locationHistory'] as unknown[]);
+            }
+
+            // Timeline icon: read only the configured keys. The spread above copied every
+            // frontmatter key onto the entity, so drop the raw copies first. Otherwise a
+            // custom key would leak into the entity and be written back after a clear.
+            if (entityType === 'event' || entityType === 'scene') {
+                const iconKeys = this.timelineIconKeys();
+                delete data['icon'];
+                delete data['iconColor'];
+                delete data[iconKeys.icon];
+                delete data[iconKeys.color];
+                Object.assign(data, readIconFromFrontmatter(frontmatter, iconKeys));
             }
 
             // Scene: beats is an array on the entity; convert the raw section text now.
@@ -4244,9 +4481,13 @@ export default class StorytellerSuitePlugin extends Plugin {
                 const entries = extractLedgerEntries(content);
                 if (entries.length > 0) {
                     data['ledger'] = entries;
-                    // Recompute balance from ledger if no manual balance is set
-                    if (!data['balance']) {
-                        data['balance'] = formatBalance(computeBalance(entries));
+                    // Derive the balance from the ledger unless the note holds a different
+                    // balance, which is a manual value. Derived balances are flagged so saving
+                    // does not freeze them into frontmatter (see isLedgerDerivedBalance).
+                    const derived = formatBalance(computeBalance(entries));
+                    if (!data['balance'] || data['balance'] === derived) {
+                        data['balance'] = derived;
+                        data['balanceAuto'] = true;
                     }
                 }
             }
@@ -4333,26 +4574,62 @@ export default class StorytellerSuitePlugin extends Plugin {
         const preserve = new Set<string>(Object.keys(src || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const prepared = await this.serializeFrontmatterEntityReferences(src);
-        const omitOriginalKeys = extraOmitKeys?.length
-            ? [...prepared.omitOriginalKeys, ...extraOmitKeys]
-            : prepared.omitOriginalKeys;
-        return buildFrontmatter(entityType, prepared.source, preserve, {
+        const defined = definedFieldSaveOptions(this.getCustomFieldDefinitions(entityType), prepared.source);
+        const freeFormRemoved = this.removedFreeFormKeysFor(entityType, originalFrontmatter, src.customFields);
+        const omitOriginalKeys = [...prepared.omitOriginalKeys, ...(extraOmitKeys ?? []), ...defined.omitKeys, ...freeFormRemoved];
+        return buildFrontmatter(entityType, defined.source, preserve, {
             customFieldsMode: mode,
             originalFrontmatter,
             omitOriginalKeys,
+            multilineKeys: defined.multilineKeys,
         });
     }
 
-    private buildFrontmatterForCharacter(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
-        return this.buildLinkedFrontmatter('character', src, originalFrontmatter);
+    /** Free-form keys the user deleted or renamed in the editor (see removedFreeFormKeys). */
+    private removedFreeFormKeysFor(
+        entityType: EntityType,
+        originalFrontmatter: Record<string, unknown> | undefined,
+        customFields: unknown
+    ): string[] {
+        return removedFreeFormKeys(
+            entityType,
+            originalFrontmatter,
+            customFields,
+            this.getCustomFieldDefinitions(entityType),
+            getFrontmatterSectionFields(this.settings.sectionFieldsInFrontmatter, entityType)
+        );
     }
 
-    private buildFrontmatterForLocation(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
-        return this.buildLinkedFrontmatter('location', src, originalFrontmatter);
+    private buildFrontmatterForCharacter(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>, extraOmitKeys?: readonly string[]): Promise<Record<string, unknown>> {
+        return this.buildLinkedFrontmatter('character', src, originalFrontmatter, extraOmitKeys);
     }
 
-    private buildFrontmatterForEvent(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
-        return this.buildLinkedFrontmatter('event', src, originalFrontmatter);
+    private buildFrontmatterForLocation(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>, extraOmitKeys?: readonly string[]): Promise<Record<string, unknown>> {
+        return this.buildLinkedFrontmatter('location', src, originalFrontmatter, extraOmitKeys);
+    }
+
+    /** Frontmatter keys for the timeline icon and colour, from settings (utils/EntityIcon.ts). */
+    timelineIconKeys(): IconPropertyKeys {
+        return resolveIconPropertyKeys(this.settings.timelineIconProperty, this.settings.timelineIconColorProperty);
+    }
+
+    /**
+     * Move an entity's icon and colour onto the configured frontmatter keys, in place.
+     * Returns the configured keys to remove from the note because they are now empty.
+     */
+    private applyTimelineIconWrite(rest: Record<string, unknown>): { omit: string[] } {
+        const keys = this.timelineIconKeys();
+        const writes = writeIconToFrontmatter(rest, keys);
+        delete rest.icon;
+        delete rest.iconColor;
+        delete rest[keys.icon];
+        delete rest[keys.color];
+        Object.assign(rest, writes.set);
+        return { omit: writes.omit };
+    }
+
+    private buildFrontmatterForEvent(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>, extraOmitKeys?: readonly string[]): Promise<Record<string, unknown>> {
+        return this.buildLinkedFrontmatter('event', src, originalFrontmatter, extraOmitKeys);
     }
 
     private buildFrontmatterForItem(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -4363,8 +4640,8 @@ export default class StorytellerSuitePlugin extends Plugin {
         return this.buildLinkedFrontmatter('item', src, originalFrontmatter, ['currentOwner']);
     }
 
-    private buildFrontmatterForCulture(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>): Promise<Record<string, unknown>> {
-        return this.buildLinkedFrontmatter('culture', src, originalFrontmatter);
+    private buildFrontmatterForCulture(src: Record<string, unknown>, originalFrontmatter?: Record<string, unknown>, extraOmitKeys?: readonly string[]): Promise<Record<string, unknown>> {
+        return this.buildLinkedFrontmatter('culture', src, originalFrontmatter, extraOmitKeys);
     }
 
 
@@ -4409,6 +4686,10 @@ export default class StorytellerSuitePlugin extends Plugin {
         delete rest.backstory;
         delete rest.description;
         delete rest.ledger;
+        const derivedBalance = isLedgerDerivedBalance(character);
+        if (derivedBalance) delete rest.balance;
+        // Runtime-only flag (see isLedgerDerivedBalance); never written to the note.
+        delete (rest as Record<string, unknown>).balanceAuto;
         if (rest.sections) delete rest.sections;
 
 		// Handle renaming if filePath is present and name changed
@@ -4455,7 +4736,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		// Build frontmatter strictly from whitelist, preserving original frontmatter
-		const finalFrontmatter = await this.buildFrontmatterForCharacter(rest, originalFrontmatter);
+		const finalFrontmatter = await this.buildFrontmatterForCharacter(rest, originalFrontmatter, derivedBalance ? ['balance'] : undefined);
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -4466,6 +4747,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+		// Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+		const sectionPlan = planSectionFieldPlacement({
+			entityType: 'character',
+			settings: this.settings.sectionFieldsInFrontmatter,
+			released: this.settings.sectionFieldsReleasedToBody,
+			entity: charRecord,
+			originalFrontmatter,
+			existingSections,
+		});
+		applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
 		// Use custom serializer that preserves empty string values
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0
 			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Character: ${character.name}`)
@@ -4506,6 +4797,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			};
 		}
 
+		applySectionFieldPlanToSections(sectionPlan, allSections);
 		// Generate Markdown
 		let mdContent = `---\n${frontmatterString}---\n\n`;
 		mdContent += Object.entries(allSections)
@@ -4660,6 +4952,10 @@ export default class StorytellerSuitePlugin extends Plugin {
         delete rest.history;
         delete rest.description;
         delete rest.ledger;
+        const derivedBalance = isLedgerDerivedBalance(location);
+        if (derivedBalance) delete rest.balance;
+        // Runtime-only flag (see isLedgerDerivedBalance); never written to the note.
+        delete (rest as Record<string, unknown>).balanceAuto;
         if (rest.sections) delete rest.sections;
 
 		// Handle renaming if filePath is present and name changed
@@ -4705,7 +5001,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		// Build frontmatter strictly from whitelist, preserving original frontmatter
-		const finalFrontmatter = await this.buildFrontmatterForLocation(rest, originalFrontmatter);
+		const finalFrontmatter = await this.buildFrontmatterForLocation(rest, originalFrontmatter, derivedBalance ? ['balance'] : undefined);
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -4716,6 +5012,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+		// Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+		const sectionPlan = planSectionFieldPlacement({
+			entityType: 'location',
+			settings: this.settings.sectionFieldsInFrontmatter,
+			released: this.settings.sectionFieldsReleasedToBody,
+			entity: location as unknown as Record<string, unknown>,
+			originalFrontmatter,
+			existingSections,
+		});
+		applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
 		// Use custom serializer that preserves empty string values
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0
 			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Location: ${location.name}`)
@@ -4745,6 +5051,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			delete allSections.Gallery;
 		}
 
+		applySectionFieldPlanToSections(sectionPlan, allSections);
 		// Generate Markdown
 		let mdContent = `---\n${frontmatterString}---\n\n`;
 		mdContent += Object.entries(allSections)
@@ -4993,6 +5300,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Build frontmatter
 		const finalFrontmatter = await this.buildFrontmatterForMap(rest, originalFrontmatter);
 
+		// Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+		const sectionPlan = planSectionFieldPlacement({
+			entityType: 'map',
+			settings: this.settings.sectionFieldsInFrontmatter,
+			released: this.settings.sectionFieldsReleasedToBody,
+			entity: map as unknown as Record<string, unknown>,
+			originalFrontmatter,
+			existingSections,
+		});
+		applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
 		// Use custom serializer
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0
 			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Map: ${map.name}`)
@@ -5010,6 +5327,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			? { ...defaultSections, ...templateOnlySections, ...existingSections, ...providedSections }
 			: { ...defaultSections, ...templateOnlySections, ...providedSections };
 
+		applySectionFieldPlanToSections(sectionPlan, allSections);
 		// Assemble final markdown
 		let content = '';
 		if (frontmatterString) {
@@ -5506,6 +5824,12 @@ export default class StorytellerSuitePlugin extends Plugin {
 	 * @param event The event data to save
 	 */
 	async saveEvent(event: Event): Promise<void> {
+		// Scenes and watched notes reach the timeline as event-shaped objects that carry their
+		// own file path. Writing one here would move that note into the Events folder.
+		if (event.tags?.includes('scene') || event.tags?.includes('watched-note') || event.tags?.includes('path-not-taken')) {
+			new Notice('Scenes and watched notes cannot be saved as events. Edit them in their own note.');
+			return;
+		}
 		await this.ensureEventFolder();
 		const folderPath = this.getEntityFolder('event');
 
@@ -5529,6 +5853,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         delete rest.description;
         delete rest.outcome;
         if (rest.sections) delete rest.sections;
+        const eventIcon = this.applyTimelineIconWrite(rest);
 
 		let finalFilePath = filePath;
 		if (currentFilePath && currentFilePath !== filePath) {
@@ -5572,7 +5897,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 		}
 
 		// Build frontmatter strictly from whitelist, preserving original frontmatter
-		const finalFrontmatter = await this.buildFrontmatterForEvent(rest, originalFrontmatter);
+		const finalFrontmatter = await this.buildFrontmatterForEvent(rest, originalFrontmatter, eventIcon.omit);
 
 		// Validate that we're not losing any fields before serialization
 		if (originalFrontmatter) {
@@ -5583,6 +5908,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+		// Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+		const sectionPlan = planSectionFieldPlacement({
+			entityType: 'event',
+			settings: this.settings.sectionFieldsInFrontmatter,
+			released: this.settings.sectionFieldsReleasedToBody,
+			entity: event as unknown as Record<string, unknown>,
+			originalFrontmatter,
+			existingSections,
+		});
+		applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
 		// Use custom serializer that preserves empty string values
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0
 			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Event: ${event.name}`)
@@ -5612,6 +5947,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			delete allSections.Gallery;
 		}
 
+		applySectionFieldPlanToSections(sectionPlan, allSections);
 		// Generate Markdown
 		let mdContent = `---\n${frontmatterString}---\n\n`;
 		mdContent += Object.entries(allSections)
@@ -5915,6 +6251,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+		// Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+		const sectionPlan = planSectionFieldPlacement({
+			entityType: 'item',
+			settings: this.settings.sectionFieldsInFrontmatter,
+			released: this.settings.sectionFieldsReleasedToBody,
+			entity: item as unknown as Record<string, unknown>,
+			originalFrontmatter,
+			existingSections,
+		});
+		applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
 		// Use custom serializer that preserves empty string values
 		const frontmatterString = Object.keys(finalFrontmatter).length > 0
 			? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `PlotItem: ${item.name}`)
@@ -5933,6 +6279,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			? { ...templateSections, ...existingSections }
 			: templateSections;
 
+		applySectionFieldPlanToSections(sectionPlan, allSections);
 		// Generate Markdown
 		let mdContent = `---\n${frontmatterString}---\n\n`;
 		mdContent += Object.entries(allSections)
@@ -6080,10 +6427,16 @@ export default class StorytellerSuitePlugin extends Plugin {
         const preserveRef = new Set<string>(Object.keys(rest || {}));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const preparedRef = await this.serializeFrontmatterEntityReferences(rest);
-        const fm: Record<string, unknown> = buildFrontmatter('reference', preparedRef.source, preserveRef, {
+        const definedRef = definedFieldSaveOptions(this.getCustomFieldDefinitions('reference'), preparedRef.source);
+        const fm: Record<string, unknown> = buildFrontmatter('reference', definedRef.source, preserveRef, {
             customFieldsMode: mode,
             originalFrontmatter,
-            omitOriginalKeys: preparedRef.omitOriginalKeys,
+            omitOriginalKeys: [
+                ...preparedRef.omitOriginalKeys,
+                ...definedRef.omitKeys,
+                ...this.removedFreeFormKeysFor('reference', originalFrontmatter, rest.customFields),
+            ],
+            multilineKeys: definedRef.multilineKeys,
         });
 
 		// Validate that we're not losing any fields before serialization
@@ -6095,6 +6448,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+		// Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+		const sectionPlan = planSectionFieldPlacement({
+			entityType: 'reference',
+			settings: this.settings.sectionFieldsInFrontmatter,
+			released: this.settings.sectionFieldsReleasedToBody,
+			entity: reference as unknown as Record<string, unknown>,
+			originalFrontmatter,
+			existingSections,
+		});
+		applySectionFieldPlanToFrontmatter(sectionPlan, fm);
 		// Use custom serializer that preserves empty string values
 		const frontmatterString = Object.keys(fm).length > 0
 			? stringifyYamlWithLogging(fm, originalFrontmatter, `Reference: ${reference.name}`)
@@ -6107,6 +6470,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 			? { ...templateSections, ...existingSections }
 			: templateSections;
 
+		applySectionFieldPlanToSections(sectionPlan, allSections);
 		let mdContent = `---\n${frontmatterString}---\n\n`;
 		mdContent += Object.entries(allSections)
 			.map(([key, val]) => `## ${key}\n${val || ''}`)
@@ -6228,10 +6592,16 @@ export default class StorytellerSuitePlugin extends Plugin {
         const preserveChap = new Set<string>(Object.keys(chapterSrc));
         const mode = this.settings.customFieldsMode ?? 'flatten';
         const preparedChapter = await this.serializeFrontmatterEntityReferences(chapterSrc);
-        const fm: Record<string, unknown> = buildFrontmatter('chapter', preparedChapter.source, preserveChap, {
+        const definedChapter = definedFieldSaveOptions(this.getCustomFieldDefinitions('chapter'), preparedChapter.source);
+        const fm: Record<string, unknown> = buildFrontmatter('chapter', definedChapter.source, preserveChap, {
             customFieldsMode: mode,
             originalFrontmatter,
-            omitOriginalKeys: preparedChapter.omitOriginalKeys,
+            omitOriginalKeys: [
+                ...preparedChapter.omitOriginalKeys,
+                ...definedChapter.omitKeys,
+                ...this.removedFreeFormKeysFor('chapter', originalFrontmatter, chapterSrc.customFields),
+            ],
+            multilineKeys: definedChapter.multilineKeys,
         });
 
 		// Validate that we're not losing any fields before serialization
@@ -6243,6 +6613,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+        // Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+        const sectionPlan = planSectionFieldPlacement({
+            entityType: 'chapter',
+            settings: this.settings.sectionFieldsInFrontmatter,
+            released: this.settings.sectionFieldsReleasedToBody,
+            entity: chapter as unknown as Record<string, unknown>,
+            originalFrontmatter,
+            existingSections,
+        });
+        applySectionFieldPlanToFrontmatter(sectionPlan, fm);
 		// Use custom serializer that preserves empty string values
         const frontmatterString = Object.keys(fm).length > 0
 			? stringifyYamlWithLogging(fm, originalFrontmatter, `Chapter: ${chapter.name}`)
@@ -6259,6 +6639,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (value !== undefined) allSections[key] = value;
         }
 
+        applySectionFieldPlanToSections(sectionPlan, allSections);
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
             .map(([key, val]) => `## ${key}\n${val || ''}`)
@@ -6504,6 +6885,16 @@ export default class StorytellerSuitePlugin extends Plugin {
         const bookSrc = { ...rest, linkedChapters } as Record<string, unknown>;
         const fm = await this.buildFrontmatterForBook(bookSrc, originalFrontmatter);
 
+        // Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+        const sectionPlan = planSectionFieldPlacement({
+            entityType: 'book',
+            settings: this.settings.sectionFieldsInFrontmatter,
+            released: this.settings.sectionFieldsReleasedToBody,
+            entity: book as unknown as Record<string, unknown>,
+            originalFrontmatter,
+            existingSections,
+        });
+        applySectionFieldPlanToFrontmatter(sectionPlan, fm);
         const frontmatterString = Object.keys(fm).length > 0
             ? stringifyYamlWithLogging(fm, originalFrontmatter, `Book: ${book.name}`)
             : '';
@@ -6514,6 +6905,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             ? { ...templateSections, ...existingSections }
             : templateSections;
 
+        applySectionFieldPlanToSections(sectionPlan, allSections);
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
             .map(([key, val]) => `## ${key}\n${val || ''}`)
@@ -6528,6 +6920,38 @@ export default class StorytellerSuitePlugin extends Plugin {
         }
         book.filePath = finalFilePath;
         this.app.metadataCache.trigger('dataview:refresh-views');
+
+        if (!(book as WithSyncFlags<Book>)._skipSync) {
+            await this._syncBookChapterMembership(book);
+        }
+    }
+
+    /**
+     * Make each chapter's bookId agree with the book's linkedChapters. Chapters
+     * added to the book take its id when they are unassigned; chapters removed
+     * from it lose the id. A chapter that already belongs to another book is left alone.
+     */
+    private async _syncBookChapterMembership(book: Book): Promise<void> {
+        const linked = new Set(Array.isArray(book.linkedChapters) ? book.linkedChapters : []);
+        const chapters = await this.listChapters();
+        for (const ch of chapters) {
+            if (!ch.filePath) continue;
+            const isMember = linked.has(ch.name);
+            const belongsHere = ch.bookId === book.id;
+            let next: Chapter | null = null;
+            if (isMember && !ch.bookId) {
+                next = { ...ch, bookId: book.id, bookName: book.name };
+            } else if (!isMember && belongsHere) {
+                next = { ...ch, bookId: undefined, bookName: undefined };
+            }
+            if (!next) continue;
+            (next as WithSyncFlags<Chapter>)._skipSync = true;
+            try {
+                await this.saveChapter(next);
+            } catch (e) {
+                new Notice(`Could not update the book link on chapter "${ch.name}": ${e instanceof Error ? e.message : String(e)}`);
+            }
+        }
     }
 
     async listBooks(): Promise<Book[]> {
@@ -6588,7 +7012,23 @@ export default class StorytellerSuitePlugin extends Plugin {
         const folderPath = this.getEntityFolder('campaignSession');
         const safeName = (session.name || 'Untitled Session').replace(/[\\/:"*?<>|]+/g, '');
         const fileName = `${safeName}.md`;
-        const filePath = normalizePath(`${folderPath}/${fileName}`);
+        // The note the session already points at wins, so a rename in Obsidian keeps the log in one file.
+        // Only a session with no linked note gets the name-based path.
+        const linkedPath = session.filePath;
+        let filePath: string;
+        if (!linkedPath) {
+            filePath = normalizePath(`${folderPath}/${fileName}`);
+        } else if (this.app.vault.getAbstractFileByPath(linkedPath) instanceof TFile) {
+            filePath = linkedPath;
+        } else {
+            // The linked note moved or was deleted. Adopt the note that still has this session's identity;
+            // creating a new note here would split the log.
+            const found = await this.findSessionNoteByIdentity(session, folderPath);
+            if (!found) {
+                throw new Error(`Session note "${linkedPath}" is missing. Restore it, or reopen the session from its note, before saving; saving now would split the log into a new note.`);
+            }
+            filePath = found;
+        }
 
         const now = new Date().toISOString();
         session.modified = now;
@@ -6596,12 +7036,18 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!session.id) session.id = `sess-${Date.now()}`;
 
         const preparedSession = await this.serializeFrontmatterEntityReferences(session as unknown as Record<string, unknown>);
-        const frontmatter = buildFrontmatter('campaignSession', preparedSession.source, undefined, {
+        const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+        let originalFrontmatter: Record<string, unknown> | undefined;
+        if (existingFile instanceof TFile) {
+            const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+            originalFrontmatter = parseFrontmatterFromContent(await this.app.vault.cachedRead(existingFile));
+        }
+        const frontmatter = buildCampaignSessionFrontmatter(preparedSession.source, {
             omitOriginalKeys: preparedSession.omitOriginalKeys,
+            originalFrontmatter,
         });
         const fm = stringifyYaml(frontmatter);
 
-        const existingFile = this.app.vault.getAbstractFileByPath(filePath);
         if (existingFile instanceof TFile) {
             // Preserve existing log body
             await this.app.vault.process(existingFile, (content: string) => {
@@ -6617,6 +7063,20 @@ export default class StorytellerSuitePlugin extends Plugin {
         session.filePath = filePath;
     }
 
+    /** Finds the session note of a session whose linked path is gone: by its `id`, else by name within the story. */
+    private async findSessionNoteByIdentity(session: CampaignSession, folderPath: string): Promise<string | undefined> {
+        const { parseFrontmatterFromContent } = await import('./yaml/EntitySections');
+        const prefix = normalizePath(folderPath) + '/';
+        let byName: string | undefined;
+        for (const file of this.app.vault.getMarkdownFiles().filter(f => f.path.startsWith(prefix))) {
+            const frontmatter = parseFrontmatterFromContent(await this.app.vault.cachedRead(file));
+            if (!frontmatter) continue;
+            if (session.id && frontmatter.id === session.id) return file.path;
+            if (!byName && frontmatter.name === session.name && frontmatter.storyId === session.storyId) byName = file.path;
+        }
+        return byName;
+    }
+
     /** List all campaign sessions for the active story. */
     async listSessions(): Promise<CampaignSession[]> {
         await this.ensureSessionsFolder();
@@ -6627,7 +7087,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const sessions: CampaignSession[] = [];
         for (const file of files) {
             const data = await this.parseFile<CampaignSession>(file, { name: '', storyId: '' }, 'campaignSession');
-            if (data) sessions.push(data);
+            if (data) sessions.push(normalizeCampaignSessionData(data));
         }
         return sessions.sort((a, b) => (b.modified ?? '').localeCompare(a.modified ?? ''));
     }
@@ -6642,57 +7102,62 @@ export default class StorytellerSuitePlugin extends Plugin {
         }
     }
 
-    /** Returns the raw content of the ## Session Log section of a session file. */
+    /**
+     * Returns the raw content of the ## Session Log section of a session file. Read from disk, not
+     * the cache: the Campaign view shows the log right after writing to it, and the cached copy can
+     * still hold the text from before that write.
+     */
     async loadSessionLog(filePath: string): Promise<string> {
         const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
         if (!(file instanceof TFile)) return '';
-        const content = await this.app.vault.cachedRead(file);
-        const { parseSectionsFromMarkdown } = await import('./yaml/EntitySections');
-        const bodyStart = content.indexOf('\n---', 3);
-        const body = bodyStart !== -1 ? content.slice(bodyStart + 4) : content;
-        const sections = parseSectionsFromMarkdown(body);
-        return sections['Session Log'] ?? '';
+        const content = await this.app.vault.read(file);
+        return readSessionLogBody(content);
     }
 
-    /** Atomically appends log entries to the ## Session Log section of a session file. */
+    /**
+     * Atomically appends log entries to the end of the ## Session Log section of a session file.
+     * Written as plain lines, the same as the Partylog lines from the quick entry bar, so the log
+     * reads as one list and Partylog reads each line (a `- ` bullet hid `tbl:` and `(note: ...)`).
+     */
     async appendToSessionLogEntries(filePath: string, entries: string[]): Promise<void> {
-        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
-        if (!(file instanceof TFile)) return;
         const cleaned = entries
             .map(entry => String(entry ?? '').trim())
             .filter(Boolean);
         if (!cleaned.length) return;
-
-        await this.app.vault.process(file, (content: string) => {
-            const logHeader = '## Session Log';
-            const idx = content.indexOf(logHeader);
-            const rendered = cleaned.map(entry => `- ${entry}`).join('\n');
-            if (idx === -1) {
-                return `${content.trimEnd()}\n\n${logHeader}\n${rendered}\n`;
-            }
-
-            const afterHeader = content.indexOf('\n', idx);
-            const sectionStart = afterHeader !== -1 ? afterHeader + 1 : content.length;
-            let nextSection = content.length;
-            const sectionRegex = /^##\s+/gm;
-            sectionRegex.lastIndex = sectionStart;
-            let match: RegExpExecArray | null;
-            while ((match = sectionRegex.exec(content)) !== null) {
-                if (match.index > idx) {
-                    nextSection = match.index;
-                    break;
-                }
-            }
-
-            const existingBody = content.slice(sectionStart, nextSection).replace(/\s+$/, '');
-            const mergedBody = existingBody ? `${existingBody}\n${rendered}\n` : `${rendered}\n`;
-            return content.slice(0, sectionStart) + mergedBody + content.slice(nextSection);
-        });
+        await this.updateSessionLog(filePath, body => appendLogLines(body, cleaned));
     }
 
     /** Atomically appends a single log entry to the ## Session Log section of a session file. */
     async appendToSessionLog(filePath: string, entry: string): Promise<void> {
         await this.appendToSessionLogEntries(filePath, [entry]);
+    }
+
+    /**
+     * Rewrites the body of the ## Session Log section in place. `update` receives the current
+     * section text (without its heading) and returns the new text, which is written without any
+     * list bullet. Used for Partylog lines and for replacing session header and end blocks.
+     */
+    async updateSessionLog(filePath: string, update: (body: string) => string): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(normalizePath(filePath));
+        // Fail rather than drop the write: the caller tells the DM and keeps the typed entry.
+        if (!(file instanceof TFile)) throw new Error(`Session note "${filePath}" was not found.`);
+
+        await this.app.vault.process(file, (content: string) => {
+            const logHeader = '## Session Log';
+            const idx = content.indexOf(logHeader);
+            if (idx === -1) {
+                const body = update('').replace(/\s+$/, '');
+                return `${content.trimEnd()}\n\n${logHeader}\n${body ? `${body}\n` : ''}`;
+            }
+
+            const section = findSessionLogSection(content) ?? { start: content.length, end: content.length };
+            const sectionStart = section.start;
+            const nextSection = section.end;
+
+            const existingBody = content.slice(sectionStart, nextSection).replace(/\s+$/, '');
+            const updatedBody = update(existingBody).replace(/\s+$/, '');
+            return content.slice(0, sectionStart) + (updatedBody ? `${updatedBody}\n` : '') + content.slice(nextSection);
+        });
     }
 
     // ─── End Campaign Session CRUD ───────────────────────────────────────────
@@ -6732,6 +7197,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         delete rest.linkedItems;
         delete rest.linkedGroups;
         if (rest.sections) delete rest.sections;
+        const sceneIcon = this.applyTimelineIconWrite(rest);
 
         // Rename if needed
         let finalFilePath = filePath;
@@ -6770,7 +7236,7 @@ export default class StorytellerSuitePlugin extends Plugin {
         const fm: Record<string, unknown> = buildFrontmatter('scene', preparedScene.source, preserveScene, {
             customFieldsMode: mode,
             originalFrontmatter,
-            omitOriginalKeys: preparedScene.omitOriginalKeys,
+            omitOriginalKeys: [...preparedScene.omitOriginalKeys, ...sceneIcon.omit],
         });
 
 		// Validate that we're not losing any fields before serialization
@@ -6782,6 +7248,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 			}
 		}
 
+        // Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+        const sectionPlan = planSectionFieldPlacement({
+            entityType: 'scene',
+            settings: this.settings.sectionFieldsInFrontmatter,
+            released: this.settings.sectionFieldsReleasedToBody,
+            entity: scene as unknown as Record<string, unknown>,
+            originalFrontmatter,
+            existingSections,
+        });
+        applySectionFieldPlanToFrontmatter(sectionPlan, fm);
 		// Use custom serializer that preserves empty string values
         const frontmatterString = Object.keys(fm).length > 0
 			? stringifyYamlWithLogging(fm, originalFrontmatter, `Scene: ${scene.name}`)
@@ -6800,6 +7276,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (value !== undefined) allSections[key] = value;
         }
 
+        applySectionFieldPlanToSections(sectionPlan, allSections);
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
             .map(([key, val]) => `## ${key}\n${val || ''}`)
@@ -6965,6 +7442,10 @@ export default class StorytellerSuitePlugin extends Plugin {
         delete rest.namingConventions;
         delete rest.customs;
         delete rest.ledger;
+        const derivedBalance = isLedgerDerivedBalance(culture);
+        if (derivedBalance) delete rest.balance;
+        // Runtime-only flag (see isLedgerDerivedBalance); never written to the note.
+        delete (rest as Record<string, unknown>).balanceAuto;
         if (rest.sections) delete rest.sections;
 
         let finalFilePath = filePath;
@@ -7003,7 +7484,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
-        const finalFrontmatter = await this.buildFrontmatterForCulture(rest, originalFrontmatter);
+        const finalFrontmatter = await this.buildFrontmatterForCulture(rest, originalFrontmatter, derivedBalance ? ['balance'] : undefined);
 
         if (originalFrontmatter) {
             const validation = validateFrontmatterPreservation(finalFrontmatter, originalFrontmatter);
@@ -7013,6 +7494,16 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
+        // Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+        const sectionPlan = planSectionFieldPlacement({
+            entityType: 'culture',
+            settings: this.settings.sectionFieldsInFrontmatter,
+            released: this.settings.sectionFieldsReleasedToBody,
+            entity: culture as unknown as Record<string, unknown>,
+            originalFrontmatter,
+            existingSections,
+        });
+        applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
         const frontmatterString = Object.keys(finalFrontmatter).length > 0
             ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Culture: ${culture.name}`)
             : '';
@@ -7038,6 +7529,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             allSections = templateSections;
         }
 
+        applySectionFieldPlanToSections(sectionPlan, allSections);
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
             .map(([key, content]) => `## ${key}\n${content || ''}`)
@@ -7162,6 +7654,16 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
+        // Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+        const sectionPlan = planSectionFieldPlacement({
+            entityType: 'economy',
+            settings: this.settings.sectionFieldsInFrontmatter,
+            released: this.settings.sectionFieldsReleasedToBody,
+            entity: economy as unknown as Record<string, unknown>,
+            originalFrontmatter,
+            existingSections,
+        });
+        applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
         const frontmatterString = Object.keys(finalFrontmatter).length > 0
             ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `Economy: ${economy.name}`)
             : '';
@@ -7183,6 +7685,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             allSections = templateSections;
         }
 
+        applySectionFieldPlanToSections(sectionPlan, allSections);
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
             .map(([key, content]) => `## ${key}\n${content || ''}`)
@@ -7297,6 +7800,16 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         const finalFrontmatter = await this.buildFrontmatterForCompendiumEntry(rest, originalFrontmatter);
 
+        // Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+        const sectionPlan = planSectionFieldPlacement({
+            entityType: 'compendiumEntry',
+            settings: this.settings.sectionFieldsInFrontmatter,
+            released: this.settings.sectionFieldsReleasedToBody,
+            entity: entry as unknown as Record<string, unknown>,
+            originalFrontmatter,
+            existingSections,
+        });
+        applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
         const frontmatterString = Object.keys(finalFrontmatter).length > 0
             ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `CompendiumEntry: ${entry.name}`)
             : '';
@@ -7321,6 +7834,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             allSections = templateSections;
         }
 
+        applySectionFieldPlanToSections(sectionPlan, allSections);
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
             .map(([key, content]) => `## ${key}\n${content || ''}`)
@@ -7447,6 +7961,16 @@ export default class StorytellerSuitePlugin extends Plugin {
             }
         }
 
+        // Body sections that move to or from frontmatter (see utils/SectionFieldPlacement.ts)
+        const sectionPlan = planSectionFieldPlacement({
+            entityType: 'magicSystem',
+            settings: this.settings.sectionFieldsInFrontmatter,
+            released: this.settings.sectionFieldsReleasedToBody,
+            entity: magicSystem as unknown as Record<string, unknown>,
+            originalFrontmatter,
+            existingSections,
+        });
+        applySectionFieldPlanToFrontmatter(sectionPlan, finalFrontmatter);
         const frontmatterString = Object.keys(finalFrontmatter).length > 0
             ? stringifyYamlWithLogging(finalFrontmatter, originalFrontmatter, `MagicSystem: ${magicSystem.name}`)
             : '';
@@ -7469,6 +7993,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             if (value !== undefined) allSections[key] = value;
         }
 
+        applySectionFieldPlanToSections(sectionPlan, allSections);
         let mdContent = `---\n${frontmatterString}---\n\n`;
         mdContent += Object.entries(allSections)
             .map(([key, content]) => `## ${key}\n${content || ''}`)
@@ -7571,11 +8096,30 @@ export default class StorytellerSuitePlugin extends Plugin {
         ], this.settings.activeStoryId);
     }
 
+    /** Timeline surfaces that hold a renderer outside the workspace leaves: embedded blocks and the timeline modal. */
+    private liveTimelineSurfaces = new Set<{ refreshTimeline(): void }>();
+
+    /** Put a surface on the refresh list. The returned function takes it off again. */
+    registerLiveTimeline(surface: { refreshTimeline(): void }): () => void {
+        this.liveTimelineSurfaces.add(surface);
+        return () => { this.liveTimelineSurfaces.delete(surface); };
+    }
+
     /** Redraw every open timeline, after data moved under it. */
     refreshTimelineViews(): void {
         this.app.workspace.getLeavesOfType(VIEW_TYPE_TIMELINE).forEach(leaf => {
             if (leaf.view instanceof TimelineView) void leaf.view.refresh();
         });
+        for (const surface of this.liveTimelineSurfaces) surface.refreshTimeline();
+    }
+
+    /** Timelines read event notes from the cache, so an edit redraws them once it settles. */
+    private refreshEventTimelines = debounce(() => this.refreshTimelineViews(), 300, true);
+
+    /** Whether a vault path is an event note in the active story's event folder. */
+    private isEventNotePath(path: string): boolean {
+        const folder = this.tryGetEntityFolder('event').path;
+        return !!folder && path.startsWith(folder + '/') && path.endsWith('.md');
     }
 
     /**
@@ -7838,11 +8382,11 @@ export default class StorytellerSuitePlugin extends Plugin {
      * Update an existing timeline fork
      * @param fork - Updated fork object
      */
-    async updateTimelineFork(fork: TimelineFork): Promise<void> {
+    async updateTimelineFork(fork: TimelineFork, options: { quiet?: boolean } = {}): Promise<void> {
         if (this.timelineEntities.migrated) {
             await this.timelineEntities.save('branch', fork);
             this.refreshTimelineViews();
-            new Notice(`Timeline fork "${fork.name}" updated`);
+            if (!options.quiet) new Notice(`Timeline fork "${fork.name}" updated`);
             return;
         }
         const index = this.settings.timelineForks?.findIndex(f => f.id === fork.id);
@@ -7850,7 +8394,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             this.settings.timelineForks![index] = this.stampTimelineEntry(fork);
             await this.saveSettings();
             this.refreshTimelineViews();
-            new Notice(`Timeline fork "${fork.name}" updated`);
+            if (!options.quiet) new Notice(`Timeline fork "${fork.name}" updated`);
         } else {
             new Notice(`Error: Timeline fork not found`);
         }
@@ -7878,10 +8422,10 @@ export default class StorytellerSuitePlugin extends Plugin {
      * @param forkId - ID of the fork
      * @param eventId - ID or name of the event to add
      */
-    async addEventToFork(forkId: string, eventId: string): Promise<void> {
+    async addEventToFork(forkId: string, eventId: string, options: { quiet?: boolean } = {}): Promise<void> {
         const fork = this.getTimelineFork(forkId);
         if (!fork) {
-            new Notice(`Error: Timeline fork not found`);
+            if (!options.quiet) new Notice(`Error: Timeline fork not found`);
             return;
         }
 
@@ -7891,7 +8435,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         if (!fork.linkedEvents.includes(eventId)) {
             fork.linkedEvents.push(eventId);
-            await this.updateTimelineFork(fork);
+            await this.updateTimelineFork(fork, options);
             await this.setEventBranchMembership(eventId, fork.name, true);
         }
     }
@@ -9071,30 +9615,45 @@ export default class StorytellerSuitePlugin extends Plugin {
 			if (group.customFields && Object.keys(group.customFields).length) {
 				fm['custom-fields'] = group.customFields;
 			}
+			// Typed fields defined for groups live top-level, like other entities.
+			// Empty values are left out, and their keys are owned, so a cleared field is removed from the note.
+			const groupRecord = group as unknown as Record<string, unknown>;
+			const typedKeys = this.getCustomFieldDefinitions('faction').map(definition => definition.key);
+			for (const definition of this.getCustomFieldDefinitions('faction')) {
+				const value = groupRecord[definition.key];
+				if (value === undefined || value === null || value === '') continue;
+				if (Array.isArray(value) && value.length === 0) continue;
+				if (!(definition.key in fm)) fm[definition.key] = value;
+			}
 
-			// Serialize frontmatter
-
-			const fmStr = stringifyYaml(fm).trim();
-
-			// Build markdown body sections
-			const sections: string[] = [];
-			if (group.description) sections.push(`## Description\n\n${group.description}`);
-			if (group.history)     sections.push(`## History\n\n${group.history}`);
-			if (group.structure)   sections.push(`## Structure\n\n${group.structure}`);
-			if (group.goals)       sections.push(`## Goals\n\n${group.goals}`);
-			if (group.resources)   sections.push(`## Resources\n\n${group.resources}`);
-
-			const content = `---\n${fmStr}\n---\n\n${sections.join('\n\n')}\n`.trimEnd() + '\n';
-
+			// Only the frontmatter keys and body sections the plugin owns are replaced.
+			// Unknown keys and hand-written sections in the existing note are kept.
+			const sectionValues = [
+				{ heading: 'Description', value: group.description },
+				{ heading: 'History', value: group.history },
+				{ heading: 'Structure', value: group.structure },
+				{ heading: 'Goals', value: group.goals },
+				{ heading: 'Resources', value: group.resources },
+			];
 			const existing = this.app.vault.getAbstractFileByPath(filePath);
 			if (existing instanceof TFile) {
-				await this.app.vault.modify(existing, content);
+				const current = await this.app.vault.cachedRead(existing);
+				const split = splitNoteContent(current);
+				if (!split) {
+					// The frontmatter cannot be read. Overwriting it would destroy the user's text.
+					new Notice(t('failedToSave', t('group')));
+					return;
+				}
+				const merged = mergeOwnedFrontmatter(split.frontmatter, fm, [...GROUP_OWNED_FRONTMATTER_KEYS, ...typedKeys]);
+				const next = composeNote(merged, replaceOwnedSections(split.body, sectionValues));
+				// Startup writes every group back to its note; an unchanged note is left alone so it
+				// does not fire vault events (dashboard and group refreshes) or show up in sync.
+				if (next !== current) await this.app.vault.modify(existing, next);
 			} else {
-				await this.app.vault.create(filePath, content);
+				await this.app.vault.create(filePath, composeNote(fm, replaceOwnedSections('', sectionValues)));
 			}
 		} catch {
-			// intentional
-			
+			new Notice(t('failedToSave', t('group')));
 		}
 	}
 
@@ -9275,11 +9834,21 @@ export default class StorytellerSuitePlugin extends Plugin {
 					goals,
 					resources,
 				};
+				const fromFileRecord = fromFile as unknown as Record<string, unknown>;
+				// Typed fields the note no longer has are set to undefined, so Object.assign
+				// clears the value held in memory instead of leaving it in place.
+				for (const definition of this.getCustomFieldDefinitions('faction')) {
+					if (definition.key in fromFileRecord) continue;
+					fromFileRecord[definition.key] = definition.key in fmr ? fmr[definition.key] : undefined;
+				}
 
 				const idx = this.settings.groups.findIndex(g => g.id === id);
 				if (idx !== -1) {
+					// Only a group whose note says something different counts as a change, so an
+					// unchanged note does not save settings or refresh every view that lists groups.
+					const before = JSON.stringify(this.settings.groups[idx]);
 					Object.assign(this.settings.groups[idx], fromFile);
-					changed = true;
+					if (JSON.stringify(this.settings.groups[idx]) !== before) changed = true;
 				} else {
 					this.settings.groups.push(fromFile);
 					changed = true;
@@ -9658,6 +10227,8 @@ export default class StorytellerSuitePlugin extends Plugin {
 		const loaded = loadedRaw ?? {};
         const isFreshInstall = !loadedRaw || Object.keys(loaded).length === 0;
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
+		// A fresh array per load, so saved presets never live in the shared defaults.
+		if (!Array.isArray(this.settings.inkPresets)) this.settings.inkPresets = [];
 
 		let settingsUpdated = false;
 
@@ -9763,6 +10334,24 @@ export default class StorytellerSuitePlugin extends Plugin {
         if (!('eraFolderPath' in this.settings)) { this.settings.eraFolderPath = DEFAULT_SETTINGS.eraFolderPath; settingsUpdated = true; }
         if (!('trackFolderPath' in this.settings)) { this.settings.trackFolderPath = DEFAULT_SETTINGS.trackFolderPath; settingsUpdated = true; }
         if (!('branchFolderPath' in this.settings)) { this.settings.branchFolderPath = DEFAULT_SETTINGS.branchFolderPath; settingsUpdated = true; }
+
+        // Timeline icon settings: an unsafe key falls back to the default rather than
+        // writing odd frontmatter. Changing the key never rewrites notes.
+        if (!isSafeFrontmatterKey(this.settings.timelineIconProperty)) {
+            this.settings.timelineIconProperty = DEFAULT_SETTINGS.timelineIconProperty;
+            settingsUpdated = true;
+        }
+        if (typeof this.settings.timelineIconColorProperty !== 'string'
+            || (this.settings.timelineIconColorProperty !== '' && !isSafeFrontmatterKey(this.settings.timelineIconColorProperty))) {
+            this.settings.timelineIconColorProperty = DEFAULT_SETTINGS.timelineIconColorProperty;
+            settingsUpdated = true;
+        }
+        if (typeof this.settings.timelineShowIcons !== 'boolean') this.settings.timelineShowIcons = DEFAULT_SETTINGS.timelineShowIcons;
+        if (typeof this.settings.timelineUseCoverImage !== 'boolean') this.settings.timelineUseCoverImage = DEFAULT_SETTINGS.timelineUseCoverImage;
+        if (!Array.isArray(this.settings.iconPickerRecent)) {
+            this.settings.iconPickerRecent = [];
+            settingsUpdated = true;
+        }
 
         // A vault with no eras, tracks or branches in settings has nothing to
         // migrate, so it can start on notes and never meet the migration at
@@ -10165,11 +10754,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 
 		// Create handler for orientation changes and window resize
 		const handleOrientationChange = () => {
-			// Removed: Codeblock maps no longer supported
-			// Invalidate all Leaflet map sizes to force recalculation
-			// if (this.leafletProcessor) {
-			// 	this.leafletProcessor.invalidateAllMapSizes();
-			// }
 
 			// Trigger a layout recalculation for open views
 			this.app.workspace.getLeavesOfType(VIEW_TYPE_TIMELINE).forEach(leaf => {

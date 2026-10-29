@@ -9,7 +9,8 @@ import StorytellerSuitePlugin from '../main';
 import { Location, StoryMap, MapBinding } from '../types';
 import { t } from '../i18n/strings';
 import { LeafletRenderer } from '../leaflet/renderer';
-import { BlockParameters } from '../leaflet/types';
+import { buildMapExportFileName, uniqueExportPath } from '../leaflet/utils/MapImageExport';
+import { mapToBlockParams } from '../leaflet/utils/MapBlockParams';
 import { LocationService, LocationLevel } from '../services/LocationService';
 import { LocationSuggestModal } from '../modals/LocationSuggestModal';
 import { LocationSelectionModal } from '../modals/LocationSelectionModal';
@@ -18,6 +19,15 @@ import { EventSuggestModal } from '../modals/EventSuggestModal';
 import { PlotItemSuggestModal } from '../modals/PlotItemSuggestModal';
 import { openMapModal } from '../utils/MapModalHelper';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
+import { createPlacementOverlay } from '../leaflet/placementOverlay';
+import { InkEditor } from '../leaflet/ink/InkEditor';
+import type { InkLayer } from '../leaflet/ink/InkLayer';
+import type { InkLegend } from '../leaflet/ink/InkLegend';
+import { ObsidianInkHost } from '../leaflet/ink/obsidian/ObsidianInkHost';
+import { INK_FRONTMATTER_KEY, inkFrontmatter, normalizeInk, type InkDoc } from '../leaflet/ink/model';
+import { MAPLOG_KEYS } from '../leaflet/ink/migrateMaplog';
+import { inkDocOf } from '../leaflet/utils/mapInk';
+import { LatestToken } from '../utils/LatestToken';
 
 export const VIEW_TYPE_MAP = 'storyteller-map-view';
 
@@ -51,6 +61,38 @@ interface MapViewState extends Record<string, unknown> {
  * - Map Container: Flex-grow to fill remaining space with Leaflet map
  * - Status Footer: Map info (type, scale, marker count)
  */
+/** What one drawing save changed: the drawing before it and the drawing it asked for. */
+interface InkChange {
+    before: InkDoc;
+    after: InkDoc;
+}
+
+/**
+ * Undo one save's changes to a list of layers or items. Entries the save added are removed and
+ * entries it changed or removed get their old version back. An entry that a later save changed
+ * again is left alone, so that later edit is kept.
+ */
+function undoListChange<T extends { id: string }>(current: T[], before: T[], after: T[]): T[] {
+    const same = (a: T, b: T | undefined): boolean => b !== undefined && JSON.stringify(a) === JSON.stringify(b);
+    const beforeById = new Map(before.map(item => [item.id, item]));
+    const afterById = new Map(after.map(item => [item.id, item]));
+    const currentIds = new Set(current.map(item => item.id));
+    const result: T[] = [];
+    for (const item of current) {
+        const written = afterById.get(item.id);
+        if (!written || !same(item, written)) {
+            result.push(item);
+            continue;
+        }
+        const previous = beforeById.get(item.id);
+        if (previous) result.push(previous);
+    }
+    for (const [id, item] of beforeById) {
+        if (!afterById.has(id) && !currentIds.has(id)) result.push(item);
+    }
+    return result;
+}
+
 export class MapView extends ItemView {
     plugin: StorytellerSuitePlugin;
     private currentMap: StoryMap | null = null;
@@ -76,6 +118,16 @@ export class MapView extends ItemView {
     private currentZoom = 2;
     private locationLevelMode: LocationLevel = 'auto';
     private gridController: GridController | null = null;
+    /** The Map Ink editor for the open map. Null while the map is loading or closed. */
+    private inkEditor: InkEditor | null = null;
+    /** The Draw toolbar button, so its pressed state follows the editor. Null when the toolbar has none. */
+    private inkButton: HTMLButtonElement | null = null;
+    private inkSaveQueue: Promise<void> = Promise.resolve();
+    /** Drawing writes queued or running; while any are, the in-memory drawing is newer than the note. */
+    private inkWritesPending = 0;
+    private mapRenderToken = 0;
+    /** Last map requested by loadMap. Older loads that finish late are dropped. */
+    private mapLoadToken = new LatestToken();
     private placementMode: { type: 'location' | 'character' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group' | 'scene' | 'reference' | null } = { type: null };
     private placementClickHandler: ((e: L.LeafletMouseEvent) => void) | null = null;
     private placementOverlay: HTMLElement | null = null;
@@ -215,6 +267,23 @@ export class MapView extends ItemView {
         // Spacer
         this.toolbarEl.createDiv('storyteller-toolbar-spacer');
 
+        // Draw: opens the Map Ink editor (drawing tools, inspector and layers)
+        this.inkButton = null;
+        if (this.currentMap) {
+            const drawBtn = this.toolbarEl.createEl('button', {
+                cls: 'clickable-icon storyteller-toolbar-btn',
+                attr: {
+                    'aria-label': 'Draw on map',
+                    'title': 'Draw on map',
+                    'aria-pressed': 'false'
+                }
+            });
+            setIcon(drawBtn, 'pen-tool');
+            drawBtn.onclick = () => { void this.toggleInk(); };
+            this.inkButton = drawBtn;
+            this.syncInkButton();
+        }
+
         // Refresh button
         const refreshBtn = this.toolbarEl.createEl('button', {
             cls: 'clickable-icon storyteller-toolbar-btn',
@@ -312,49 +381,48 @@ export class MapView extends ItemView {
             return;
         }
 
-        // Create breadcrumb items
+        // Crumbs: each has a Lucide icon for its scale. Ancestors are buttons, the current map is plain text.
         breadcrumbPath.forEach((mapInfo, index) => {
-            // Don't add separator before first item
+            const isCurrent = index === breadcrumbPath.length - 1;
+
             if (index > 0) {
                 const separator = this.breadcrumbEl!.createSpan('breadcrumb-separator');
-                separator.textContent = ' > ';
+                setIcon(separator, 'chevron-right');
+                separator.setAttribute('aria-hidden', 'true');
             }
 
-            const breadcrumbItem = this.breadcrumbEl!.createEl('button', {
-                cls: 'breadcrumb-item',
-                text: mapInfo.name
-            });
+            const crumb = isCurrent
+                ? this.breadcrumbEl!.createSpan({ cls: 'breadcrumb-item breadcrumb-item-current' })
+                : this.breadcrumbEl!.createEl('button', {
+                    cls: 'breadcrumb-item breadcrumb-item-clickable',
+                    attr: { type: 'button', title: `Open ${mapInfo.name}` }
+                });
+            if (isCurrent) crumb.setAttribute('aria-current', 'page');
 
-            // Add scale emoji for visual hierarchy
-            const scaleEmoji = this.getScaleEmoji(mapInfo.scale);
-            if (scaleEmoji) {
-                breadcrumbItem.prepend(scaleEmoji + ' ');
-            }
+            const icon = crumb.createSpan({ cls: 'breadcrumb-item-icon' });
+            setIcon(icon, this.getScaleIcon(mapInfo.scale));
+            crumb.createSpan({ cls: 'breadcrumb-item-label', text: mapInfo.name });
 
-            // Make clickable unless it's the current map (last item)
-            if (index < breadcrumbPath.length - 1) {
-                breadcrumbItem.addClass('breadcrumb-item-clickable');
-                breadcrumbItem.onclick = async () => {
+            if (!isCurrent) {
+                crumb.onclick = async () => {
                     await this.loadMap(mapInfo.id);
                 };
-            } else {
-                breadcrumbItem.addClass('breadcrumb-item-current');
             }
         });
     }
 
     /**
-     * Get emoji icon for map scale
+     * Lucide icon name for a map scale (plugin UI uses Lucide icons, not emoji).
      */
-    private getScaleEmoji(scale: StoryMap['scale']): string {
-        const scaleEmojis: Record<string, string> = {
-            'world': '🌍',
-            'region': '👑',
-            'city': '🏰',
-            'building': '🏛️',
-            'custom': '📍'
+    private getScaleIcon(scale: StoryMap['scale']): string {
+        const scaleIcons: Record<string, string> = {
+            'world': 'globe',
+            'region': 'crown',
+            'city': 'castle',
+            'building': 'landmark',
+            'custom': 'map-pin'
         };
-        return scaleEmojis[scale || 'custom'] || '📍';
+        return scaleIcons[scale || 'custom'] || 'map-pin';
     }
 
     /**
@@ -634,6 +702,138 @@ export class MapView extends ItemView {
     }
 
     /**
+     * Open or close the Map Ink editor. Opening first ends any grid painting and
+     * disarms entity placement, so only one of them is armed at a time.
+     */
+    private async toggleInk(): Promise<void> {
+        const editor = this.inkEditor;
+        if (!editor) {
+            new Notice('The map is still loading. Try again in a moment.');
+            return;
+        }
+        if (editor.isOpen()) {
+            const closing = editor.close();
+            this.syncInkButton();
+            await closing;
+            return;
+        }
+        if (this.gridController && !await this.gridController.endEditing()) return;
+        this.disablePlacementMode();
+        editor.open();
+        this.syncInkButton();
+    }
+
+    /** Close the Map Ink editor when another tool arms. The drawing stays on the map. */
+    private closeInk(): void {
+        void this.inkEditor?.close();
+        this.syncInkButton();
+    }
+
+    /** Save the open Map Ink editor and remove it. Its pending save runs first, against the note it was made for. */
+    private async destroyInkEditor(): Promise<void> {
+        const editor = this.inkEditor;
+        this.inkEditor = null;
+        this.syncInkButton();
+        if (editor) await editor.destroy();
+    }
+
+    /** Show the Draw button as pressed exactly while the Map Ink editor is open. */
+    private syncInkButton(): void {
+        const btn = this.inkButton;
+        if (!btn) return;
+        const open = this.inkEditor?.isOpen() === true;
+        btn.classList.toggle('is-active', open);
+        btn.setAttribute('aria-pressed', open ? 'true' : 'false');
+    }
+
+    /**
+     * Build the Map Ink editor on the renderer's drawing layer and legend. The host saves to the
+     * note that was open when the editor was built, so a later map switch cannot redirect a write.
+     */
+    private createInkEditor(map: L.Map, layer: InkLayer, legend: InkLegend | null): InkEditor {
+        const current = this.currentMap;
+        const filePath = current?.filePath;
+        const host = new ObsidianInkHost({
+            plugin: this.plugin,
+            load: () => inkDocOf(this.currentMap ?? {}),
+            save: doc => this.saveInk(doc, filePath),
+            snapPoint: latlng => this.gridController?.snapPoint(latlng) ?? latlng,
+        });
+        return new InkEditor({
+            L,
+            map,
+            host,
+            container: map.getContainer(),
+            doc: inkDocOf(current ?? {}),
+            layer,
+            legend: legend ?? undefined,
+        });
+    }
+
+    /**
+     * Write the drawing to the map note's `mapInk` key. Writes run one after another. The open
+     * map is updated first, so a second change builds on this one. In the same write the old
+     * Maplog keys are removed, so they cannot come back over the new drawing.
+     */
+    private saveInk(doc: InkDoc, filePath: string | undefined = this.currentMap?.filePath): Promise<void> {
+        const file = filePath ? this.app.vault.getAbstractFileByPath(filePath) : null;
+        if (!filePath || !(file instanceof TFile)) return Promise.reject(new Error('Save the map note before drawing on the map.'));
+        // Round-trip through the frontmatter shape, so the in-memory state equals what the note will hold.
+        const clean = inkDocOf({ mapInk: inkFrontmatter(normalizeInk(doc)) });
+        const map = this.currentMap;
+        const isOpen = map?.filePath === filePath;
+        const change: InkChange = { before: isOpen && map ? inkDocOf(map) : clean, after: clean };
+        let optimistic: StoryMap | null = null;
+        if (isOpen && map) {
+            optimistic = { ...map, mapInk: inkFrontmatter(clean) };
+            this.currentMap = optimistic;
+        }
+        this.inkWritesPending++;
+        const run = async (): Promise<void> => {
+            // Write the drawing as it is now, not as it was when this save was made: a later save may
+            // already be in memory, and an earlier save may have been rolled back while this one waited.
+            const latest = isOpen && this.currentMap?.filePath === filePath ? inkDocOf(this.currentMap) : clean;
+            const patch = inkFrontmatter(latest);
+            try {
+                // processFrontMatter keeps the rest of the note and writes in one operation.
+                await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+                    fm[INK_FRONTMATTER_KEY] = patch;
+                    for (const key of MAPLOG_KEYS) Reflect.deleteProperty(fm, key);
+                });
+            } catch (error) {
+                // Undo this write before the next queued run starts, so that run does not write it.
+                if (optimistic && map) this.rollbackInk(map, optimistic, change);
+                throw error;
+            }
+        };
+        const queued = this.inkSaveQueue.then(run, run).finally(() => { this.inkWritesPending--; });
+        this.inkSaveQueue = queued.catch(() => undefined);
+        return queued;
+    }
+
+    /**
+     * Take back one rejected write from the in-memory map. Only that write's own changes are
+     * undone: a later save that was built on top of it keeps its edits. The open editor keeps
+     * its drawing, so the next change saves it again.
+     */
+    private rollbackInk(map: StoryMap, optimistic: StoryMap, change: InkChange): void {
+        // Nothing has changed since the write, so the map state from before it is restored as it was.
+        if (this.currentMap === optimistic) {
+            this.currentMap = map;
+            return;
+        }
+        // The open map has changed since the write, so its state is not this note's.
+        if (!this.currentMap || this.currentMap.filePath !== map.filePath) return;
+        const current = inkDocOf(this.currentMap);
+        const restored: InkDoc = {
+            version: 1,
+            layers: undoListChange(current.layers, change.before.layers, change.after.layers),
+            items: undoListChange(current.items, change.before.items, change.after.items),
+        };
+        this.currentMap = { ...this.currentMap, mapInk: inkFrontmatter(restored) };
+    }
+
+    /**
      * Enable placement mode for clicking on map to place entities
      */
     private async enablePlacementMode(
@@ -641,6 +841,7 @@ export class MapView extends ItemView {
         onPlaceCoordinates: (coordinates: [number, number]) => void
     ): Promise<void> {
         if (this.gridController && !await this.gridController.endEditing()) return;
+        this.closeInk();
         // Disable any existing placement mode first
         this.disablePlacementMode();
 
@@ -649,14 +850,20 @@ export class MapView extends ItemView {
 
         // Create instruction overlay
         if (this.mapContainer) {
-            this.placementOverlay = this.mapContainer.createDiv('storyteller-placement-overlay');
-            const instruction = this.placementOverlay.createDiv('storyteller-placement-instruction');
-
             const entityTypeText = entityType.charAt(0).toUpperCase() + entityType.slice(1);
-            const placementIcon = instruction.createDiv('placement-icon');
-            setIcon(placementIcon, 'map-pin');
-            instruction.createDiv({ text: `Click map to place ${entityTypeText}`, cls: 'placement-text' });
-            instruction.createDiv({ text: 'Press ESC to cancel', cls: 'placement-hint' });
+            this.placementOverlay = createPlacementOverlay(this.mapContainer, {
+                text: `Click map to place ${entityTypeText}`,
+                hint: 'Press ESC to cancel',
+                decorate: instruction => {
+                    const placementIcon = instruction.createDiv('placement-icon');
+                    setIcon(placementIcon, 'map-pin');
+                },
+                // Touch users have no Esc key, so the bar carries its own Cancel button.
+                onCancel: () => {
+                    this.disablePlacementMode();
+                    new Notice('Placement cancelled');
+                },
+            });
         }
 
         // Change cursor to crosshair
@@ -747,6 +954,11 @@ export class MapView extends ItemView {
                     await this.loadMap(mapId);
                 },
                 onDelete: async () => {
+                    // The map is going away: leave placement, grid and the drawing editor with it.
+                    this.disablePlacementMode();
+                    this.gridController?.destroy();
+                    this.gridController = null;
+                    await this.destroyInkEditor();
                     // Clear current map and refresh selector
                     this.currentMap = null;
                     await this.buildMapSelector();
@@ -1771,10 +1983,15 @@ export class MapView extends ItemView {
      * Load a specific map by ID or name
      */
     async loadMap(mapIdOrName: string): Promise<void> {
+        // Last request wins. Every await below can be overtaken by a newer switch (dropdown, breadcrumb,
+        // back button), so each one re-checks the token before touching the view.
+        const token = this.mapLoadToken.begin();
         if (this.gridController && !await this.gridController.canLeave()) return;
+        if (!this.mapLoadToken.isCurrent(token)) return;
         try {
             // Try to find map by ID first, then by name
             const maps = await this.plugin.listMaps();
+            if (!this.mapLoadToken.isCurrent(token)) return;
             const map = maps.find(m => m.id === mapIdOrName || m.name === mapIdOrName);
 
             if (!map) {
@@ -1782,8 +1999,9 @@ export class MapView extends ItemView {
                 return;
             }
 
-            const resolvedMapId = map.id || map.name;
-
+            // The open drawing is saved before the map changes, so it lands in its own note.
+            await this.destroyInkEditor();
+            if (!this.mapLoadToken.isCurrent(token)) return;
             this.currentMap = map;
 
             // Update dropdown
@@ -1794,15 +2012,18 @@ export class MapView extends ItemView {
 
             // Render the map
             await this.renderMap();
+            if (!this.mapLoadToken.isCurrent(token)) return;
 
             // Update toolbar, footer, breadcrumb, and entity bar
             await this.buildToolbar();
+            if (!this.mapLoadToken.isCurrent(token)) return;
             this.updateFooterStatus();
             await this.buildBreadcrumb();
+            if (!this.mapLoadToken.isCurrent(token)) return;
             this.buildEntityBar();
 
         } catch {
-            
+            if (!this.mapLoadToken.isCurrent(token)) return;
             new Notice('Error loading map. See console for details.');
         }
     }
@@ -1812,9 +2033,15 @@ export class MapView extends ItemView {
      */
     private async renderMap(): Promise<void> {
         if (!this.mapContainer || !this.currentMap) return;
+        // Each render gets a token. A render that is overtaken by a newer one (map switch while waiting)
+        // must not create a renderer that nothing will ever unload.
+        const token = ++this.mapRenderToken;
 
+        this.disablePlacementMode();
         this.gridController?.destroy();
         this.gridController = null;
+        await this.destroyInkEditor();
+        this.removeDocumentMapListeners();
         // Clean up existing renderer before creating new one
         if (this.leafletRenderer) {
             try {
@@ -1831,6 +2058,7 @@ export class MapView extends ItemView {
         // CRITICAL FIX: Wait for container to have non-zero dimensions
         // Without this, Leaflet initializes with 0x0 size and tiles don't render
         await this.waitForContainerDimensions(this.mapContainer);
+        if (token !== this.mapRenderToken) return;
 
         // CRITICAL FIX: Parent container must have position:relative for absolute children
         // Without this, tiles will scatter across the viewport
@@ -1872,7 +2100,7 @@ export class MapView extends ItemView {
         leafletContainer.id = `map-view-${mapId.replace(/[^a-zA-Z0-9]/g, '-')}`;
 
         // Convert map entity to block parameters
-        const params = this.mapToBlockParams(this.currentMap);
+        const params = mapToBlockParams(this.currentMap);
         params.id = mapId; // Use map ID so MapEntityRenderer can find map bindings
         params.mapId = mapId; // Also set mapId parameter for entity rendering
 
@@ -1893,23 +2121,40 @@ export class MapView extends ItemView {
             } as unknown as import('obsidian').MarkdownPostProcessorContext;
 
             // Create renderer
-            this.leafletRenderer = new LeafletRenderer(
+            const renderer = new LeafletRenderer(
                 this.plugin,
                 leafletContainer,
                 params,
                 mockContext
             );
+            this.leafletRenderer = renderer;
 
             // Register as child component to trigger lifecycle (like code block processor)
-            mockContext.addChild(this.leafletRenderer);
-            await this.leafletRenderer.initialize();
+            mockContext.addChild(renderer);
+            await renderer.initialize();
+            if (token !== this.mapRenderToken) {
+                // A newer render started while this one was initialising; release this renderer.
+                if (this.leafletRenderer === renderer) this.leafletRenderer = null;
+                renderer.onunload();
+                return;
+            }
             const imageBounds = this.leafletRenderer.getImageBounds();
             const initializedMap = this.leafletRenderer.getMap();
             if (imageBounds && initializedMap) {
                 this.buildEntityBar();
-                try { this.gridController = new GridController(this.plugin, initializedMap, this.currentMap, imageBounds, this.entityBarEl!.querySelector<HTMLElement>('.entity-bar-quick-actions')!); }
+                try {
+                    this.gridController = new GridController(this.plugin, initializedMap, this.currentMap, imageBounds, this.entityBarEl!.querySelector<HTMLElement>('.entity-bar-quick-actions')!);
+                    // Painting the grid disarms the drawing editor, so its clicks cannot reach the map tools.
+                    this.gridController.onEditStart = () => this.closeInk();
+                }
                 catch (error) { new Notice(`Grid unavailable: ${error instanceof Error ? error.message : String(error)}`); }
                 initializedMap.on('storyteller:area-saved', () => { void this.leafletRenderer?.refreshEntities(); });
+            }
+
+            // Map Ink: the drawing editor works on the renderer's own layer and legend.
+            const inkLayer = this.leafletRenderer.getInkLayer();
+            if (inkLayer && initializedMap) {
+                this.inkEditor = this.createInkEditor(initializedMap, inkLayer, this.leafletRenderer.getInkLegend());
             }
 
             // CRITICAL: Prevent Obsidian from intercepting events when using the map
@@ -1925,6 +2170,7 @@ export class MapView extends ItemView {
             // Reference: https://github.com/Leaflet/Leaflet/discussions/8972
 
             // Leaflet alone owns wheel zoom; do not race it with delayed setView.
+            this.removeDocumentMapListeners();
             const wheelHandler = (ev: WheelEvent) => {
                 if (leafletContainer.contains(ev.target as Node)) {
                     ev.preventDefault();
@@ -1952,15 +2198,18 @@ export class MapView extends ItemView {
 
             // Add zoom/pan event handlers after a short delay
             window.setTimeout(() => {
-                const map = this.leafletRenderer?.getMap();
+                // Bind to this render's renderer only. A map switched away from within 100ms must not
+                // feed its view into the newly selected map's saved state.
+                if (this.leafletRenderer !== renderer) return;
+                const map = renderer.getMap();
                 if (map) {
                     map.on('zoomend', () => {
-                        this.saveMapViewState();
+                        this.saveMapViewState(map);
                         this.updateLocationLevelDropdownLabel();
                     });
 
                     map.on('moveend', () => {
-                        this.saveMapViewState();
+                        this.saveMapViewState(map);
                     });
 
                     this.updateLocationLevelDropdownLabel();
@@ -1971,7 +2220,8 @@ export class MapView extends ItemView {
             // Multiple delays handle different layout completion scenarios
             // IMPORTANT: Must also update tile layers, not just invalidateSize, or tiles disappear
             const forceMapUpdate = () => {
-                const map = this.leafletRenderer?.getMap();
+                if (this.leafletRenderer !== renderer) return;
+                const map = renderer.getMap();
                 if (map) {
                     map.invalidateSize({ animate: false });
 
@@ -2000,7 +2250,7 @@ export class MapView extends ItemView {
             window.setTimeout(forceMapUpdate, 500);
 
         } catch {
-            
+            if (token !== this.mapRenderToken) return;
             leafletContainer.empty();
             leafletContainer.createEl('div', {
                 text: 'Error rendering map. Check console for details.',
@@ -2010,49 +2260,32 @@ export class MapView extends ItemView {
     }
 
     /**
-     * Convert StoryMap entity to BlockParameters for LeafletRenderer
+     * Save the map as it is currently framed to StorytellerSuite/Exports.
+     * Only image maps have a single base image to draw; tile maps get a notice.
      */
-    private mapToBlockParams(map: StoryMap): BlockParameters {
-        const params: BlockParameters = {
-            type: map.type || 'image',
-            id: map.id || map.name,
-            persistedMarkers: map.markers ?? []
-        };
-
-        // Image-based map parameters
-        if (map.type === 'image' || !map.type) {
-            if (map.backgroundImagePath || map.image) {
-                params.image = map.backgroundImagePath || map.image;
+    private async exportMapAsImage(): Promise<void> {
+        if (!this.currentMap || !this.leafletRenderer) {
+            new Notice('Open a map before exporting');
+            return;
+        }
+        try {
+            const blob = await this.leafletRenderer.renderViewAsPng();
+            if (!blob) {
+                new Notice('Map export is only supported for image maps');
+                return;
             }
-            if (map.width) params.width = map.width;
-            if (map.height) params.height = map.height;
+            const folder = 'StorytellerSuite/Exports';
+            await this.plugin.ensureFolder(folder);
+            const path = uniqueExportPath(
+                folder,
+                buildMapExportFileName(this.currentMap.name, new Date()),
+                candidate => this.app.vault.getAbstractFileByPath(candidate) !== null
+            );
+            await this.app.vault.createBinary(path, await blob.arrayBuffer());
+            new Notice(`Map exported to ${path}`);
+        } catch (error) {
+            new Notice(`Map export failed: ${error instanceof Error ? error.message : String(error)}`);
         }
-
-        // Real-world map parameters
-        if (map.type === 'real') {
-            // Set default coordinates if not provided (London, UK as a reasonable default)
-            params.lat = map.lat !== undefined ? map.lat : 51.5074;
-            params.long = map.long !== undefined ? map.long : -0.1278;
-            if (map.tileServer) params.tileServer = map.tileServer;
-            if (map.darkMode) params.darkMode = map.darkMode;
-            // Set default zoom if not provided
-            if (map.defaultZoom === undefined) params.defaultZoom = 10;
-        }
-
-        // Zoom parameters
-        if (map.defaultZoom !== undefined) params.defaultZoom = map.defaultZoom;
-        if (map.minZoom !== undefined) params.minZoom = map.minZoom;
-        if (map.maxZoom !== undefined) params.maxZoom = map.maxZoom;
-
-        // Grid
-        if (map.gridEnabled) {
-            // Grid parameters would go here if needed
-        }
-
-        // Note: Markers are handled differently in the renderer
-        // They're loaded from the map entity's markers array
-
-        return params;
     }
 
     /**
@@ -2076,9 +2309,7 @@ export class MapView extends ItemView {
             item
                 .setTitle('Export as image')
                 .setIcon('image')
-                .onClick(() => {
-                    new Notice('Map export coming soon');
-                });
+                .onClick(() => { void this.exportMapAsImage(); });
         });
 
         menu.addSeparator();
@@ -2111,7 +2342,15 @@ export class MapView extends ItemView {
         this.membershipRefreshBusy = true;
         try {
             const current = (await this.plugin.listMaps()).find(m => (m.id || m.name) === (this.currentMap!.id || this.currentMap!.name));
-            if (current) this.currentMap = current;
+            if (current) {
+                const previous = this.currentMap;
+                this.currentMap = this.inkWritesPending > 0 && previous
+                    ? { ...current, mapInk: previous.mapInk }
+                    : current;
+                // A drawing edited in the note itself replaces the open one, but only when nothing of ours is unsaved.
+                const changedInNote = JSON.stringify(previous?.mapInk ?? null) !== JSON.stringify(current.mapInk ?? null);
+                if (changedInNote && this.inkWritesPending === 0) this.inkEditor?.setDoc(inkDocOf(current));
+            }
             await this.gridController?.refreshFromVault(current);
             await this.leafletRenderer.refreshEntities();
         } finally {
@@ -2191,9 +2430,8 @@ export class MapView extends ItemView {
                         });
 
                         tileLayers.forEach(tileLayer => {
-                            if (tileLayer.redraw) {
-                                tileLayer.redraw();
-                            }
+                            // No redraw(): removing every tile on each resize made the map
+                            // flicker when a sidebar opened. _update adds what the new size needs.
                             if (tileLayer._update) {
                                 tileLayer._update();
                             }
@@ -2259,24 +2497,8 @@ export class MapView extends ItemView {
         }
     }
 
-    async onClose(): Promise<void> {
-        this.gridController?.destroy();
-        this.gridController = null;
-        // Clean up placement mode
-        this.disablePlacementMode();
-
-        // Clean up debounce timer for view state persistence
-        if (this._persistViewStateTimeout) {
-            window.clearTimeout(this._persistViewStateTimeout);
-            // Save immediately if there's a pending save
-            const mapId = this.currentMap?.id || this.currentMap?.name;
-            if (mapId && this._savedCenter) {
-                void this.plugin.saveMapViewState(mapId, this.currentZoom, this._savedCenter);
-            }
-            this._persistViewStateTimeout = null;
-        }
-
-        // Clean up activeDocument-level event handlers
+    /** Remove the document-level wheel and touchmove handlers installed by the last render. */
+    private removeDocumentMapListeners(): void {
         if (this._wheelHandler) {
             activeDocument.removeEventListener('wheel', this._wheelHandler);
             this._wheelHandler = null;
@@ -2285,6 +2507,21 @@ export class MapView extends ItemView {
             activeDocument.removeEventListener('touchmove', this._touchMoveHandler);
             this._touchMoveHandler = null;
         }
+    }
+
+    async onClose(): Promise<void> {
+        this.gridController?.destroy();
+        this.gridController = null;
+        // Clean up placement mode and the drawing editor (its drawing stays in the note)
+        this.disablePlacementMode();
+        await this.destroyInkEditor();
+
+        // Clean up debounce timer for view state persistence
+        // Save any pending view state now (the debounce timer would otherwise be lost with the view)
+        this.flushPendingViewState();
+
+        // Clean up activeDocument-level event handlers
+        this.removeDocumentMapListeners();
 
         // Clean up resize observer
         if (this.resizeObserver) {
@@ -2309,8 +2546,8 @@ export class MapView extends ItemView {
      * 
      * Also persists to plugin settings so position is remembered across sessions.
      */
-    private saveMapViewState(): void {
-        const map = this.leafletRenderer?.getMap();
+    private saveMapViewState(liveMap?: L.Map): void {
+        const map = liveMap ?? this.leafletRenderer?.getMap();
         if (!map) return;
 
         const zoom = map.getZoom();
@@ -2337,13 +2574,30 @@ export class MapView extends ItemView {
      * Debounced persistence of view state to avoid excessive writes
      */
     private debouncedPersistViewState(mapId: string, zoom: number, center: { lat: number; lng: number }): void {
+        // A pending save for a different map must not be dropped by this one; write it now.
+        if (this.pendingViewSave && this.pendingViewSave.mapId !== mapId) {
+            this.flushPendingViewState();
+        }
         if (this._persistViewStateTimeout) {
             window.clearTimeout(this._persistViewStateTimeout);
         }
+        this.pendingViewSave = { mapId, zoom, center };
         this._persistViewStateTimeout = window.setTimeout(() => {
-            void this.plugin.saveMapViewState(mapId, zoom, center);
-            this._persistViewStateTimeout = null;
+            this.flushPendingViewState();
         }, 500); // 500ms debounce
+    }
+
+    private pendingViewSave: { mapId: string; zoom: number; center: { lat: number; lng: number } } | null = null;
+
+    /** Write the pending view state now, if any, and cancel its timer. */
+    private flushPendingViewState(): void {
+        if (this._persistViewStateTimeout) {
+            window.clearTimeout(this._persistViewStateTimeout);
+            this._persistViewStateTimeout = null;
+        }
+        const pending = this.pendingViewSave;
+        this.pendingViewSave = null;
+        if (pending) void this.plugin.saveMapViewState(pending.mapId, pending.zoom, pending.center);
     }
 
     /**
@@ -2371,8 +2625,10 @@ export class MapView extends ItemView {
 
         // Restore zoom and position after map loads (or if same map)
         if (s.zoom !== undefined) {
+            const restoredRenderer = this.leafletRenderer;
             window.setTimeout(() => {
-                const map = this.leafletRenderer?.getMap();
+                if (!restoredRenderer || this.leafletRenderer !== restoredRenderer) return;
+                const map = restoredRenderer.getMap();
                 if (map) {
                     const center = s.center;
                     map.setView(

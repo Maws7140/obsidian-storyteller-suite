@@ -114,7 +114,12 @@ export class EntityGroupSelector {
             .filter(group => this.selectedGroupIds.has(group.id))
             .forEach(group => {
                 const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
-                const removeBtn = tag.createSpan({ text: ' x', cls: 'remove-group-btn' });
+                // A real button: reachable by keyboard and named for screen readers.
+                const removeBtn = tag.createEl('button', {
+                    text: '×',
+                    cls: 'remove-group-btn',
+                    attr: { type: 'button', 'aria-label': `Remove ${group.name}`, title: `Remove ${group.name}` },
+                });
                 removeBtn.onclick = () => {
                     void this.removeGroup(group.id);
                 };

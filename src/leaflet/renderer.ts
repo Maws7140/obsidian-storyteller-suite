@@ -2,17 +2,33 @@ import { detachFromMaps } from '../services/MapMembershipService';
 import { confirmWithModal } from '../modals/ui/ConfirmModal';
 import { constrainImageViewport } from './utils/ImageViewport';
 import { persistedMapMarkers } from './utils/PersistedMapMarkers';
+import { imageMimeForPath, planImageExport } from './utils/MapImageExport';
+import type { ExportPlan } from './utils/MapImageExport';
+import {
+    describeOverlayProperties,
+    parseGeoJsonText,
+    parseGpxRoot,
+    toOverlayPathList,
+    type OverlayPopupInfo,
+} from './utils/OverlayParsing';
 // Use global L object that's set in main.ts: (window as any).L = L
 // Leaflet base styles are maintained in styles.css so Obsidian can lint authored CSS.
 import * as L from 'leaflet';
-import { Component, MarkdownPostProcessorContext, Notice, TFile } from 'obsidian';
+import { Component, EventRef, MarkdownPostProcessorContext, Notice, TFile } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
-import type { BlockParameters, MarkerDefinition, TileMetadata } from './types';
+import type { BlockParameters, LeafletRendererOptions, LocationPinHighlight, MarkerDefinition, TileMetadata } from './types';
 import { extractLinkPath, parseMarkerString } from './utils/parser';
 import { RasterCoords } from './utils/RasterCoords';
 import { EntityMarkerDiscovery } from './EntityMarkerDiscovery';
 import { MapEntityRenderer } from './MapEntityRenderer';
 import { ObsidianTileLayer } from './ObsidianTileLayer';
+import { createInkLayer } from './ink/InkLayer';
+import type { InkLayer, InkLeafletNamespace as InkLayerLeafletNamespace } from './ink/InkLayer';
+import { InkLegend } from './ink/InkLegend';
+import { defaultInkDoc } from './ink/model';
+import { buildInkExportSvg } from './ink/exportSvg';
+import type { InkDoc, InkItem } from './ink/model';
+import { ObsidianInkHost, findLocation, openLocationNote } from './ink/obsidian/ObsidianInkHost';
 import {
     chooseSvgRenderMode,
     createNormalizedSvgElement,
@@ -65,12 +81,23 @@ export class LeafletRenderer extends Component {
     private imageBounds: L.LatLngBounds | null = null;
     private wheelHandler: ((e: WheelEvent) => void) | null = null;
     private hasRenderedTiles: boolean = false;
+    /** Vault path of the source image; set for image maps, null for tile maps. */
+    private baseImagePath: string | null = null;
+    /** Colour and label per marker, kept for image export. */
+    private markerExportMeta = new WeakMap<L.Marker, { color: string; label: string }>();
+    private gridLayer: L.LayerGroup | null = null;
+    private inkLayer: InkLayer | null = null;
+    private inkLegend: InkLegend | null = null;
+    private workspaceResizeRef: EventRef | null = null;
+    /** Set by onunload. A disposed renderer never creates a map again, even if an init await is still pending. */
+    private disposed = false;
 
     constructor(
         private plugin: StorytellerSuitePlugin,
         container: HTMLElement,
         private params: BlockParameters,
-        private ctx: MarkdownPostProcessorContext
+        private ctx: MarkdownPostProcessorContext,
+        private options: LeafletRendererOptions = {}
     ) {
         super();
         this.containerEl = container;
@@ -102,12 +129,19 @@ export class LeafletRenderer extends Component {
         return this.initializationPromise;
     }
 
+    /** Throws if the renderer was unloaded while an async init step was pending. */
+    private assertLive(): void {
+        if (this.disposed) throw new Error('Map was unloaded during initialization');
+    }
+
     /**
      * Internal initialization method
      */
     private async doInitialize(): Promise<void> {
+        this.assertLive();
         // Wait for container to have computed dimensions
         await this.waitForContainerDimensions();
+        this.assertLive();
 
         // Create map based on type
         // Default to 'image' if type is not specified but image param exists
@@ -118,18 +152,23 @@ export class LeafletRenderer extends Component {
         } else {
             await this.initializeRealMap();
         }
+        this.assertLive();
 
         // Add markers
         await this.addMarkers();
+        this.assertLive();
 
         // Add layers (GeoJSON, GPX, overlays)
         await this.addLayers();
+        this.assertLive();
+        this.addBoardGrid();
+        this.addInk();
 
         // Initialize MapEntityRenderer for location and entity rendering
         if (this.map) {
             const mapId = this.params.mapId || this.params.id;
             if (mapId) {
-                this.mapEntityRenderer = new MapEntityRenderer(this.map, this.plugin, mapId);
+                this.mapEntityRenderer = new MapEntityRenderer(this.map, this.plugin, mapId, this.options);
                 // Render locations and entities bound to this map
                 await this.mapEntityRenderer.renderLocationsForMap(mapId);
                 await this.mapEntityRenderer.renderPortalMarkers(mapId);
@@ -251,12 +290,14 @@ export class LeafletRenderer extends Component {
 
         // CRITICAL FIX: Also listen to Obsidian workspace resize events
         // This catches sidebar open/close events that ResizeObserver might miss
-        this.registerEvent(this.plugin.app.workspace.on('resize', () => {
+        // Kept so onunload can remove it; onunload does not run Component cleanup.
+        this.workspaceResizeRef = this.plugin.app.workspace.on('resize', () => {
             // Delay slightly to let Obsidian finish its layout update
             window.setTimeout(() => {
                 handleResize();
             }, 100);
-        }));
+        });
+        this.registerEvent(this.workspaceResizeRef);
     }
 
     /**
@@ -501,6 +542,7 @@ export class LeafletRenderer extends Component {
         let attempts = 0;
 
         while (attempts < maxAttempts) {
+            if (this.disposed || !this.map) return;
             const size = this.map.getSize();
             
             if (size.x > 0 && size.y > 0) {
@@ -614,6 +656,7 @@ export class LeafletRenderer extends Component {
      * For map images, tiles are required - will generate if missing
      */
     private async initializeImageMapWithPath(imagePath: string): Promise<void> {
+        this.baseImagePath = imagePath;
         try {
             if (isSvgPath(imagePath)) {
                 const svgText = await this.plugin.app.vault.adapter.read(imagePath);
@@ -630,6 +673,7 @@ export class LeafletRenderer extends Component {
 
             // Check if tiles exist for this image
             let tileInfo = await this.checkForTiles(imagePath);
+            this.assertLive();
 
             if (tileInfo) {
                 // Tiles found - use tile-based rendering
@@ -707,6 +751,7 @@ export class LeafletRenderer extends Component {
         }).addTo(this.map);
 
         await new Promise(resolve => window.requestAnimationFrame(resolve));
+        this.assertLive();
         this.map.invalidateSize({ animate: false });
 
         this.updateImageViewport();
@@ -835,6 +880,7 @@ export class LeafletRenderer extends Component {
         // Leaflet uses map.getSize() to determine which tiles to load
         // If size is 0x0, no tiles will be requested
         await this.ensureMapHasDimensions();
+        this.assertLive();
         
         tileLayer.addTo(this.map);
         
@@ -948,6 +994,7 @@ export class LeafletRenderer extends Component {
         // Load image dimensions
         
         const { width, height } = await this.loadImageDimensions(imageUrl);
+        this.assertLive();
         
 
         if (width === 0 || height === 0) {
@@ -1022,6 +1069,7 @@ export class LeafletRenderer extends Component {
 
         // Wait for DOM
         await new Promise(resolve => window.requestAnimationFrame(resolve));
+        this.assertLive();
 
         // Invalidate size first
         this.map.invalidateSize({ animate: false });
@@ -1088,6 +1136,7 @@ export class LeafletRenderer extends Component {
         if (rect.width === 0 || rect.height === 0) {
             
             await new Promise(resolve => window.setTimeout(resolve, 100));
+            this.assertLive();
         }
 
         // Create map using L.map() factory function with element directly
@@ -1234,7 +1283,7 @@ export class LeafletRenderer extends Component {
             });
         }
 
-        marker.on('contextmenu', () => { void (async () => {
+        if (!this.options.readOnly) marker.on('contextmenu', () => { void (async () => {
             const mapId = this.params.mapId || this.params.id;
             if (!mapId || !await confirmWithModal(this.plugin.app, { title: 'Remove map node?', body: 'Remove this pin from this map only; keep the underlying note.' })) return;
             try {
@@ -1251,6 +1300,10 @@ export class LeafletRenderer extends Component {
                 marker.remove();
             } catch (error) { new Notice(`Removal failed: ${String(error)}`); }
         })(); });
+        this.markerExportMeta.set(marker, {
+            color: markerDef.iconColor ?? '#3b82f6',
+            label: markerDef.entityName || (markerDef.link ? extractLinkPath(markerDef.link) : '') || markerDef.description || ''
+        });
         // Add tooltip
         if (markerDef.description) {
             marker.bindTooltip(markerDef.description);
@@ -1671,8 +1724,104 @@ export class LeafletRenderer extends Component {
      * Add layers (GeoJSON, GPX, etc.)
      */
     private async addLayers(): Promise<void> {
-        // TODO: Implement GeoJSON and GPX layer support
-        // This will be added in Phase 4
+        if (!this.map) return;
+
+        const geojsonRefs = toOverlayPathList(this.params.geojson);
+        const gpxRefs = toOverlayPathList(this.params.gpx);
+        if (geojsonRefs.length === 0 && gpxRefs.length === 0) return;
+
+        const failures: string[] = [];
+        const loaders: Array<{ kind: 'geojson' | 'gpx'; ref: string; load: (file: TFile) => Promise<L.Layer> }> = [
+            ...geojsonRefs.map(ref => ({ kind: 'geojson' as const, ref, load: (file: TFile) => this.loadGeoJsonLayer(file) })),
+            ...gpxRefs.map(ref => ({ kind: 'gpx' as const, ref, load: (file: TFile) => this.loadGpxLayer(file) })),
+        ];
+
+        for (const { kind, ref, load } of loaders) {
+            try {
+                const file = this.plugin.app.metadataCache.getFirstLinkpathDest(extractLinkPath(ref), this.ctx.sourcePath);
+                if (!file) throw new Error('file not found in vault');
+                const layer = await load(file);
+                const group = L.layerGroup([layer]).addTo(this.map);
+                this.layers.set(`${kind}:${file.path}`, group);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`[Storyteller Suite] Failed to load ${kind.toUpperCase()} overlay "${ref}": ${message}`);
+                failures.push(ref);
+            }
+        }
+
+        if (failures.length > 0) {
+            new Notice(`Some map overlays failed to load: ${failures.join(', ')}. See the console for details.`);
+        }
+    }
+
+    /** Read a GeoJSON file and build a Leaflet layer. Coordinates are used as-is (x, y for image maps). */
+    private async loadGeoJsonLayer(file: TFile): Promise<L.Layer> {
+        const data = parseGeoJsonText(await this.plugin.app.vault.read(file));
+        const color = this.params.geojsonColor || '#3388ff';
+
+        return L.geoJSON(data as Parameters<typeof L.geoJSON>[0], {
+            style: () => ({ color, weight: 2, fillColor: color, fillOpacity: 0.2 }),
+            pointToLayer: (_feature, latlng) => L.circleMarker(latlng, {
+                radius: 6, color, fillColor: color, fillOpacity: 0.8,
+            }),
+            onEachFeature: (feature, layer) => {
+                const info = describeOverlayProperties(feature.properties);
+                if (info) layer.bindPopup(this.buildOverlayPopup(info));
+            },
+        });
+    }
+
+    /** Read a GPX file and build a Leaflet layer of tracks, routes and waypoints. */
+    private async loadGpxLayer(file: TFile): Promise<L.Layer> {
+        const text = await this.plugin.app.vault.read(file);
+        const doc = new DOMParser().parseFromString(text, 'application/xml');
+        if (doc.querySelector('parsererror')) throw new Error('invalid XML');
+        const data = parseGpxRoot(doc.documentElement);
+        const color = this.params.gpxColor || '#e8590c';
+        const layers: L.Layer[] = [];
+
+        for (const track of data.tracks) {
+            if (track.points.length === 0) continue;
+            const line = L.polyline(track.points.map(p => L.latLng(p.lat, p.lng)), { color, weight: 3 });
+            if (track.name) line.bindPopup(this.buildOverlayPopup({ name: track.name }));
+            layers.push(line);
+        }
+
+        for (const route of data.routes) {
+            if (route.points.length === 0) continue;
+            const line = L.polyline(route.points.map(p => L.latLng(p.lat, p.lng)), { color, weight: 3, dashArray: '6 4' });
+            if (route.name) line.bindPopup(this.buildOverlayPopup({ name: route.name }));
+            layers.push(line);
+        }
+
+        for (const wpt of data.waypoints) {
+            const marker = L.circleMarker(L.latLng(wpt.lat, wpt.lng), {
+                radius: 5, color, fillColor: color, fillOpacity: 1,
+            });
+            const info: OverlayPopupInfo = { name: wpt.name, description: wpt.description };
+            if (info.name || info.description) marker.bindPopup(this.buildOverlayPopup(info));
+            layers.push(marker);
+        }
+
+        return L.layerGroup(layers);
+    }
+
+    /** Popup content built with textContent, so file-provided text is never parsed as HTML. */
+    private buildOverlayPopup(info: OverlayPopupInfo): HTMLElement {
+        const el = activeDocument.createElement('div');
+        el.className = 'storyteller-overlay-popup';
+        if (info.name) {
+            const title = activeDocument.createElement('strong');
+            title.textContent = info.name;
+            el.appendChild(title);
+        }
+        if (info.description) {
+            const body = activeDocument.createElement('div');
+            body.textContent = info.description;
+            el.appendChild(body);
+        }
+        return el;
     }
 
     /**
@@ -1763,10 +1912,9 @@ export class LeafletRenderer extends Component {
                         }
                     });
 
+                    // Add tiles for the new size only. Removing and reloading every tile here
+                    // made the map flicker whenever a sidebar opened or closed.
                     tileLayers.forEach(tl => {
-                        if (tl.redraw) {
-                            tl.redraw();
-                        }
                         if (tl._update) {
                             tl._update();
                         }
@@ -1805,9 +1953,8 @@ export class LeafletRenderer extends Component {
                     if (tl._update) {
                         tl._update();
                     }
-                    if (tl.redraw) {
-                        tl.redraw();
-                    }
+                    // No redraw(): a resize keeps the tiles it has and only adds the ones the new
+                    // size needs. Redrawing here removed every tile and made the map flicker.
 
                     // Force visibility on tile container
                     const container = tl.getContainer?.();
@@ -1882,6 +2029,7 @@ export class LeafletRenderer extends Component {
      * Used to determine whether to skip default positioning during initialization
      */
     private hasSavedViewState(): boolean {
+        if (this.options.persistViewState === false) return false;
         const mapId = this.params.mapId || this.params.id;
         if (!mapId) return false;
         return !!this.plugin.getMapViewState(mapId);
@@ -1893,7 +2041,7 @@ export class LeafletRenderer extends Component {
      * @returns true if a saved state was restored, false otherwise
      */
     private restoreSavedViewState(): boolean {
-        if (!this.map) return false;
+        if (!this.map || this.options.persistViewState === false) return false;
 
         const mapId = this.params.mapId || this.params.id;
         if (!mapId) return false;
@@ -1922,6 +2070,76 @@ export class LeafletRenderer extends Component {
         }
     }
 
+    /** Update which location pins carry the current-scene and selected styles. */
+    setPinHighlight(highlight: LocationPinHighlight | undefined): void {
+        this.options.pinHighlight = highlight;
+        this.mapEntityRenderer?.refreshPinHighlight();
+    }
+
+    /** Overlay a grid across the image, spaced in image pixels. */
+    private addBoardGrid(): void {
+        const gridSize = this.options.gridSize ?? 0;
+        if (!this.map || !this.imageBounds || !(gridSize > 0)) return;
+        const north = this.imageBounds.getNorth();
+        const east = this.imageBounds.getEast();
+        // Cap the line count so a small grid on a large image stays cheap to draw.
+        const maxLinesPerAxis = 200;
+        const step = Math.max(gridSize, Math.ceil(Math.max(north, east) / maxLinesPerAxis / gridSize) * gridSize);
+        const lineStyle = { color: '#ffffff', weight: 1, opacity: 0.2, interactive: false };
+        const lines: L.Polyline[] = [];
+        for (let x = 0; x <= east; x += step) lines.push(L.polyline([[0, x], [north, x]], lineStyle));
+        for (let y = 0; y <= north; y += step) lines.push(L.polyline([[y, 0], [y, east]], lineStyle));
+        this.gridLayer = L.layerGroup(lines).addTo(this.map);
+    }
+
+    /**
+     * The Map Ink drawing from the map note, with its legend. Read-only when the renderer is.
+     * Linked items open their location when clicked.
+     */
+    private addInk(): void {
+        if (!this.map) return;
+        const leaflet = L as unknown as InkLayerLeafletNamespace;
+        this.inkLayer = createInkLayer(leaflet, {
+            readOnly: this.options.readOnly === true,
+            onItemClick: id => this.openInkItemLocation(id),
+        });
+        this.inkLayer.setDoc(this.params.ink ?? defaultInkDoc());
+        this.inkLayer.addTo(this.map);
+        this.inkLegend = new InkLegend(this.map.getContainer(), this.readOnlyInkHost(), {});
+        this.inkLegend.setDoc(this.inkLayer.getDoc());
+    }
+
+    /** A host for the legend and the read-only drawing. It can show and open things, but never saves. */
+    private readOnlyInkHost(): ObsidianInkHost {
+        return new ObsidianInkHost({
+            plugin: this.plugin,
+            load: () => this.inkLayer?.getDoc() ?? defaultInkDoc(),
+            save: () => Promise.reject(new Error('This drawing can only be changed from the map view.')),
+        });
+    }
+
+    /** Opens the location an ink item is linked to. Uses onLocationSelect when the host gives one. */
+    private openInkItemLocation(id: string): void {
+        const item: InkItem | undefined = this.inkLayer?.getDoc().items.find(candidate => candidate.id === id);
+        if (!item?.locationId) return;
+        const locationId = item.locationId;
+        void findLocation(this.plugin, locationId).then(location => {
+            if (!location) return;
+            if (this.options.onLocationSelect) this.options.onLocationSelect(location);
+            else openLocationNote(this.plugin.app, location);
+        });
+    }
+
+    /** The Map Ink layer, so the map view can edit and redraw it. Null before initialisation. */
+    getInkLayer(): InkLayer | null {
+        return this.inkLayer;
+    }
+
+    /** The legend for the drawing. Null before initialisation. */
+    getInkLegend(): InkLegend | null {
+        return this.inkLegend;
+    }
+
     /**
      * Get the map ID for this renderer
      */
@@ -1934,7 +2152,7 @@ export class LeafletRenderer extends Component {
      * Debounced to avoid too many saves during continuous movement
      */
     private setupPositionSaving(): void {
-        if (!this.map) return;
+        if (!this.map || this.options.persistViewState === false) return;
 
         const mapId = this.getMapId();
         if (!mapId) return;
@@ -1986,8 +2204,9 @@ export class LeafletRenderer extends Component {
      * Following javalent-obsidian-leaflet pattern
      */
     onload(): void {
-        
-        
+        // Obsidian (and MapView's deferred addChild) can call onload after a switch already unloaded this renderer.
+        if (this.disposed) return;
+
         // If map hasn't been initialized yet, initialize it now
         // This ensures the container is in the DOM before initialization
         // Use a small delay to ensure the container has been properly reflowed
@@ -2010,7 +2229,7 @@ export class LeafletRenderer extends Component {
                         }
                     }, 100);
                 } catch (error) {
-                    
+                    if (this.disposed) return;
                     // Show error in the container
                     this.showErrorInContainer(`Map initialization failed: ${error instanceof Error ? error.message : String(error)}`);
                 }
@@ -2056,6 +2275,7 @@ export class LeafletRenderer extends Component {
      * Called automatically by Obsidian when the markdown section is unloaded
      */
     onunload(): void { void (async () => {
+        this.disposed = true;
         // Clean up MapEntityRenderer
         if (this.mapEntityRenderer) {
             this.mapEntityRenderer.cleanup();
@@ -2074,6 +2294,20 @@ export class LeafletRenderer extends Component {
             this.intersectionObserver = null;
         }
 
+        // Remove overlay layers (GeoJSON/GPX) before the map is torn down
+        this.layers.forEach(layer => layer.remove());
+        this.gridLayer?.remove();
+        this.gridLayer = null;
+        this.inkLegend?.destroy();
+        this.inkLegend = null;
+        this.inkLayer?.destroy();
+        this.inkLayer = null;
+
+        if (this.workspaceResizeRef) {
+            this.plugin.app.workspace.offref(this.workspaceResizeRef);
+            this.workspaceResizeRef = null;
+        }
+
         if (this.map) {
             this.map.remove();
             this.map = null;
@@ -2082,6 +2316,7 @@ export class LeafletRenderer extends Component {
         this.markers.clear();
         this.layers.clear();
         this.imageOverlay = null;
+        this.baseImagePath = null;
         this.isInitialized = false;
         this.initializationPromise = null;
         this.hasRenderedTiles = false;
@@ -2098,6 +2333,151 @@ export class LeafletRenderer extends Component {
      * Get the Leaflet map instance
      */
     getImageBounds(): L.LatLngBounds | null { return this.imageBounds; }
+
+    /**
+     * Draw what the viewer currently shows of an image map onto a PNG: the
+     * source image at its current placement, then the visible markers with
+     * their labels. Returns null for tile (real-world) maps, which have no
+     * single base image to draw.
+     */
+    async renderViewAsPng(): Promise<Blob | null> {
+        const map = this.map;
+        const bounds = this.imageBounds;
+        const imagePath = this.baseImagePath;
+        if (!map || !bounds || !imagePath) return null;
+        if (!imageMimeForPath(imagePath)) return null;
+
+        const size = map.getSize();
+        const scale = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+        const markers: { x: number; y: number; color: string; label?: string }[] = [];
+        for (const marker of this.markers.values()) {
+            // Markers removed by zoom limits or layer toggles have no element.
+            if (!marker.getElement()) continue;
+            const point = map.latLngToContainerPoint(marker.getLatLng());
+            const meta = this.markerExportMeta.get(marker);
+            markers.push({ x: point.x, y: point.y, color: meta?.color ?? '#3b82f6', label: meta?.label });
+        }
+
+        const plan = planImageExport({
+            viewWidth: size.x,
+            viewHeight: size.y,
+            scale,
+            imageNorthWest: map.latLngToContainerPoint(bounds.getNorthWest()),
+            imageSouthEast: map.latLngToContainerPoint(bounds.getSouthEast()),
+            markers
+        });
+        if (!plan) return null;
+
+        const canvas = this.containerEl.ownerDocument.createElement('canvas');
+        canvas.width = plan.width;
+        canvas.height = plan.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+
+        const background = getComputedStyle(this.containerEl).backgroundColor;
+        if (background && !/rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*0\s*\)/.test(background)) {
+            ctx.fillStyle = background;
+            ctx.fillRect(0, 0, plan.width, plan.height);
+        }
+
+        const image = await this.loadImageForExport(imagePath);
+        ctx.drawImage(image, plan.image.x, plan.image.y, plan.image.width, plan.image.height);
+
+        // The Map Ink drawing sits over the image and under the entity markers, as on the map.
+        const inkDoc = this.inkLayer?.getDoc();
+        if (inkDoc && inkDoc.items.length > 0) {
+            await this.drawInkForExport(ctx, inkDoc, plan, map, map.latLngToContainerPoint(bounds.getNorthWest()), map.latLngToContainerPoint(bounds.getSouthEast()));
+        }
+
+        ctx.lineWidth = 2 * plan.scale;
+        ctx.font = `600 ${12 * plan.scale}px sans-serif`;
+        ctx.textBaseline = 'middle';
+        for (const marker of plan.markers) {
+            ctx.beginPath();
+            ctx.arc(marker.x, marker.y, marker.radius, 0, Math.PI * 2);
+            ctx.fillStyle = marker.color;
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+            if (marker.label) {
+                ctx.textAlign = marker.label.align;
+                ctx.lineWidth = 3 * plan.scale;
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.strokeText(marker.label.text, marker.label.x, marker.label.y);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(marker.label.text, marker.label.x, marker.label.y);
+                ctx.lineWidth = 2 * plan.scale;
+            }
+        }
+
+        return await new Promise<Blob | null>((resolve, reject) => {
+            try {
+                canvas.toBlob(blob => resolve(blob), 'image/png');
+            } catch (error) {
+                reject(error instanceof Error ? error : new Error(String(error)));
+            }
+        });
+    }
+
+    /**
+     * Draw the Map Ink drawing onto the export canvas. The drawing is placed where the image is in
+     * the export, so it lines up with the image at any export scale.
+     */
+    private async drawInkForExport(
+        ctx: CanvasRenderingContext2D,
+        doc: InkDoc,
+        plan: ExportPlan,
+        map: L.Map,
+        nw: L.Point,
+        se: L.Point,
+    ): Promise<void> {
+        const refZoom = map.options.crs === L.CRS.Simple ? 0 : map.getMinZoom();
+        const kx = plan.image.width / (se.x - nw.x);
+        const ky = plan.image.height / (se.y - nw.y);
+        const toCanvas = (container: { x: number; y: number }) => ({
+            x: plan.image.x + (container.x - nw.x) * kx,
+            y: plan.image.y + (container.y - nw.y) * ky,
+        });
+        const origin = toCanvas(map.latLngToContainerPoint(map.unproject([0, 0], refZoom)));
+        const svg = buildInkExportSvg(doc, {
+            width: plan.width,
+            height: plan.height,
+            originX: origin.x,
+            originY: origin.y,
+            scale: map.getZoomScale(map.getZoom(), refZoom) * kx,
+            viewScale: map.getZoomScale(map.getZoom(), refZoom),
+            project: p => {
+                const q = map.project([p[0], p[1]], refZoom);
+                return { x: q.x, y: q.y };
+            },
+        });
+        const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+        try {
+            const img = this.containerEl.ownerDocument.createElement('img');
+            img.src = url;
+            await img.decode();
+            ctx.drawImage(img, 0, 0, plan.width, plan.height);
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
+
+    /** Read a vault image into a decoded element. Blob URLs are same-origin, so the canvas stays untainted. */
+    private async loadImageForExport(imagePath: string): Promise<HTMLImageElement> {
+        const mime = imageMimeForPath(imagePath) ?? 'application/octet-stream';
+        const data = await this.plugin.app.vault.adapter.readBinary(imagePath);
+        const url = URL.createObjectURL(new Blob([data], { type: mime }));
+        try {
+            return await new Promise<HTMLImageElement>((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error(`Could not decode image: ${imagePath}`));
+                img.src = url;
+            });
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
 
     getMap(): L.Map | null {
         return this.map;

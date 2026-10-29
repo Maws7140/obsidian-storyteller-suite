@@ -8,7 +8,7 @@
  *   Obsidian theme and any `--sts-timeline-*` CSS snippet.
  * - {@link HIGH_CONTRAST_THEME}: black canvas, white text, saturated lanes.
  * - {@link PARCHMENT_THEME}: warm paper, ink text, serif labels.
- * - {@link MINIMAL_THEME}: Obsidian's own colours with a quiet palette, flatter
+ * - {@link QUIET_THEME}: Obsidian's own colours with a quiet palette, flatter
  *   chips and thinner lines.
  */
 import { OBSIDIAN_NATIVE_THEME, type TimelineTheme } from './TimelineDocuments';
@@ -82,9 +82,9 @@ export const PARCHMENT_THEME: TimelineTheme = {
   connectors: { width: 1.5, dependencyStyle: 'dashed' },
 };
 
-export const MINIMAL_THEME: TimelineTheme = {
-  id: 'builtin:minimal',
-  name: 'Minimal',
+export const QUIET_THEME: TimelineTheme = {
+  id: 'builtin:quiet',
+  name: 'Quiet',
   description: 'Obsidian’s own colours with a quiet palette, flat chips and thin lines.',
   palette: ['#6b7280', '#7c8aa5', '#8a9a8a', '#a08f7a', '#8f7fa3', '#7a9aa0', '#a3858f', '#909090', '#7d8f6e', '#9a8a6a'],
   event: { radius: 1, height: 22, opacity: 0.92 },
@@ -97,5 +97,5 @@ export const BUILTIN_TIMELINE_THEMES: TimelineTheme[] = [
   OBSIDIAN_NATIVE_THEME,
   HIGH_CONTRAST_THEME,
   PARCHMENT_THEME,
-  MINIMAL_THEME,
+  QUIET_THEME,
 ];

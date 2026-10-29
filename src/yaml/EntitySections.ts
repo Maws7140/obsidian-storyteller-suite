@@ -172,7 +172,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'isMilestone', 'dependencies', 'progress', 'tags', 'narrativeMarkers', 'narrativeSequence',
     'linkedChapters', 'linkedScenes', 'compendiumEntries', 'branches', 'causes', 'causedBy',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
-    'certainty', 'sources', 'claimedBy', 'disputedBy', 'sessionId', 'sessionName'
+    'certainty', 'sources', 'claimedBy', 'disputedBy', 'sessionId', 'sessionName', 'pathsNotTaken'
   ]),
   item: new Set([
     // currentOwner is deliberately absent — it is the legacy scalar that owners
@@ -201,7 +201,7 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'linkedCharacters', 'linkedLocations', 'linkedEvents', 'linkedItems', 'linkedGroups',
     'mapCoordinates', 'mapId', 'markerId', 'relatedMapIds', 'mapIcon', 'mapColor',
     'campaignBoardMapId', 'povCharacter', 'emotion', 'intensity', 'setupScenes', 'payoffScenes',
-    'synopsis', 'wordCount', 'targetWordCount', 'includeInCompile', 'date',
+    'synopsis', 'wordCount', 'targetWordCount', 'includeInCompile', 'date', 'playDuration',
     'beats', 'content'
   ]),
   map: new Set([
@@ -211,7 +211,8 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'linkedItems', 'linkedGroups', 'linkedCultures', 'linkedEconomies', 'linkedMagicSystems', 'linkedScenes', 'linkedReferences',
     'groups', 'customFields', 'created', 'modified',
     'type', 'image', 'lat', 'long', 'minZoom', 'maxZoom', 'tileServer', 'darkMode',
-    'geojsonFiles', 'gpxFiles', 'tileSubdomains', 'tileAttribution', 'markerFiles', 'markerFolders', 'markerTags'
+    'geojsonFiles', 'gpxFiles', 'tileSubdomains', 'tileAttribution', 'markerFiles', 'markerFolders', 'markerTags',
+    'mapInk', 'maplogMarks', 'maplogLines', 'maplogAreas'
   ]),
   culture: new Set([
     'id', 'entityType', 'name', 'profileImagePath', 'languages', 'techLevel', 'governmentType', 'status',
@@ -258,7 +259,11 @@ const FRONTMATTER_WHITELISTS: Record<EntityType, Set<string>> = {
     'partyCharacterIds', 'partyCharacterNames', 'partyState',
     'partyItems', 'flags', 'revealedCompendiumEntryIds', 'revealedCompendiumEntryNames',
     'groupStandings', 'clocks', 'threads',
-    'collectedBoardItemKeys',
+    'partyResources', 'loot', 'advancements', 'interludes',
+    'sessionNumber', 'date', 'duration', 'players', 'scribe', 'absent',
+    'recap', 'goals', 'mood', 'hook', 'endNotes',
+    'collectedBoardItemKeys', 'revealedLocations', 'partyLocation', 'combat',
+    'campaignForkId', 'campaignForkName', 'campaignTrackId', 'campaignTag', 'inWorldDate', 'timeMoves', 'sceneEventId', 'sceneEventStart',
     'status', 'created', 'modified'
   ]),
   timelineEra: new Set([
@@ -292,56 +297,103 @@ export function getWhitelistKeys(entityType: EntityType): Set<string> {
  * Empty values are preserved if they existed in the original file.
  */
 /**
- * Serialize typed relationships as human-readable strings for frontmatter:
- * `type: [[Target]] — label` (label optional). Obsidian's Properties panel
- * cannot display arrays of objects (it falls back to raw JSON), while a list
- * of strings renders cleanly and the wiki link feeds Graph view.
+ * Serialize typed relationships as human-readable strings for frontmatter.
+ * Obsidian's Properties panel cannot display arrays of objects (it falls back
+ * to raw JSON), while a list of strings renders cleanly and the wiki link feeds
+ * Graph view.
+ *
+ * Grammar (one entry per string):
+ *   [ended ]<kind>: [[Target]] [— label]     direction inferred from the kind
+ *   [ended ]<kind> -> [[Target]] [— label]   one-way, arrow from the owner
+ *   [ended ]<kind> <-> [[Target]] [— label]  mutual, plain line
+ *
+ * Examples:
+ *   mentor: [[Archivist Noe]] — trained Mira          (legacy, unchanged)
+ *   loves -> [[Arwen]] — since the council
+ *   sibling <-> [[Boromir]]
+ *   ended rival -> [[Tollen Brask]] — the duel ended the feud
+ *
+ * The colon form is written when no direction is stored, so notes that never
+ * touched direction keep their original text.
  */
 export function serializeTypedRelationships(value: unknown[]): unknown[] {
   return value.map(entry => {
     if (typeof entry === 'string') return entry;
     if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
-      const rel = entry as { type?: unknown; target?: unknown; label?: unknown };
+      const rel = entry as { type?: unknown; target?: unknown; label?: unknown; direction?: unknown; ended?: unknown };
       const target = typeof rel.target === 'string' ? rel.target.trim() : '';
       if (!target) return entry;
       const type = typeof rel.type === 'string' && rel.type.trim() ? rel.type.trim() : 'neutral';
       const label = typeof rel.label === 'string' && rel.label.trim() ? rel.label.trim() : '';
-      return label ? `${type}: [[${target}]] — ${label}` : `${type}: [[${target}]]`;
+      const ended = rel.ended === true ? 'ended ' : '';
+      const link = `[[${target}]]`;
+      const body = rel.direction === 'to'
+        ? `${type} -> ${link}`
+        : rel.direction === 'mutual'
+          ? `${type} <-> ${link}`
+          : `${type}: ${link}`;
+      return label ? `${ended}${body} — ${label}` : `${ended}${body}`;
     }
     return entry;
   });
 }
 
-const TYPED_RELATIONSHIP_PATTERN = /^\s*([^:[\]]+?)\s*:\s*(?:\[\[([^\]]+)\]\]|([^—]+?))\s*(?:—\s*(.*))?$/;
+/**
+ * Groups: 1 = "ended" marker, 2 = kind, 3 = arrow (absent for the colon form),
+ * 4 = wiki-linked target, 5 = plain target, 6 = label.
+ */
+const TYPED_RELATIONSHIP_PATTERN = /^\s*(?:(ended)\s+)?([^:[\]]+?)\s*(?:(<->|->)|:)\s*(?:\[\[([^\]]+)\]\]|([^—]+?))\s*(?:—\s*(.*))?$/;
+
+/** Entity reference strings: `type: [[Target]] — relationship` (unchanged grammar). */
+const ENTITY_REF_PATTERN = /^\s*([^:[\]]+?)\s*:\s*(?:\[\[([^\]]+)\]\]|([^—]+?))\s*(?:—\s*(.*))?$/;
+
+export interface ParsedTypedRelationship {
+  type: string;
+  target: string;
+  label?: string;
+  direction?: 'to' | 'mutual';
+  ended?: boolean;
+}
 
 /**
- * Parse frontmatter connection entries back into TypedRelationship objects.
+ * Parse frontmatter connection entries back into typed relationships.
  * Accepts the string form produced by serializeTypedRelationships and the
  * legacy object form; anything unparseable becomes a neutral connection to
  * the raw text so data is never dropped.
  */
-export function parseTypedRelationships(value: unknown[]): Array<{ type: string; target: string; label?: string }> {
-  const out: Array<{ type: string; target: string; label?: string }> = [];
+export function parseTypedRelationships(value: unknown[]): ParsedTypedRelationship[] {
+  const out: ParsedTypedRelationship[] = [];
   for (const entry of value) {
     if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
-      const rel = entry as { type?: unknown; target?: unknown; label?: unknown };
-      if (typeof rel.target === 'string' && rel.target.trim()) {
-        out.push({
-          type: typeof rel.type === 'string' && rel.type.trim() ? rel.type.trim() : 'neutral',
-          target: rel.target.trim(),
-          ...(typeof rel.label === 'string' && rel.label.trim() ? { label: rel.label.trim() } : {})
-        });
-      }
+      const rel = entry as { type?: unknown; target?: unknown; targetId?: unknown; name?: unknown; label?: unknown; direction?: unknown; ended?: unknown };
+      // Older notes stored the target as `target`, `targetId` or `name`; take the first usable one.
+      const ref = [rel.target, rel.targetId, rel.name]
+        .find((v): v is string => typeof v === 'string' && v.trim() !== '');
+      // With no usable target the entry is kept as a neutral connection so it is not lost on save.
+      out.push({
+        type: typeof rel.type === 'string' && rel.type.trim() ? rel.type.trim() : 'neutral',
+        target: ref ? ref.trim() : '',
+        ...(typeof rel.label === 'string' && rel.label.trim() ? { label: rel.label.trim() } : {}),
+        ...(rel.direction === 'to' || rel.direction === 'mutual' ? { direction: rel.direction } : {}),
+        ...(rel.ended === true ? { ended: true } : {})
+      });
       continue;
     }
     if (typeof entry !== 'string' || !entry.trim()) continue;
     const match = entry.match(TYPED_RELATIONSHIP_PATTERN);
     if (match) {
       // Wiki-linked targets may carry an alias ([[Name|alias]]) — keep the name.
-      const rawTarget = (match[2] ?? match[3] ?? '').split('|')[0].trim();
+      const rawTarget = (match[4] ?? match[5] ?? '').split('|')[0].trim();
       if (rawTarget) {
-        const label = (match[4] ?? '').trim();
-        out.push({ type: match[1].trim(), target: rawTarget, ...(label ? { label } : {}) });
+        const label = (match[6] ?? '').trim();
+        const direction = match[3] === '->' ? 'to' : match[3] === '<->' ? 'mutual' : undefined;
+        out.push({
+          type: match[2].trim(),
+          target: rawTarget,
+          ...(label ? { label } : {}),
+          ...(direction ? { direction } : {}),
+          ...(match[1] ? { ended: true } : {})
+        });
         continue;
       }
     }
@@ -379,7 +431,7 @@ const ENTITY_REF_TYPES = new Set(['character', 'event', 'item', 'culture', 'econ
 export function parseEntityRefs(value: unknown[]): unknown[] {
   return value.map(entry => {
     if (typeof entry !== 'string' || !entry.trim()) return entry;
-    const match = entry.match(TYPED_RELATIONSHIP_PATTERN);
+    const match = entry.match(ENTITY_REF_PATTERN);
     if (!match) return entry;
     const target = (match[2] ?? match[3] ?? '').split('|')[0].trim();
     if (!target) return entry;
@@ -454,6 +506,8 @@ export function buildFrontmatter(
     customFieldsMode?: 'flatten' | 'nested';
     originalFrontmatter?: Record<string, unknown>;
     omitOriginalKeys?: Iterable<string>;
+    /** Keys whose string values may hold line breaks (YAML block scalars). Others drop them. */
+    multilineKeys?: Iterable<string>;
   }
 ): Record<string, unknown> {
   const whitelist = FRONTMATTER_WHITELISTS[entityType];
@@ -462,6 +516,7 @@ export function buildFrontmatter(
   const srcKeys = new Set(Object.keys(source || {}));
   const originalFrontmatter = options?.originalFrontmatter;
   const omitOriginalKeys = new Set(options?.omitOriginalKeys ?? []);
+  const multilineKeys = new Set(options?.multilineKeys ?? []);
   
   // Track all keys that existed in original frontmatter - these must NEVER be deleted
   const originalKeys = originalFrontmatter ? new Set(Object.keys(originalFrontmatter)) : new Set<string>();
@@ -532,7 +587,8 @@ export function buildFrontmatter(
       // Skip new empty strings (do not preserve unless present in original frontmatter)
       if (!existedInOriginal && value === '') continue;
       // Exclude multi-line strings from frontmatter; they belong to sections
-      if (value.includes('\n')) continue;
+      // unless the key was declared multiline (a defined textarea field).
+      if (value.includes('\n') && !multilineKeys.has(key)) continue;
       output[key] = value;
       continue;
     }

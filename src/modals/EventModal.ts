@@ -10,8 +10,9 @@ import { parseSectionsFromMarkdown } from '../yaml/EntitySections';
 import { t } from '../i18n/strings';
 import { GalleryImageSuggestModal } from './GalleryImageSuggestModal';
 import { addImageSelectionButtons } from '../utils/ImageSelectionHelper';
+import { addIconSetting } from './IconPickerModal';
 import { PromptModal } from './ui/PromptModal';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { EntityGroupSelector } from './entity/EntityGroupSelector';
 import { ResponsiveModal } from './ResponsiveModal';
 // Import the new suggesters
@@ -87,13 +88,14 @@ export class EventModal extends ResponsiveModal {
         if (this.isNew) {
             initialEvent.customFields = seedDefaultCustomFields(
                 initialEvent.customFields,
-                this.plugin.settings.defaultCustomFields?.event
+                this.plugin.getSeedableDefaultCustomFields('event')
             );
         }
 
         this.event = initialEvent;
         this.originalGroupIds = [...(initialEvent.groups || [])];
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'event', this.event.customFields);
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'event', this.event.customFields,
+            customFieldEditorOptions(this.plugin, 'event', () => this.event));
         this.groupSelector = new EntityGroupSelector({
             plugin: this.plugin,
             description: t('assignEventToGroupsDesc'),
@@ -594,15 +596,18 @@ export class EventModal extends ResponsiveModal {
         );
         }
 
-        const mediaSection = isVisible('media')
+        const mediaSection = isVisible('media') || isVisible('icon')
             ? createCollapsibleModalSection(contentEl, {
                 title: 'Media',
                 description: 'Cover image and associated gallery images',
                 icon: 'images',
-                open: Boolean(this.event.profileImagePath || this.event.images?.length),
+                open: Boolean(this.event.profileImagePath || this.event.images?.length || this.event.icon),
             })
             : null;
-        if (mediaSection) {
+        if (mediaSection && isVisible('icon')) {
+            addIconSetting(mediaSection, this.app, this.plugin, this.event);
+        }
+        if (mediaSection && isVisible('media')) {
         const profileImageSetting = new Setting(mediaSection)
             .setName(t('image'))
             .setDesc('')
@@ -712,7 +717,7 @@ export class EventModal extends ResponsiveModal {
         }
 
         // --- Associated Images ---
-        if (mediaSection) {
+        if (mediaSection && isVisible('media')) {
         const imagesSetting = new Setting(mediaSection)
             .setName(t('associatedImages'))
             .setDesc(t('imageGallery'));
@@ -854,6 +859,9 @@ export class EventModal extends ResponsiveModal {
         }
 
         // --- Custom Fields ---
+        // Defined fields always render. Only the free-form rows follow the switch.
+        this.customFieldsEditor.setFields(this.event.customFields);
+        this.customFieldsEditor.renderDefinedFields(contentEl);
         if (isVisible('customFields')) {
             const customFieldsSection = createCollapsibleModalSection(contentEl, {
                 title: 'Custom fields',
@@ -861,8 +869,7 @@ export class EventModal extends ResponsiveModal {
                 icon: 'list-plus',
                 open: Boolean(Object.keys(this.event.customFields || {}).length),
             });
-            this.customFieldsEditor.setFields(this.event.customFields);
-            this.customFieldsEditor.renderSection(customFieldsSection);
+            this.customFieldsEditor.renderFreeFormSection(customFieldsSection, { heading: false });
         }
 
         // --- Action Buttons ---
@@ -890,8 +897,7 @@ export class EventModal extends ResponsiveModal {
                 await this.persistGroupMembershipChanges();
                 this.close();
             } catch {
-                
-                new Notice(t('workspaceLeafRevealError'));
+                new Notice(t('failedToSave', t('event')));
             }
         }, { cta: true });
     })(); }

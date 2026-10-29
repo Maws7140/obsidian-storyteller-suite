@@ -5,12 +5,15 @@ import { ItemView, WorkspaceLeaf, setIcon, Menu, DropdownComponent, Notice, View
 import StorytellerSuitePlugin from '../main';
 import { t } from '../i18n/strings';
 import { TimelineRenderer, TimelineFilters } from '../utils/NativeTimelineRenderer';
-import { TimelineUIFilters, TimelineUIState } from '../types';
+import { defaultTimelineIconMode, parseTimelineIconMode } from '../utils/TimelineIconLayout';
+import { TimelineConflict, TimelineUIFilters, TimelineUIState, Event as StoryEvent } from '../types';
 import { TimelineTrackManager } from '../utils/TimelineTrackManager';
 import { TimelineControlsBuilder, TimelineControlCallbacks } from '../utils/TimelineControlsBuilder';
 import { TimelineFilterBuilder, TimelineFilterCallbacks } from '../utils/TimelineFilterBuilder';
 import { ConflictDetector, DetectedConflict } from '../utils/ConflictDetector';
 import { PlatformUtils } from '../utils/PlatformUtils';
+import { openNewEventModal } from '../utils/OpenNewEventModal';
+import { TimelineImageExportModal } from '../modals/TimelineImageExportModal';
 
 export const VIEW_TYPE_TIMELINE = 'storyteller-timeline-view';
 
@@ -64,6 +67,8 @@ function restoreFilters(value: unknown): TimelineUIFilters {
 export class TimelineView extends ItemView {
     plugin: StorytellerSuitePlugin;
     private renderer: TimelineRenderer | null = null;
+    /** Bumped by each buildTimeline call, so a superseded build can tell it is stale. */
+    private timelineBuildGeneration = 0;
     private currentState: TimelineViewState;
 
     // Shared builders
@@ -86,6 +91,8 @@ export class TimelineView extends ItemView {
     private advancedFiltersExpanded = false;
     private resizeObserver: ResizeObserver | null = null;
     private showScenes = false;
+    /** Choices a campaign did not take; hidden unless asked for. */
+    private showPathsNotTaken = false;
     private showWatchedNotes = false;
     /** Branch list the toolbar was last built against. */
     private lastBranchSignature = '';
@@ -105,7 +112,8 @@ export class TimelineView extends ItemView {
             },
             onRendererUpdate: () => { void this.buildTimeline(); },
             getRenderer: () => this.renderer,
-            getEvents: () => this.plugin.listEvents()
+            getEvents: () => this.plugin.listEvents(),
+            onEventCreated: () => this.refresh()
         };
 
         // Create filter callbacks
@@ -186,34 +194,48 @@ export class TimelineView extends ItemView {
         this.toolbarEl.empty();
         this.lastBranchSignature = this.branchSignature();
 
-        // What am I looking at
-        const scope = this.toolbarEl.createDiv('storyteller-toolbar-group');
-        this.controlsBuilder.createViewModeSegment(scope);
-        this.buildGroupingField(scope);
-        this.buildTrackField(scope);
-        this.buildBranchField(scope);
+        // Two fixed rows rather than one wrapping strip, so controls never land
+        // in a different place depending on the pane width. Row one: what you
+        // are viewing, with search and conflicts. Row two: what is in it and how
+        // it is drawn, with zoom.
+        const viewRow = this.toolbarEl.createDiv('storyteller-toolbar-row');
+        const dataRow = this.toolbarEl.createDiv('storyteller-toolbar-row');
 
-        // How much of it is on screen
-        const frame = this.toolbarEl.createDiv('storyteller-toolbar-group');
-        this.controlsBuilder.createZoomControl(frame);
+        // What am I looking at
+        const scope = viewRow.createDiv('storyteller-toolbar-group');
+        this.controlsBuilder.createViewModeSegment(scope);
+
+        // Pushed right: conflicts, search, overflow
+        const trailing = viewRow.createDiv('storyteller-toolbar-group storyteller-toolbar-trailing');
+        this.controlsBuilder.createNewEventButton(trailing);
+        this.buildConflictBadge(trailing);
+        this.buildSearchField(trailing);
+        this.buildOverflowButton(trailing);
+
+        // Which events
+        const data = dataRow.createDiv('storyteller-toolbar-group');
+        this.buildGroupingField(data);
+        this.buildTrackField(data);
+        this.buildBranchField(data);
 
         // How is it drawn
-        const display = this.toolbarEl.createDiv('storyteller-toolbar-group');
+        const display = dataRow.createDiv('storyteller-toolbar-group');
         this.buildThemeField(display);
-        this.controlsBuilder.createEditModeToggle(display);
+        this.buildIconsField(display);
         this.controlsBuilder.createDisplayMenu(display, {
             getShowScenes: () => this.showScenes,
             setShowScenes: value => { this.showScenes = value; this.renderer?.setShowScenes(value); },
+            getShowPathsNotTaken: () => this.showPathsNotTaken,
+            setShowPathsNotTaken: value => { this.showPathsNotTaken = value; this.renderer?.setShowPathsNotTaken(value); },
             getShowWatchedNotes: () => this.showWatchedNotes,
             setShowWatchedNotes: value => { this.showWatchedNotes = value; this.renderer?.setShowWatchedNotes(value); },
             onManageEras: () => this.openEraManager()
         });
+        this.controlsBuilder.createEditModeToggle(display);
 
-        // Pushed right: conflicts, search, overflow
-        const trailing = this.toolbarEl.createDiv('storyteller-toolbar-group storyteller-toolbar-trailing');
-        this.buildConflictBadge(trailing);
-        this.buildSearchField(trailing);
-        this.buildOverflowButton(trailing);
+        // How much of it is on screen
+        const frame = dataRow.createDiv('storyteller-toolbar-group storyteller-toolbar-trailing');
+        this.controlsBuilder.createZoomControl(frame);
     }
 
     /** A labelled control, so the toolbar reads as words rather than glyphs. */
@@ -232,6 +254,12 @@ export class TimelineView extends ItemView {
     private buildGroupingField(container: HTMLElement): void {
         const field = this.labelledField(container, 'Group');
         this.controlsBuilder.createGroupingDropdown(field);
+    }
+
+    /** Icons: off, icons, or icons and cover image strips. */
+    private buildIconsField(container: HTMLElement): void {
+        const field = this.labelledField(container, 'Icons');
+        this.controlsBuilder.createIconsDropdown(field);
     }
 
     /**
@@ -465,12 +493,19 @@ export class TimelineView extends ItemView {
      */
     private async buildTimeline(): Promise<void> {
         if (!this.timelineContainer) return;
+        // A newer build supersedes this one. Destroying the renderer it replaces stops that
+        // renderer from mounting when its load finishes, and the generation check keeps a
+        // superseded build from touching the controls that now belong to the newer renderer.
+        const generation = ++this.timelineBuildGeneration;
+        this.renderer?.destroy();
+        this.renderer = null;
         this.timelineContainer.empty();
         this.timelineContainer.setCssStyles({ flexGrow: '1' });
 
         // Initialize timeline renderer
         this.renderer = new TimelineRenderer(this.timelineContainer, this.plugin, {
             ganttMode: this.currentState.ganttMode,
+            calendarMode: this.currentState.calendarMode === true,
             timelineLayout: this.currentState.timelineLayout,
             timelineOrientation: this.currentState.timelineOrientation,
             groupMode: this.currentState.groupMode,
@@ -480,6 +515,9 @@ export class TimelineView extends ItemView {
             showEras: this.currentState.showEras,
             showPresence: this.currentState.showPresence,
             narrativeOrder: this.currentState.narrativeOrder,
+            iconMode: this.currentState.icons,
+            minimal: this.currentState.minimal === true,
+            getReferenceDate: () => this.plugin.getReferenceTodayDate(),
             defaultGanttDuration: this.plugin.settings.ganttDefaultDuration ?? 1,
             showProgressBars: this.plugin.settings.ganttShowProgressBars ?? true,
             dependencyArrowStyle: this.plugin.settings.ganttArrowStyle ?? 'solid',
@@ -490,17 +528,20 @@ export class TimelineView extends ItemView {
         });
 
         try {
-            await this.renderer.initialize();
+            const renderer = this.renderer;
+            await renderer.initialize();
+            if (generation !== this.timelineBuildGeneration) return;
             // Layers are not constructor options, so a fresh renderer starts
             // with both off no matter what the Show menu says.
-            if (this.showScenes) this.renderer.setShowScenes(true);
-            if (this.showWatchedNotes) this.renderer.setShowWatchedNotes(true);
-            this.renderer.applyFilters(this.currentState.filters);
+            if (this.showScenes) renderer.setShowScenes(true);
+            if (this.showPathsNotTaken) renderer.setShowPathsNotTaken(true);
+            if (this.showWatchedNotes) renderer.setShowWatchedNotes(true);
+            renderer.applyFilters(this.currentState.filters);
             this.scheduleTimelineRedraw();
             this.updateSearchDropdown();
             this.renderEmptyState();
         } catch {
-            
+            if (generation !== this.timelineBuildGeneration) return;
             this.timelineContainer.empty();
             const errorEl = this.timelineContainer.createDiv('storyteller-timeline-error');
             errorEl.createEl('h3', { text: 'Timeline error' });
@@ -516,51 +557,93 @@ export class TimelineView extends ItemView {
      */
     private renderEmptyState(): void {
         this.timelineContainer?.querySelector('.storyteller-timeline-empty')?.remove();
-        if (!this.timelineContainer || !this.renderer || this.renderer.getEventCount() > 0) return;
+        if (!this.timelineContainer || !this.renderer) return;
+        const tally = this.renderer.getEventTally();
+        if (tally.dated > 0) return;
 
-        const filtered = this.hasActiveFilters();
         const empty = this.timelineContainer.createDiv('storyteller-timeline-empty');
         const icon = empty.createDiv('storyteller-timeline-empty-icon');
-        setIcon(icon, filtered ? 'filter-x' : 'clock');
 
-        empty.createEl('h3', {
-            text: filtered ? 'Nothing matches these filters' : 'Nothing on this timeline yet'
-        });
-        empty.createEl('p', {
-            cls: 'storyteller-timeline-empty-body',
-            text: filtered
-                ? 'Every event was filtered out. Clear the filters to see the whole story again.'
-                : 'Events that have a date appear here in order, so you can see how your story unfolds and drag things around to change when they happen.'
-        });
-
-        const actions = empty.createDiv('storyteller-timeline-empty-actions');
-        if (filtered) {
+        // Three different blanks need three different messages: no events at
+        // all, events that are waiting on a date, and events that filters hide.
+        if (tally.undated.length > 0) {
+            const count = tally.undated.length;
+            setIcon(icon, 'calendar-plus');
+            empty.createEl('h3', {
+                text: `${count} ${count === 1 ? 'event needs' : 'events need'} a date`
+            });
+            empty.createEl('p', {
+                cls: 'storyteller-timeline-empty-body',
+                text: 'Events appear on the timeline once they have a date. Start by giving the first one a date, and the rest can follow the same way.'
+            });
+            const actions = empty.createDiv('storyteller-timeline-empty-actions');
+            const [first] = tally.undated;
+            const dateBtn = actions.createEl('button', { cls: 'mod-cta', text: 'Set a date on the first event' });
+            dateBtn.addEventListener('click', () => { void this.openUndatedEvent(first); });
+        } else if (tally.hiddenByFilters > 0) {
+            const count = tally.hiddenByFilters;
+            setIcon(icon, 'filter-x');
+            empty.createEl('h3', {
+                text: `Filters are hiding ${count} ${count === 1 ? 'event' : 'events'}`
+            });
+            empty.createEl('p', {
+                cls: 'storyteller-timeline-empty-body',
+                text: 'Every event was filtered out. Clear the filters to see the whole story again.'
+            });
+            const actions = empty.createDiv('storyteller-timeline-empty-actions');
             const clearBtn = actions.createEl('button', { cls: 'mod-cta', text: 'Clear filters' });
             clearBtn.addEventListener('click', () => { void (async () => {
-                this.currentState.filters = {};
+                // The renderer merges filters into what it already has, so every
+                // filter that is set has to be named here as cleared. The branch
+                // stays selected: clearing filters does not switch timelines.
+                const cleared: TimelineFilters = {
+                    characters: undefined,
+                    locations: undefined,
+                    groups: undefined,
+                    tags: undefined,
+                    eras: undefined,
+                    milestonesOnly: false,
+                    forkId: this.currentState.filters.forkId
+                };
+                this.currentState.filters = { ...cleared };
                 this.currentState.currentTrackId = undefined;
+                this.renderer?.applyFilters(cleared);
+                this.buildFilterToggle();
                 await this.refresh();
             })(); });
         } else {
+            setIcon(icon, 'clock');
+            empty.createEl('h3', { text: 'Nothing on this timeline yet' });
+            empty.createEl('p', {
+                cls: 'storyteller-timeline-empty-body',
+                text: 'Events that have a date appear here in order, so you can see how your story unfolds and drag things around to change when they happen.'
+            });
+            const actions = empty.createDiv('storyteller-timeline-empty-actions');
             const createBtn = actions.createEl('button', { cls: 'mod-cta', text: 'Create an event' });
-            createBtn.addEventListener('click', () => { void (async () => {
-                const { EventModal } = await import('../modals/EventModal');
-                new EventModal(this.app, this.plugin, null, async created => {
-                    await this.plugin.saveEvent(created);
-                    await this.refresh();
-                }).open();
-            })(); });
+            createBtn.addEventListener('click', () => {
+                void openNewEventModal(this.plugin, { onCreated: () => this.refresh() });
+            });
         }
     }
 
-    /** Whether anything is currently narrowing what the timeline shows. */
-    private hasActiveFilters(): boolean {
-        const filters = this.currentState.filters as Record<string, unknown>;
-        const narrowing = Object.entries(filters).some(([, value]) => {
-            if (Array.isArray(value)) return value.length > 0;
-            return value !== undefined && value !== null && value !== '' && value !== false;
-        });
-        return narrowing || Boolean(this.currentState.currentTrackId);
+    /**
+     * Open an event from the empty-state card. The card was drawn from a
+     * snapshot, so the event is read from the store again first. Saving a stale
+     * copy would overwrite whatever changed since the card was drawn.
+     */
+    async openUndatedEvent(snapshot: StoryEvent): Promise<void> {
+        const events = await this.plugin.listEvents();
+        const current = events.find(event => (snapshot.id && event.id === snapshot.id) || (!snapshot.id && event.filePath === snapshot.filePath));
+        if (!current) {
+            new Notice('That event no longer exists.');
+            await this.refresh();
+            return;
+        }
+        const { EventModal } = await import('../modals/EventModal');
+        new EventModal(this.app, this.plugin, current, async updated => {
+            await this.plugin.saveEvent(updated);
+            await this.refresh();
+        }).open();
     }
 
     private scheduleTimelineRedraw(): void {
@@ -577,17 +660,30 @@ export class TimelineView extends ItemView {
         const newConflicts = ConflictDetector.toStorageFormat(conflicts);
         const currentConflicts = this.plugin.getTimelineConflicts();
         
+        // The detector stamps `detected` on every call, so a rebuild always looks
+        // changed. An unchanged conflict keeps its stored stamp instead.
+        const contentKey = (c: TimelineConflict) => JSON.stringify([c.type, c.severity, c.entities, c.events, c.description]);
+
         // Merge to preserve dismissed status
         const mergedConflicts = newConflicts.map(newC => {
             const existing = currentConflicts.find(c => c.id === newC.id);
             if (existing) {
-                return { ...newC, dismissed: existing.dismissed };
+                const unchanged = contentKey(existing) === contentKey(newC);
+                return { ...newC, detected: unchanged ? existing.detected : newC.detected, dismissed: existing.dismissed };
             }
             return newC;
         });
 
-        // Only update if changed
-        if (JSON.stringify(mergedConflicts) !== JSON.stringify(currentConflicts)) {
+        // Only update if changed. Stored entries carry a storyId that the
+        // detector does not, so compare the fields that matter instead of JSON.
+        const changed = mergedConflicts.length !== currentConflicts.length || mergedConflicts.some(merged => {
+            const stored = currentConflicts.find(c => c.id === merged.id);
+            return !stored
+                || contentKey(stored) !== contentKey(merged)
+                || stored.dismissed !== merged.dismissed
+                || stored.detected !== merged.detected;
+        });
+        if (changed) {
             await this.plugin.setTimelineConflicts(mergedConflicts);
             this.buildToolbar();
         }
@@ -681,18 +777,22 @@ export class TimelineView extends ItemView {
      */
     private updateFooterStatus(): void {
         if (!this.footerStatusEl || !this.renderer) return;
-        
-        const eventCount = this.renderer.getEventCount();
+
+        const tally = this.renderer.getEventTally();
         const dateRange = this.renderer.getDateRange();
-        
-        if (eventCount === 0) {
+        const plural = (n: number) => `${n} event${n !== 1 ? 's' : ''}`;
+
+        if (tally.total === 0) {
             this.footerStatusEl.setText(t('noEventsFound'));
+        } else if (tally.dated === 0 && tally.undated.length === 0) {
+            this.footerStatusEl.setText(`0 events shown, ${tally.hiddenByFilters} hidden by filters`);
+        } else if (tally.dated === 0) {
+            this.footerStatusEl.setText(`${plural(tally.undated.length)}, none dated`);
         } else {
-            let statusText = `${eventCount} event${eventCount !== 1 ? 's' : ''}`;
+            let statusText = plural(tally.dated);
+            if (tally.undated.length > 0) statusText += `, ${tally.undated.length} undated`;
             if (dateRange) {
-                const startStr = dateRange.start.toLocaleDateString();
-                const endStr = dateRange.end.toLocaleDateString();
-                statusText += ` • ${startStr} — ${endStr}`;
+                statusText += ` • ${this.renderer.formatDateSpan(dateRange.start, dateRange.end)}`;
             }
             if (this.currentState.ganttMode) {
                 statusText += ` • ${t('ganttView')}`;
@@ -783,31 +883,15 @@ export class TimelineView extends ItemView {
         const menu = new Menu();
 
         menu.addItem((item) => {
-            item.setTitle(t('exportAsPNG'))
+            item.setTitle('Export image...')
                 .setIcon('image')
-                .onClick(() => { void this.renderer?.exportAsImage('png'); });
-        });
-
-        menu.addItem((item) => {
-            item.setTitle(t('exportAsJPG'))
-                .setIcon('image')
-                .onClick(() => { void this.renderer?.exportAsImage('jpg'); });
-        });
-
-        menu.addSeparator();
-
-        // Kept apart from the two above because they capture different things:
-        // those save the window, these save the story.
-        menu.addItem((item) => {
-            item.setTitle('Export whole timeline as PNG')
-                .setIcon('maximize')
-                .onClick(() => { void this.renderer?.exportAsImage('png', 'full'); });
-        });
-
-        menu.addItem((item) => {
-            item.setTitle('Export whole timeline as JPG')
-                .setIcon('maximize')
-                .onClick(() => { void this.renderer?.exportAsImage('jpg', 'full'); });
+                .onClick(() => {
+                    const renderer = this.renderer;
+                    if (!renderer) return;
+                    new TimelineImageExportModal(this.app, renderer.currentExportView(), choice => {
+                        void renderer.exportAsImage(choice.format, choice.scope, choice.view);
+                    }).open();
+                });
         });
 
         menu.addSeparator();
@@ -851,6 +935,7 @@ export class TimelineView extends ItemView {
 
         return {
             ganttMode: this.currentState.ganttMode,
+            calendarMode: this.currentState.calendarMode === true,
             timelineLayout: this.currentState.timelineLayout,
             timelineOrientation: this.currentState.timelineOrientation,
             groupMode: this.currentState.groupMode,
@@ -860,11 +945,14 @@ export class TimelineView extends ItemView {
             showEras: this.currentState.showEras,
             showPresence: this.currentState.showPresence,
             narrativeOrder: this.currentState.narrativeOrder,
+            icons: this.currentState.icons,
+            minimal: this.currentState.minimal === true,
             currentTrackId: this.currentState.currentTrackId,
             currentForkId: this.currentState.currentForkId,
             // Layers live on the view rather than in TimelineUIState, but they
             // are toolbar state all the same.
             showScenes: this.showScenes,
+            showPathsNotTaken: this.showPathsNotTaken,
             showWatchedNotes: this.showWatchedNotes,
             filters: {
                 milestonesOnly: this.currentState.filters.milestonesOnly,
@@ -907,6 +995,8 @@ export class TimelineView extends ItemView {
             const filters = restoreFilters(state.filters);
             const restored: TimelineViewState = {
                 ganttMode: state.ganttMode === true,
+                // A saved state from before Calendar existed has no key, so it loads as not calendar.
+                calendarMode: state.calendarMode === true,
                 timelineLayout: state.timelineLayout === 'timeline' ? 'timeline' : 'chronology',
                 timelineOrientation: state.timelineOrientation === 'vertical' ? 'vertical' : 'horizontal',
                 groupMode: isGroupMode(state.groupMode) ? state.groupMode : (this.plugin.settings.defaultTimelineGroupMode || 'location'),
@@ -917,11 +1007,14 @@ export class TimelineView extends ItemView {
                 showEras: state.showEras === true,
                 showPresence: state.showPresence === true,
                 narrativeOrder: state.narrativeOrder === true,
+                icons: parseTimelineIconMode(state.icons) ?? defaultTimelineIconMode(this.plugin.settings.timelineShowIcons),
+                minimal: state.minimal === true,
                 currentTrackId: typeof state.currentTrackId === 'string' ? state.currentTrackId : undefined,
                 currentForkId: typeof state.currentForkId === 'string' ? state.currentForkId : undefined
             };
             Object.assign(this.currentState, restored);
             this.showScenes = state.showScenes === true;
+            this.showPathsNotTaken = state.showPathsNotTaken === true;
             this.showWatchedNotes = state.showWatchedNotes === true;
 
             // A restore can land after onOpen has already drawn the toolbar off
@@ -979,7 +1072,13 @@ export class TimelineView extends ItemView {
         // only thing missing was the control that selects one.
         const signature = this.branchSignature();
         if (signature !== this.lastBranchSignature) this.buildToolbar();
-        await this.renderer.refresh();
+        // A rebuild can replace the renderer while this refresh is loading. The
+        // replacement may not have its events yet, so only the renderer that
+        // is still current may draw the empty-state card.
+        const renderer = this.renderer;
+        await renderer.refresh();
+        // The empty-state card reads the same data, so it must follow every refresh too.
+        if (renderer === this.renderer) this.renderEmptyState();
         this.updateFooterStatus();
         this.updateSearchDropdown();
     }

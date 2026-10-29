@@ -11,6 +11,8 @@ import { ConflictViewModal } from '../modals/ConflictViewModal';
 import { TagTimelineModal } from '../modals/TagTimelineModal';
 import { ConflictDetector } from './ConflictDetector';
 import { CalendarRegistry, onTimelineThemeChange } from '../calendar/CalendarRegistry';
+import { defaultTimelineIconMode, parseTimelineIconMode } from './TimelineIconLayout';
+import { openNewEventModal } from './OpenNewEventModal';
 
 /**
  * Callbacks for control state changes
@@ -24,13 +26,19 @@ export interface TimelineControlCallbacks {
     getRenderer: () => TimelineRenderer | null;
     /** Get current events (for filter population) */
     getEvents: () => Event[] | Promise<Event[]>;
+    /** Redraw after the New event button saved one. Defaults to refreshing the renderer. */
+    onEventCreated?: () => void | Promise<void>;
 }
 
-/** The three top-level views. Horizontal/vertical are orientations of Timeline. */
-export type TimelineViewMode = 'chronology' | 'timeline' | 'gantt';
+/** The top-level views. Horizontal/vertical are orientations of Timeline. */
+export type TimelineViewMode = 'chronology' | 'timeline' | 'gantt' | 'calendar';
 
-/** Resolve the top-level view without confusing Timeline orientation for a view. */
-export function timelineViewMode(state: Pick<TimelineUIState, 'ganttMode' | 'timelineLayout'>): TimelineViewMode {
+/**
+ * Resolve the top-level view without confusing Timeline orientation for a view.
+ * Calendar wins over Gantt and the layouts; setViewMode keeps them from both being on.
+ */
+export function timelineViewMode(state: Pick<TimelineUIState, 'ganttMode' | 'timelineLayout'> & { calendarMode?: boolean }): TimelineViewMode {
+    if (state.calendarMode) return 'calendar';
     return state.ganttMode ? 'gantt' : state.timelineLayout;
 }
 
@@ -41,6 +49,8 @@ export function timelineViewMode(state: Pick<TimelineUIState, 'ganttMode' | 'tim
 export interface DisplayMenuExtras {
     getShowScenes: () => boolean;
     setShowScenes: (value: boolean) => void;
+    getShowPathsNotTaken: () => boolean;
+    setShowPathsNotTaken: (value: boolean) => void;
     getShowWatchedNotes: () => boolean;
     setShowWatchedNotes: (value: boolean) => void;
     /** Era management lives beside the era layer rather than in an overflow. */
@@ -97,6 +107,8 @@ export class TimelineControlsBuilder {
     private plugin: StorytellerSuitePlugin;
     private state: TimelineUIState;
     private callbacks: TimelineControlCallbacks;
+    /** Zoom and fit controls. The Calendar view pages by month, so they are hidden there. */
+    private zoomElements: HTMLElement[] = [];
     /** Span readout inside the zoom control, refreshed from the draw loop. */
     private zoomReadoutEl: HTMLElement | null = null;
 
@@ -116,6 +128,7 @@ export class TimelineControlsBuilder {
     static createDefaultState(plugin: StorytellerSuitePlugin): TimelineUIState {
         return {
             ganttMode: false,
+            calendarMode: false,
             timelineLayout: 'chronology',
             timelineOrientation: 'horizontal',
             groupMode: (plugin.settings.defaultTimelineGroupMode || 'location'),
@@ -125,7 +138,9 @@ export class TimelineControlsBuilder {
             editMode: false,
             showEras: false,
             showPresence: false,
-            narrativeOrder: false
+            narrativeOrder: false,
+            icons: defaultTimelineIconMode(plugin.settings.timelineShowIcons),
+            minimal: false
         };
     }
 
@@ -290,6 +305,7 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'maximize-2');
         btn.addEventListener('click', () => this.callbacks.getRenderer()?.fitToView());
+        this.registerZoomElement(btn);
         return btn;
     }
 
@@ -300,6 +316,7 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'zoom-in');
         btn.addEventListener('click', () => this.callbacks.getRenderer()?.zoomBy(0.25));
+        this.registerZoomElement(btn);
         return btn;
     }
 
@@ -310,6 +327,7 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'zoom-out');
         btn.addEventListener('click', () => this.callbacks.getRenderer()?.zoomBy(4));
+        this.registerZoomElement(btn);
         return btn;
     }
 
@@ -326,6 +344,7 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'rows-3');
         btn.addEventListener('click', () => this.callbacks.getRenderer()?.fitToView());
+        this.registerZoomElement(btn);
         return btn;
     }
 
@@ -342,6 +361,7 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'calendar');
         btn.addEventListener('click', () => this.callbacks.getRenderer()?.zoomPresetYears(10));
+        this.registerZoomElement(btn);
         return btn;
     }
 
@@ -358,6 +378,7 @@ export class TimelineControlsBuilder {
         });
         setIcon(btn, 'calendar-days');
         btn.addEventListener('click', () => this.callbacks.getRenderer()?.zoomPresetYears(100));
+        this.registerZoomElement(btn);
         return btn;
     }
 
@@ -463,6 +484,31 @@ export class TimelineControlsBuilder {
     }
 
     /**
+     * New event, dated to the middle of whatever is on screen. Every view mode
+     * shares this toolbar, so every mode gets the button.
+     */
+    createNewEventButton(container: HTMLElement): HTMLButtonElement {
+        const btn = container.createEl('button', {
+            cls: 'storyteller-toolbar-btn-labelled',
+            attr: { 'aria-label': 'Create a new event', 'title': 'Create a new event' }
+        });
+        setIcon(btn.createSpan('storyteller-toolbar-btn-icon'), 'calendar-plus');
+        btn.createSpan({ cls: 'storyteller-toolbar-btn-text', text: 'New event' });
+        btn.addEventListener('click', () => {
+            const renderer = this.callbacks.getRenderer();
+            void openNewEventModal(this.plugin, {
+                seed: renderer ? { dateTime: renderer.getCenterDateText() } : undefined,
+                onCreated: async () => {
+                    if (this.callbacks.onEventCreated) await this.callbacks.onEventCreated();
+                    else await this.callbacks.getRenderer()?.refresh();
+                    this.callbacks.onStateChange();
+                }
+            });
+        });
+        return btn;
+    }
+
+    /**
      * Create refresh button
      */
     createRefreshButton(container: HTMLElement): HTMLButtonElement {
@@ -495,7 +541,8 @@ export class TimelineControlsBuilder {
         const modes: { id: TimelineViewMode; label: string; icon: string; hint: string }[] = [
             { id: 'chronology', label: 'Chronology', icon: 'list-tree', hint: 'Original grouped chronological lanes' },
             { id: 'timeline', label: 'Timeline', icon: 'git-branch', hint: 'Card timeline with horizontal or vertical orientation' },
-            { id: 'gantt', label: 'Gantt', icon: 'align-left', hint: 'Durations as bars, with dependencies' }
+            { id: 'gantt', label: 'Gantt', icon: 'align-left', hint: 'Durations as bars, with dependencies' },
+            { id: 'calendar', label: 'Calendar', icon: 'calendar', hint: 'Month grid in the story calendar' }
         ];
 
         const current = (): TimelineViewMode => timelineViewMode(this.state);
@@ -535,6 +582,22 @@ export class TimelineControlsBuilder {
             return { value, btn };
         });
 
+        // Minimal: a Timeline-only toggle that draws each event as just its icon
+        // or image, with the details on hover.
+        const minimal = wrapper.createEl('button', {
+            cls: 'clickable-icon storyteller-toolbar-btn storyteller-minimal-toggle',
+            attr: { 'aria-label': 'Minimal timeline: icons only, details on hover', title: 'Minimal: icons only, details on hover' }
+        });
+        setIcon(minimal.createSpan('storyteller-segment-icon'), 'circle-dot');
+        minimal.createSpan({ cls: 'storyteller-segment-label', text: 'Minimal' });
+        minimal.addEventListener('click', () => {
+            if (this.state.ganttMode || this.state.timelineLayout !== 'timeline') return;
+            this.state.minimal = !this.state.minimal;
+            this.callbacks.getRenderer()?.setMinimal(this.state.minimal);
+            sync();
+            this.callbacks.onStateChange();
+        });
+
         const sync = () => {
             const active = current();
             buttons.forEach(({ mode, btn }) => {
@@ -550,22 +613,43 @@ export class TimelineControlsBuilder {
                 btn.setAttribute('aria-checked', String(on));
                 btn.disabled = !timelineActive;
             });
+            minimal.toggleClass('is-hidden', !timelineActive);
+            minimal.toggleClass('is-active', timelineActive && this.state.minimal === true);
+            minimal.setAttribute('aria-pressed', String(timelineActive && this.state.minimal === true));
+            minimal.disabled = !timelineActive;
+            this.syncZoomVisibility();
         };
         sync();
         return wrapper;
     }
 
+    private registerZoomElement(el: HTMLElement): void {
+        this.zoomElements.push(el);
+        el.toggleClass('storyteller-calendar-hidden', this.state.calendarMode === true);
+    }
+
+    /** Hide zoom and fit while the Calendar view is on; it moves a month at a time instead. */
+    private syncZoomVisibility(): void {
+        const calendar = this.state.calendarMode === true;
+        this.zoomElements = this.zoomElements.filter(el => el.isConnected);
+        for (const el of this.zoomElements) el.toggleClass('storyteller-calendar-hidden', calendar);
+    }
+
     private setViewMode(mode: TimelineViewMode, sync: () => void): void {
+        const calendar = mode === 'calendar';
         const gantt = mode === 'gantt';
+        // Calendar is a view of its own, so the Timeline layout and Gantt are both off while it is on.
         const layout = mode === 'timeline' ? 'timeline' : 'chronology';
-        const changed = gantt !== this.state.ganttMode || layout !== this.state.timelineLayout;
+        const changed = gantt !== this.state.ganttMode || layout !== this.state.timelineLayout || calendar !== (this.state.calendarMode === true);
         if (!changed) return;
         this.state.ganttMode = gantt;
         this.state.timelineLayout = layout;
+        this.state.calendarMode = calendar;
         sync();
         const renderer = this.callbacks.getRenderer();
         renderer?.setTimelineLayout(layout);
         renderer?.setGanttMode(gantt);
+        renderer?.setCalendarMode(calendar);
         this.callbacks.onStateChange();
     }
 
@@ -626,6 +710,7 @@ export class TimelineControlsBuilder {
         });
 
         this.updateZoomReadout();
+        this.registerZoomElement(group);
         return group;
     }
 
@@ -668,6 +753,7 @@ export class TimelineControlsBuilder {
             { name: 'Era backgrounds', on: this.state.showEras },
             { name: 'Presence bands', on: this.state.showPresence === true },
             { name: 'Scenes', on: extras.getShowScenes() },
+            { name: 'Paths not taken', on: extras.getShowPathsNotTaken() },
             { name: 'Vault notes', on: extras.getShowWatchedNotes() }
         ];
 
@@ -710,6 +796,8 @@ export class TimelineControlsBuilder {
                     this.callbacks.onStateChange();
                 }));
             check('Scenes', extras.getShowScenes(), () => extras.setShowScenes(!extras.getShowScenes()));
+            // Choices a campaign passed over, from Campaign mode's scene events.
+            check('Paths not taken', extras.getShowPathsNotTaken(), () => extras.setShowPathsNotTaken(!extras.getShowPathsNotTaken()));
             check('Vault notes', extras.getShowWatchedNotes(), () => extras.setShowWatchedNotes(!extras.getShowWatchedNotes()));
             menu.addItem(item => item.setTitle('Manage eras…').setIcon('calendar-range')
                 .onClick(() => extras.onManageEras()));
@@ -738,6 +826,33 @@ export class TimelineControlsBuilder {
             menu.showAtMouseEvent(clickEvent);
         });
         return btn;
+    }
+
+    /**
+     * Icon mode select: off, icons, or icons with cover image strips on cards.
+     * The mode is saved with the view and with each embedded block.
+     */
+    createIconsDropdown(container: HTMLElement): HTMLSelectElement {
+        const select = container.createEl('select', {
+            cls: 'dropdown storyteller-icons-select',
+            attr: { 'aria-label': 'Icons on the timeline' }
+        });
+        const current = parseTimelineIconMode(this.state.icons) ?? defaultTimelineIconMode(this.plugin.settings.timelineShowIcons);
+        [
+            { value: 'off', label: 'Off' },
+            { value: 'icons', label: 'Icons' },
+            { value: 'images', label: 'Icons and images' }
+        ].forEach(opt => {
+            const option = select.createEl('option', { value: opt.value, text: opt.label });
+            if (opt.value === current) option.selected = true;
+        });
+        select.addEventListener('change', () => {
+            const next = parseTimelineIconMode(select.value) ?? 'icons';
+            this.state.icons = next;
+            this.callbacks.getRenderer()?.setIconMode(next);
+            this.callbacks.onStateChange();
+        });
+        return select;
     }
 
     /**
@@ -938,7 +1053,7 @@ export class TimelineControlsBuilder {
         btn.addEventListener('click', () => { void (async () => {
             const eventsPromise = this.callbacks.getEvents();
             const events = Array.isArray(eventsPromise) ? eventsPromise : await eventsPromise;
-            const conflicts = ConflictDetector.detectAllConflicts(events);
+            const conflicts = ConflictDetector.detectAllConflicts(events, [], [], this.plugin.getReferenceTodayDate());
 
             new ConflictViewModal(this.plugin.app, this.plugin, conflicts).open();
 

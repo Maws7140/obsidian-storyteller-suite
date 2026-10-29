@@ -9,6 +9,31 @@ export interface AlternatingTimelinePlacement<T> extends AlternatingTimelinePoin
     tier: number;
 }
 
+/** Narrowest vertical card that still shows a readable title and date. */
+export const VERTICAL_CARD_MIN_WIDTH = 150;
+/** Widest vertical card. Beyond this extra width adds no readable text. */
+export const VERTICAL_CARD_MAX_WIDTH = 220;
+
+/**
+ * How many side-by-side card columns fit on one side of a vertical timeline
+ * without any column dropping below the readable minimum. Columns past this
+ * count are overflow and are shown as markers rather than squeezed cards.
+ */
+export function maxVerticalCardTiers(sideWidth: number, gap = 12): number {
+    return Math.max(1, Math.floor((sideWidth + gap) / (VERTICAL_CARD_MIN_WIDTH + gap)));
+}
+
+/**
+ * Width of each card when a side holds `tierCount` columns that share the
+ * side's width. The 88 px floor only matters on canvases too narrow for the
+ * readable minimum; there the card is cut down rather than made unreadable.
+ */
+export function verticalCardWidth(sideWidth: number, tierCount: number, gap = 12): number {
+    const columns = Math.max(1, tierCount);
+    const shared = (sideWidth - (columns - 1) * gap) / columns;
+    return Math.max(88, Math.min(VERTICAL_CARD_MAX_WIDTH, shared));
+}
+
 /**
  * Alternate chronological cards across the two sides of an axis. Collisions
  * gain a perpendicular tier rather than sliding along the time axis: moving a
@@ -18,7 +43,7 @@ export function placeAlternatingTimelineCards<T>(
     points: AlternatingTimelinePoint<T>[],
     _start: number,
     _end: number,
-    cardWidth: number,
+    cardWidth: number | ((value: T, above: boolean) => number),
     gap = 12,
     alternateSides = true
 ): AlternatingTimelinePlacement<T>[] {
@@ -36,11 +61,14 @@ export function placeAlternatingTimelineCards<T>(
         const side = placements.filter(placement => placement.above === above);
         const tierEnds: number[] = [];
         side.forEach(placement => {
-            const cardStart = placement.placedPosition - cardWidth / 2;
+            // A fixed number sizes every card alike. A function sizes each card, for
+            // cards whose extent differs (photo cards are taller than text cards).
+            const extent = typeof cardWidth === 'number' ? cardWidth : cardWidth(placement.value, above);
+            const cardStart = placement.placedPosition - extent / 2;
             let tier = tierEnds.findIndex(previousEnd => previousEnd + gap <= cardStart);
             if (tier < 0) tier = tierEnds.length;
             placement.tier = tier;
-            tierEnds[tier] = placement.placedPosition + cardWidth / 2;
+            tierEnds[tier] = placement.placedPosition + extent / 2;
         });
     });
 

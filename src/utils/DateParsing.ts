@@ -25,6 +25,8 @@ export interface ParsedEventDate {
 const APPROX_RE = /(circa|around|about|approx|~|approx\.)/i;
 const BCE_RE = /\b(\d+)\s*(BC|bce|BCE|B\.C\.|B\.C|B\.C\.E\.|b\.c\.|b\.c\.e\.|bc|b\.c\.e)\b/i;
 const CE_RE = /\b(\d+)\s*(CE|ce|A\.D\.|AD|ad|a\.d\.)\b/i;
+const NEG_ISO_RE = /^-(\d{1,6})(?:-(\d{1,2}))?(?:-(\d{1,2}))?(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/;
+const BCE_TIME_ONLY_RE = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
 
 function inferPrecisionFromChrono(result: chrono.ParsedResult): ParsedPrecision {
   const start = result.start;
@@ -138,7 +140,30 @@ function splitRange(text: string): [string, string] | null {
   const approximate = APPROX_RE.test(text);
   const zone = getLuxonZone(opts.timezone);
 
-  // 0) CE date detection
+  // 0a) Negative ISO years ("-3000-01-01", "-0044-03-15"). Luxon's ISO parser
+  // rejects a leading minus, and chrono silently drops it, which is how a year
+  // of -3000 used to land at 3000 AD. Build the date from parts so the sign
+  // survives. Years are astronomical (matching formatCalendarYear), so -43 is
+  // 44 BCE, and the same BCE flags as the "44 BC" form are set.
+  const negIso = text.match(NEG_ISO_RE);
+  if (negIso) {
+    const year = -parseInt(negIso[1], 10);
+    const month = negIso[2] != null ? parseInt(negIso[2], 10) : 1;
+    const day = negIso[3] != null ? parseInt(negIso[3], 10) : 1;
+    const hasTime = negIso[4] != null;
+    const dt = DateTime.fromObject({
+      year, month, day,
+      hour: hasTime ? parseInt(negIso[4], 10) : 0,
+      minute: hasTime ? parseInt(negIso[5], 10) : 0,
+      second: hasTime && negIso[6] != null ? parseInt(negIso[6], 10) : 0,
+    }, { zone });
+    if (dt.isValid) {
+      const precision: ParsedPrecision = hasTime ? 'time' : negIso[3] != null ? 'day' : negIso[2] != null ? 'month' : 'year';
+      return { start: dt, precision, approximate, isBCE: true, originalYear: 1 - year };
+    }
+  }
+
+  // 0b) CE date detection
   const ceMatch = text.match(CE_RE);
 
   if (ceMatch) {
@@ -233,6 +258,20 @@ function splitRange(text: string): [string, string] | null {
             isBCE: true,
             originalYear: year
           };
+        }
+      }
+
+      // "44 BCE 10:00": a bare year has no month or day, so it sits on 1 January like "44 BCE",
+      // and the clock is read onto that day rather than the day of the reference date.
+      const bceTimeOnly = text.replace(BCE_RE, '').trim().match(BCE_TIME_ONLY_RE);
+      if (bceTimeOnly) {
+        const withTime = DateTime.fromObject({
+          year: jsYear, month: 1, day: 1,
+          hour: parseInt(bceTimeOnly[1], 10), minute: parseInt(bceTimeOnly[2], 10),
+          second: bceTimeOnly[3] != null ? parseInt(bceTimeOnly[3], 10) : 0,
+        }, { zone });
+        if (withTime.isValid) {
+          return { start: withTime, precision: 'time', approximate, isBCE: true, originalYear: year };
         }
       }
 
@@ -411,6 +450,18 @@ export function getEventDateForTimeline(event: Event): string | undefined {
 
 
 /** Parse a date on the timeline's UTC axis so every timeline consumer agrees on instants. */
-export function parseTimelineDate(input?: unknown): ParsedEventDate {
-  return parseEventDate(input, { timezone: 'utc' });
+export function parseTimelineDate(input?: unknown, referenceDate?: Date): ParsedEventDate {
+  return parseEventDate(input, { timezone: 'utc', referenceDate });
+}
+
+/**
+ * Read a day typed as a reference "today" (Settings > Custom today). It goes through the same
+ * parser as event dates, so "44 BCE", "-0044-03-15" and six-digit ISO all keep their year.
+ * Returns null when the text cannot be read, so the caller can say so rather than guess.
+ */
+export function parseReferenceDate(input: string): Date | null {
+  const parsed = parseEventDate(input, { timezone: 'utc' });
+  const millis = toMillis(parsed.start);
+  if (parsed.error || millis === undefined || !Number.isFinite(millis)) return null;
+  return new Date(millis);
 }

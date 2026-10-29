@@ -32,6 +32,7 @@ export const GREGORIAN_CALENDAR: CalendarSystem = {
   ],
   week: {
     days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+    firstWeekday: 1, // 0001-01-01 is a Monday
   },
   leapRule: {
     everyYears: 4,

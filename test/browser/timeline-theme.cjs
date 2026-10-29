@@ -17,6 +17,10 @@ export class TFile { constructor(path) { this.path = path; this.name = path.spli
 export async function requestUrl() { throw new Error('offline'); }
 export const Platform = { isMobile: false, isMobileApp: false, isDesktop: true, isDesktopApp: true, isTablet: false, isPhone: false, isIosApp: false, isAndroidApp: false, isMacOS: false };
 export class ButtonComponent {}
+export function getIcon() { return null; }
+export function normalizePath(p) { return String(p); }
+export function setIcon() {}
+export class Menu { addItem() { return this; } addSeparator() { return this; } showAtMouseEvent() {} showAtPosition() {} }
 export class Modal {
     constructor(app) { this.app = app; this.modalEl = document.createElement('div'); this.modalEl.className = 'modal'; this.contentEl = this.modalEl.createDiv('modal-content'); this.modalEl.addClass = (...c) => this.modalEl.classList.add(...c); this.modalEl.setCssStyles = s => Object.assign(this.modalEl.style, s); }
     open() { document.body.append(this.modalEl); this.onOpen(); }
@@ -194,9 +198,13 @@ export class Setting {
             await registry.setActiveTheme('custom');
         });
         await page.waitForFunction(() => {
-            const [r, , b] = document.querySelector('#host canvas').getContext('2d').getImageData(990, 510, 1, 1).data;
-            return r > 200 || b > 200;
-        }, null, { timeout: 5000 });
+            const [r, g, b] = document.querySelector('#host canvas').getContext('2d').getImageData(990, 510, 1, 1).data;
+            // Pure red or pure blue: the checker, not an earlier background.
+            return g < 60 && ((r > 200 && b < 60) || (b > 200 && r < 60));
+        }, null, { timeout: 5000 }).catch(async error => {
+            console.error('background state', await page.evaluate(() => JSON.stringify({ bg: renderer.style.background, held: renderer.backgroundImage && { source: renderer.backgroundImage.source, loaded: !!renderer.backgroundImage.image } })));
+            throw error;
+        });
         const bg = await pixel(...PLOT);
         assert(bg === '#ff0000' || bg === '#0000ff', `background image is drawn (got ${bg})`);
         // The sidebar is 300px wide now: x=280 is still sidebar, x=320 is plot.

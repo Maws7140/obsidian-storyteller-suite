@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { placeAlternatingTimelineCards } from '../../src/utils/TimelineCardLayout';
+import { maxVerticalCardTiers, placeAlternatingTimelineCards, verticalCardWidth } from '../../src/utils/TimelineCardLayout';
 
 describe('placeAlternatingTimelineCards', () => {
   it('alternates chronological cards above and below the axis', () => {
@@ -51,5 +51,23 @@ describe('placeAlternatingTimelineCards', () => {
     );
     expect(placed.every(item => item.above)).toBe(true);
     expect(placed.map(item => item.tier)).toEqual([0, 1, 2]);
+  });
+});
+
+describe('vertical card columns', () => {
+  it('fits only as many readable columns as the side width allows', () => {
+    expect(maxVerticalCardTiers(150)).toBe(1);
+    expect(maxVerticalCardTiers(412)).toBe(2);
+    expect(maxVerticalCardTiers(712)).toBe(4);
+    expect(maxVerticalCardTiers(0)).toBe(1);
+  });
+
+  it('gives a lone card up to 220 px and shares the side between columns', () => {
+    expect(verticalCardWidth(712, 1)).toBe(220);
+    expect(verticalCardWidth(412, 2)).toBe(200);
+  });
+
+  it('never narrows below the degenerate floor on a tiny canvas', () => {
+    expect(verticalCardWidth(40, 1)).toBe(88);
   });
 });

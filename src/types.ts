@@ -6,18 +6,54 @@ import type { App } from 'obsidian';
 import type { PlacementGrid } from './leaflet/grid/GridModel';
 
 /**
- * Relationship types for network graph visualization
+ * Relationship kinds for the network graph (R-Map style).
+ *
+ * Reading rule: a relationship is stored on the note of the owner and reads
+ * "<owner> <kind> <target>". `loves -> [[Arwen]]` on Aragorn's note means
+ * "Aragorn loves Arwen"; `parent: [[Mira]]` on Tom's note means "Tom is Mira's
+ * parent", which renders the implied `child` edge from Mira back to Tom.
+ * See RelationshipKinds.ts for categories and defaults.
+ *
+ * Old values (ally, enemy, family, rival, romantic, mentor, acquaintance,
+ * neutral, custom) remain valid and unchanged.
  */
-export type RelationshipType = 
-    | 'ally' 
-    | 'enemy' 
-    | 'family' 
-    | 'rival' 
-    | 'romantic' 
-    | 'mentor' 
-    | 'acquaintance' 
-    | 'neutral' 
+export type RelationshipType =
+    // Family
+    | 'family'
+    | 'parent'
+    | 'child'
+    | 'sibling'
+    | 'spouse'
+    // Feelings
+    | 'romantic'
+    | 'loves'
+    | 'desires'
+    | 'wants'
+    | 'hates'
+    | 'fears'
+    // Obligation
+    | 'ally'
+    | 'mentor'
+    | 'owes'
+    | 'employs'
+    | 'serves'
+    | 'loyal-to'
+    // Conflict
+    | 'enemy'
+    | 'rival'
+    | 'betrayed'
+    // Other
+    | 'acquaintance'
+    | 'secret'
+    | 'neutral'
     | 'custom';
+
+/**
+ * How a relationship is drawn.
+ * - 'to': one-way, an arrow from the owner to the target ("loves")
+ * - 'mutual': a plain line, both sides hold it ("sibling", "rival")
+ */
+export type RelationshipDirection = 'to' | 'mutual';
 
 /**
  * Typed relationship for network graph connections
@@ -26,10 +62,17 @@ export type RelationshipType =
 export interface TypedRelationship {
     /** Target entity name or ID */
     target: string;
-    /** Type of relationship for color-coding */
+    /** Kind of relationship (drives colour and grouping) */
     type: RelationshipType;
     /** Optional descriptive label */
     label?: string;
+    /**
+     * Arrow ('to') or plain line ('mutual'). Omitted means inferred from the
+     * kind: symmetric kinds are mutual, the rest are one-way.
+     */
+    direction?: RelationshipDirection;
+    /** True when the relationship has been severed. Kept on the map as history. */
+    ended?: boolean;
 }
 
 /**
@@ -43,8 +86,11 @@ export interface GraphFilters {
     /** Filter events before this date */
     timelineEnd?: string;
     /** Filter by entity types to show */
-    entityTypes?: ('character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem')[];
+    entityTypes?: GraphEntityType[];
 }
+
+/** Entity kinds that can appear as nodes in the network graph */
+export type GraphEntityType = 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem' | 'group';
 
 /**
  * Node in the network graph
@@ -55,9 +101,9 @@ export interface GraphNode {
     /** Display label */
     label: string;
     /** Entity type for styling */
-    type: 'character' | 'location' | 'event' | 'item' | 'culture' | 'economy' | 'magicsystem';
+    type: GraphEntityType;
     /** Full entity data */
-    data: Character | Location | Event | PlotItem | Culture | Economy | MagicSystem;
+    data: Character | Location | Event | PlotItem | Culture | Economy | MagicSystem | Group;
     /** Optional image URL for node background */
     imageUrl?: string;
 }
@@ -74,6 +120,12 @@ export interface GraphEdge {
     relationshipType: RelationshipType;
     /** Optional label */
     label?: string;
+    /** Arrow or plain line. Undefined for legacy and structural edges. */
+    direction?: RelationshipDirection;
+    /** Severed relationship: drawn dashed, kept as history */
+    ended?: boolean;
+    /** Inverse edge implied by a stored relationship (e.g. child implied by parent) */
+    implied?: boolean;
 }
 
 /**
@@ -352,6 +404,10 @@ export interface Scene {
     priority?: number;
     tags?: string[];
     profileImagePath?: string;
+    /** Icon value for timelines: a Lucide name, ink:/pack/emoji/vault/URL/data value. Stored in the frontmatter key set by Settings > Timeline icons (default `icon`). */
+    icon?: string;
+    /** Optional tint for the icon, as a hex or rgb()/hsl() colour. Stored in the colour key (default `iconColor`). */
+    iconColor?: string;
     /** Main prose */
     content?: string;
     /** Optional beat list */
@@ -368,6 +424,8 @@ export interface Scene {
 
     /** Optional campaign board map override for this scene. */
     campaignBoardMapId?: string;
+    /** In-world time a campaign spends here before moving on, unless the choice says otherwise. */
+    playDuration?: string;
 
     // Manuscript/Compile fields (Longform-inspired)
     /** Cached word count of scene content */
@@ -517,6 +575,9 @@ export interface Character {
     /** Current wealth/balance as a formatted string (e.g. "50gp 25sp") */
     balance?: string;
 
+    /** Runtime only: true when `balance` was derived from ledger blocks and not typed by the user (see isLedgerDerivedBalance) */
+    balanceAuto?: boolean;
+
     /** Ledger entries parsed from ```ledger fenced blocks in the markdown body (not stored in frontmatter) */
     ledger?: import('./utils/LedgerParser').LedgerEntry[];
 
@@ -539,10 +600,34 @@ export interface Character {
 }
 
 /**
+ * Effects shared by scene choices and encounter table rows, applied when the
+ * choice is taken or the row is rolled.
+ */
+export interface SceneOutcomeFields {
+    grantsItem?: string;           // item name added to party inventory
+    removesItem?: string;          // item name removed from party inventory (consumed)
+    grantsCharacter?: string;      // character name added to party
+    removesCharacter?: string;     // character name removed from party
+    setsFlag?: string;             // session flag to set
+    changesGroupStanding?: string;     // group/faction name to modify
+    changesGroupStandingId?: string;   // stable group id
+    groupStandingDelta?: number;       // amount to add/subtract from standing
+    revealsCompendiumEntry?: string;   // compendium entry to reveal
+    revealsCompendiumEntryId?: string; // stable compendium id
+    triggersEvent?: string;        // story Event entity name to link in the session log
+    triggersEventId?: string;      // stable Event id
+    clearsFlag?: string;           // session flag to remove
+    /** In-world time this takes when the campaign's time moves, e.g. "2 hours", "3 days". */
+    advances?: string;
+    /** Partylog tags applied to the session, e.g. "[Clock:Alarm +1] [PC:Boromir|HP-5]" */
+    tags?: string;
+}
+
+/**
  * A single branch/choice in a scene's interactive flowchart.
  * Stored in the ## Choices section as a ```branch code block — NOT in frontmatter.
  */
-export interface SceneBranch {
+export interface SceneBranch extends SceneOutcomeFields {
     id: string;
     label: string;
     target?: string;               // target scene name
@@ -561,6 +646,7 @@ export interface SceneBranch {
     requiresCharacter?: string;    // named character must be in the party
     requiresCharacterId?: string;  // stable character id
     requiresFlag?: string;         // session flag must be set
+    requiresNoFlag?: string;       // session flag must NOT be set
     requiresStatMin?: number;      // passive stat threshold (no dice roll) — use with stat
     requiresGroupStanding?: string;    // named group/faction whose standing is checked
     requiresGroupStandingId?: string;  // stable group id
@@ -568,24 +654,15 @@ export interface SceneBranch {
     requiresCompendiumEntry?: string;  // revealed compendium entry name required
     requiresCompendiumEntryId?: string;// stable compendium entry id
 
-    // ── Outcomes (applied when branch is taken) ───────────────────────────────
-    grantsItem?: string;           // item name added to party inventory
-    removesItem?: string;          // item name removed from party inventory (consumed)
-    grantsCharacter?: string;      // character name added to party
-    removesCharacter?: string;     // character name removed from party
-    setsFlag?: string;             // session flag to set
-    changesGroupStanding?: string;     // group/faction name to modify
-    changesGroupStandingId?: string;   // stable group id
-    groupStandingDelta?: number;       // amount to add/subtract from standing
-    revealsCompendiumEntry?: string;   // compendium entry to reveal
-    revealsCompendiumEntryId?: string; // stable compendium id
-    triggersEvent?: string;        // story Event entity name to link in the session log
-    triggersEventId?: string;      // stable Event id
+    // ── Encounters ────────────────────────────────────────────────────────────
+    rollsEncounter?: boolean;      // roll this scene's encounter table when taken; a row with a target scene overrides `target`
     hidden?: boolean;              // DM-hidden branch; not shown to players until revealed
 }
 
 /** A single row in an encounter table. */
-export interface EncounterTableRow {
+export interface EncounterTableRow extends SceneOutcomeFields {
+    /** Short key for the row's `encounter:<id>` flag. Defaults to a slug of the label. */
+    id?: string;
     min: number;
     max: number;
     label: string;
@@ -612,25 +689,85 @@ export interface PartyMemberState {
     conditions?: string[];
 }
 
+export type CampaignGroupRelationshipType = 'allied' | 'friendly' | 'neutral' | 'rival' | 'hostile' | 'at-war';
+
 export interface CampaignGroupStanding {
     groupId?: string;
     groupName?: string;
     value: number;
+    /** Relative power of the faction in the fiction (Partylog `tier:`). */
+    tier?: number;
+    /** Free-text standing with the party (Partylog `standing:`), e.g. "neutral", "suspicious". */
+    standing?: string;
+    /** Free-text status notes (Partylog `+owes us a debt`). */
+    statusNotes?: string[];
+    /**
+     * Legacy/structured relationship from the group editor. Kept so existing data keeps
+     * working; `standing` is the free-text form. See `standingForRelationshipType` in
+     * src/utils/CampaignModel.ts for the mapping between the two.
+     */
+    relationshipType?: CampaignGroupRelationshipType;
 }
 
-/** A segmented progress clock tracked inside one campaign session. */
+/** Progress tracker kinds: clocks and tracks fill up, timers count down to zero. */
+export type CampaignTrackerKind = 'clock' | 'track' | 'timer';
+
+/**
+ * A segmented progress tracker inside one campaign session.
+ * - clock / track: `current` fills from 0 up to `segments`.
+ * - timer: `current` is the remaining count; `segments` is the start value.
+ * `kind` is optional so notes written before trackers had kinds keep loading as clocks.
+ */
 export interface CampaignClock {
     id: string;
     name: string;
     current: number;
     segments: number;
+    kind?: CampaignTrackerKind;
+    /** Shown on the player screen. Clocks start DM only. */
+    shown?: boolean;
 }
+
+/** Thread-like records: plot threads, party goals and quests. */
+export type CampaignThreadKind = 'thread' | 'goal' | 'quest';
+
+/** Legacy thread status, still written so older plugin builds read the same notes. */
+export type CampaignThreadStatus = 'active' | 'resolved' | 'abandoned';
 
 /** A campaign objective, mystery, quest, or other thread tracked during play. */
 export interface CampaignThread {
     id: string;
     name: string;
-    status: 'active' | 'resolved' | 'abandoned';
+    /** Legacy status. Read on load and migrated to `state` when `state` is missing. */
+    status?: CampaignThreadStatus;
+    /** Record kind (Partylog `[Thread:]`, `[Goal:]`, `[Quest:]`). Defaults to 'thread'. */
+    kind?: CampaignThreadKind;
+    /** Free-text state, e.g. "Open", "Active", "Main". Takes precedence over `status`. */
+    state?: string;
+}
+
+/** One line of the shared party stash (Partylog `[Loot:]`). */
+export interface CampaignLootItem {
+    name: string;
+    /** Quantity; absent means 1. */
+    qty?: number;
+    /** Character name the item was assigned to; absent means unassigned in the stash. */
+    assignedTo?: string;
+}
+
+/** A character advancement recorded for the session (Partylog `[Advance:]`). */
+export interface CampaignAdvancement {
+    character: string;
+    summary: string;
+    sessionNumber?: number;
+    at?: string;
+}
+
+/** Off-camera time between sessions (Partylog §5.5 Interlude). */
+export interface CampaignInterlude {
+    title: string;
+    summary?: string;
+    changes?: string[];
 }
 
 /**
@@ -648,7 +785,11 @@ export interface CampaignSession {
     partyCharacterIds?: string[];
     partyCharacterNames?: string[];
     partyState?: PartyMemberState[];
-    /** Named items currently in the party's shared inventory. */
+    /**
+     * Named items currently in the party's shared inventory. This is the flat list used by
+     * item requirements and effects. `loot` is the Partylog stash with quantities and
+     * assignments; the two are not synchronised automatically.
+     */
     partyItems?: string[];
     /** Boolean flags set during play (e.g. "bribed-barkeep", "found-the-sword"). */
     flags?: string[];
@@ -657,12 +798,60 @@ export interface CampaignSession {
     revealedCompendiumEntryNames?: string[];
     /** Session-local record of board pickups so map items do not respawn after being taken. */
     collectedBoardItemKeys?: string[];
+    /** Board places the players have seen (location pin keys). The rest of the player board is fog. */
+    revealedLocations?: string[];
+    /** Where the DM moved the party token without changing scene (a location pin key). Cleared on entering a scene. */
+    partyLocation?: string;
+    /** The fight in progress, if any (see campaign/Combat.ts). */
+    combat?: import('./campaign/Combat').CombatState;
     /** Session-local faction standing changes. */
     groupStandings?: CampaignGroupStanding[];
     /** Segmented countdowns and progress trackers used during play. */
     clocks?: CampaignClock[];
-    /** Open and completed narrative or campaign objectives. */
+    /** Open and completed narrative or campaign objectives, goals and quests. */
     threads?: CampaignThread[];
+    /** Group-level resources and states, e.g. { Gold: 150, Rations: 10, Wagon: 'intact' }. */
+    partyResources?: Record<string, number | string>;
+    /** Unclaimed or assigned loot in the party stash. */
+    loot?: CampaignLootItem[];
+    /** Characters who advanced during this session. */
+    advancements?: CampaignAdvancement[];
+    /**
+     * Timeline fork this campaign records into. Unset means play is not
+     * recorded on the timeline. Sessions of one campaign share the fork.
+     */
+    campaignForkId?: string;
+    campaignForkName?: string;
+    /**
+     * Or the track on the main timeline it records into, and the tag that puts
+     * an event on that track. Set instead of the fork, never with it.
+     */
+    campaignTrackId?: string;
+    campaignTag?: string;
+    /** The party's current in-world date, written in the story's calendar. */
+    inWorldDate?: string;
+    /** When true, choices, encounters and scenes move the in-world date forward. */
+    timeMoves?: boolean;
+    /** The timeline event recording the scene the party is in, and when they entered it. */
+    sceneEventId?: string;
+    sceneEventStart?: string;
+    /** Session header metadata (Partylog §5.2). */
+    sessionNumber?: number;
+    date?: string;
+    duration?: string;
+    /** "Player (PC)" pairs or player names. */
+    players?: string[];
+    scribe?: string;
+    absent?: string[];
+    recap?: string;
+    goals?: string;
+    mood?: string;
+    /** Hook for the next session (Partylog §5.4 `(hook: ...)`). */
+    hook?: string;
+    /** Debrief notes (Partylog §5.4 `(note: ...)`). */
+    endNotes?: string;
+    /** Off-camera interludes recorded since the previous session (Partylog §5.5). */
+    interludes?: CampaignInterlude[];
     status?: 'active' | 'paused' | 'completed';
     created?: string;
     modified?: string;
@@ -788,6 +977,8 @@ export interface Location {
 
     /** Economic wealth/treasury of this location (e.g. "5000gp") */
     balance?: string;
+    /** Runtime only: balance derived from ledger blocks, not typed by the user (see isLedgerDerivedBalance) */
+    balanceAuto?: boolean;
 
     /** Ledger entries parsed from ```ledger fenced blocks in the markdown body (not stored in frontmatter) */
     ledger?: import('./utils/LedgerParser').LedgerEntry[];
@@ -857,6 +1048,10 @@ export interface Event {
 
     /** Path to a representative image of the event within the vault */
     profileImagePath?: string;
+    /** Icon value for timelines: a Lucide name, ink:/pack/emoji/vault/URL/data value. Stored in the frontmatter key set by Settings > Timeline icons (default `icon`). */
+    icon?: string;
+    /** Optional tint for the icon, as a hex or rgb()/hsl() colour. Stored in the colour key (default `iconColor`). */
+    iconColor?: string;
     
     /** Array of group ids this event belongs to */
     groups?: string[];
@@ -941,6 +1136,9 @@ export interface Event {
 
     /** Readable name of the session, kept alongside the id the way chapters do */
     sessionName?: string;
+
+    /** Choices offered in a played scene that the party did not take. Shown on the timeline only on request. */
+    pathsNotTaken?: string[];
 
     /** ID of the map where this event is primarily displayed */
     mapId?: string;
@@ -1312,6 +1510,14 @@ export interface StoryMap {
     
     /** GPX file paths to load as tracks/waypoints */
     gpxFiles?: string[];
+
+    /** Map Ink drawing: layers and items, in the frontmatter shape from ink/model.ts inkFrontmatter. */
+    mapInk?: unknown;
+
+    /** Old Maplog keys, read only so the drawing migrates to mapInk. Never written. */
+    maplogMarks?: unknown;
+    maplogLines?: unknown;
+    maplogAreas?: unknown;
     
     /** Custom tile server URL template (e.g., https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png) */
     tileServer?: string;
@@ -1569,6 +1775,8 @@ export interface Culture {
 
     /** Collective economic wealth/treasury (e.g. "2000gp") */
     balance?: string;
+    /** Runtime only: balance derived from ledger blocks, not typed by the user (see isLedgerDerivedBalance) */
+    balanceAuto?: boolean;
 
     /** Ledger entries parsed from ```ledger fenced blocks in the markdown body (not stored in frontmatter) */
     ledger?: import('./utils/LedgerParser').LedgerEntry[];
@@ -2504,6 +2712,8 @@ export type TimelineGroupMode =
 export interface TimelineUIState {
     /** Whether Gantt chart view is enabled */
     ganttMode: boolean;
+    /** Month grid view. Off for older saved states, which load as before. */
+    calendarMode?: boolean;
     /** Chronology keeps the original lane view; Timeline owns both orientations. */
     timelineLayout: 'chronology' | 'timeline';
     /** Orientation inside the Timeline view; Chronology and Gantt are horizontal. */
@@ -2528,6 +2738,10 @@ export interface TimelineUIState {
     currentForkId?: string;
     /** Whether narrative order is enabled */
     narrativeOrder: boolean;
+    /** Icons on markers, bars and cards: off, icons, or icons with cover image strips. Unset means the plugin default. */
+    icons?: 'off' | 'icons' | 'images';
+    /** Timeline view only: each event is just its icon or image, details on hover. */
+    minimal?: boolean;
 }
 
 /**

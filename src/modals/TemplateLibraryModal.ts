@@ -340,10 +340,11 @@ export class TemplateLibraryModal extends ResponsiveModal {
     }
 
     private handleEditTemplate(template: Template): void {
+        // The editor writes into the object it receives; give it a copy so Cancel leaves the cache untouched.
         new TemplateEditorModal(
             this.app,
             this.plugin,
-            template,
+            structuredClone(template),
             (updatedTemplate) => { void (async () => {
                 this.refreshAndDisplay();
             })(); }
@@ -495,7 +496,7 @@ export class TemplateLibraryModal extends ResponsiveModal {
         new TemplateEditorModal(
             this.app,
             this.plugin,
-            template,
+            structuredClone(template),
             (updatedTemplate) => { void (async () => {
                 // After saving, the template will be in JSON format
                 // Optionally delete the note-based version

@@ -72,6 +72,12 @@ export interface LeapRule {
 
 export interface WeekDef {
   days: string[];
+  /**
+   * 0-based index into {@link days} of the weekday the calendar's first day
+   * (year 1, first month, day 1) falls on. Anchors every later weekday.
+   * Defaults to the first weekday.
+   */
+  firstWeekday?: number;
 }
 
 export interface HolidayDef {

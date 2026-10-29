@@ -13,8 +13,10 @@ import { EventSuggestModal } from './EventSuggestModal';
 import { PlotItemSuggestModal } from './PlotItemSuggestModal';
 import { TemplatePickerModal } from './TemplatePickerModal';
 import { Template } from '../templates/TemplateTypes';
-import { EntityCustomFieldsEditor } from './entity/EntityCustomFieldsEditor';
+import { EntityCustomFieldsEditor, customFieldEditorOptions } from './entity/EntityCustomFieldsEditor';
 import { confirmWithModal } from './ui/ConfirmModal';
+import { isModalFieldVisible } from './entity/ModalFieldVisibility';
+import { createCollapsibleModalSection } from './entity/CollapsibleModalSection';
 
 export type GroupModalSubmitCallback = (group: Group) => Promise<void>;
 export type GroupModalDeleteCallback = (groupId: string) => Promise<void>;
@@ -71,8 +73,34 @@ export class GroupModal extends ResponsiveModal {
         }
         this.onSubmit = onSubmit;
         this.onDelete = onDelete;
-        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'faction', this.group.customFields);
+        this.customFieldsEditor = new EntityCustomFieldsEditor(this.app, 'faction', this.group.customFields,
+            customFieldEditorOptions(this.plugin, 'faction', () => this.group));
         this.modalEl.addClass('storyteller-group-modal');
+    }
+
+    /**
+     * Whether a field is turned on for this vault. A hidden field is simply not
+     * rendered; its stored value rides along untouched on the object that gets
+     * submitted, so turning one off never discards data.
+     */
+    private shows(fieldKey: string): boolean {
+        return isModalFieldVisible(this.plugin.settings.hiddenModalFields, 'faction', fieldKey);
+    }
+
+    /**
+     * The "Your fields" section. Only exists when the vault defines typed fields
+     * for groups: the editor renders nothing otherwise, and the empty section is
+     * then removed.
+     */
+    private renderDefinedFieldsSection(contentEl: HTMLElement): void {
+        const body = createCollapsibleModalSection(contentEl, {
+            title: 'Your fields',
+            description: 'Typed fields you defined in settings for groups',
+            icon: 'list-checks',
+            open: true,
+        });
+        this.customFieldsEditor.renderDefinedFields(body, { heading: false });
+        if (!body.hasChildNodes()) body.parentElement?.remove();
     }
 
     onOpen() { void (async () => {
@@ -185,9 +213,6 @@ export class GroupModal extends ResponsiveModal {
         // Load all entities for dropdowns
         await this.loadAllEntities();
 
-        // === BASIC INFORMATION ===
-        contentEl.createEl('h3', { text: 'Basic information' });
-
         // Name
         new Setting(contentEl)
             .setName(t('name'))
@@ -197,15 +222,42 @@ export class GroupModal extends ResponsiveModal {
                 .onChange(value => { this.group.name = value; })
             );
 
+        // Profile Image
+        if (this.shows('profileImage')) {
+            let imagePathDesc: HTMLElement | null = null;
+            const profileImageSetting = new Setting(contentEl)
+                .setName(t('profileImage'))
+                .then(s => {
+                    imagePathDesc = s.descEl.createEl('small', { text: `Current: ${this.group.profileImagePath || 'None'}` });
+                    s.descEl.addClass('storyteller-modal-setting-vertical');
+                });
+        
+            // Add image selection buttons (Gallery, Upload, Vault, Clear)
+            addImageSelectionButtons(
+                profileImageSetting,
+                this.app,
+                this.plugin,
+                {
+                    currentPath: this.group.profileImagePath,
+                    onSelect: (path) => {
+                        this.group.profileImagePath = path;
+                    },
+                    descriptionEl: imagePathDesc || undefined
+                }
+            );
+        }
+
         // Description
-        new Setting(contentEl)
-            .setName(t('description'))
-            .addTextArea(text => {
-                text.setPlaceholder(t('describeGroupPh'))
-                    .setValue(this.group.description || '')
-                    .onChange(value => { this.group.description = value; });
-                text.inputEl.rows = 4;
-            });
+        if (this.shows('description')) {
+            new Setting(contentEl)
+                .setName(t('description'))
+                .addTextArea(text => {
+                    text.setPlaceholder(t('describeGroupPh'))
+                        .setValue(this.group.description || '')
+                        .onChange(value => { this.group.description = value; });
+                    text.inputEl.rows = 4;
+                });
+        }
 
         // Group Type
         new Setting(contentEl)
@@ -228,241 +280,301 @@ export class GroupModal extends ResponsiveModal {
                 })
             );
 
+        // Defined fields always render, for collection groups too.
+        this.renderDefinedFieldsSection(contentEl);
+
+        const colorTagsVisible = this.shows('color') || this.shows('tags');
+        const colorTagsBody = colorTagsVisible
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Color and tags',
+                description: 'The group color and the tags used to find it',
+                icon: 'tags',
+                open: Boolean(this.group.color || this.group.tags?.length),
+            })
+            : null;
+
         // Color
-        new Setting(contentEl)
-            .setName(t('color'))
-            .addText(text => text
-                .setPlaceholder(t('colorPlaceholder'))
-                .setValue(this.group.color || '')
-                .onChange(value => { this.group.color = value; })
-            );
+        if (colorTagsBody && this.shows('color')) {
+            new Setting(colorTagsBody)
+                .setName(t('color'))
+                .addText(text => text
+                    .setPlaceholder(t('colorPlaceholder'))
+                    .setValue(this.group.color || '')
+                    .onChange(value => { this.group.color = value; })
+                );
+        }
 
         // Tags
-        new Setting(contentEl)
-            .setName(t('tags') || 'Tags')
-            .setDesc('Comma-separated tags')
-            .addText(text => text
-                .setPlaceholder(t('tagsPh'))
-                .setValue((this.group.tags || []).join(', '))
-                .onChange(value => { this.group.tags = value.split(',').map(t => t.trim()).filter(Boolean); })
-            );
-
-        // Profile Image
-        let imagePathDesc: HTMLElement | null = null;
-        const profileImageSetting = new Setting(contentEl)
-            .setName(t('profileImage'))
-            .then(s => {
-                imagePathDesc = s.descEl.createEl('small', { text: `Current: ${this.group.profileImagePath || 'None'}` });
-                s.descEl.addClass('storyteller-modal-setting-vertical');
-            });
-        
-        // Add image selection buttons (Gallery, Upload, Vault, Clear)
-        addImageSelectionButtons(
-            profileImageSetting,
-            this.app,
-            this.plugin,
-            {
-                currentPath: this.group.profileImagePath,
-                onSelect: (path) => {
-                    this.group.profileImagePath = path;
-                },
-                descriptionEl: imagePathDesc || undefined
-            }
-        );
+        if (colorTagsBody && this.shows('tags')) {
+            new Setting(colorTagsBody)
+                .setName(t('tags') || 'Tags')
+                .setDesc('Comma-separated tags')
+                .addText(text => text
+                    .setPlaceholder(t('tagsPh'))
+                    .setValue((this.group.tags || []).join(', '))
+                    .onChange(value => { this.group.tags = value.split(',').map(t => t.trim()).filter(Boolean); })
+                );
+        }
 
         // === MEMBERS ===
-        const membersSectionEl = contentEl.createDiv('storyteller-group-members-section');
-        this.renderMemberSelectors(membersSectionEl);
+        const membersVisible = ['memberCharacters', 'memberLocations', 'memberEvents', 'memberItems'].some(k => this.shows(k));
+        const membersBody = membersVisible
+            ? createCollapsibleModalSection(contentEl, {
+                title: 'Members',
+                description: 'Characters, locations, events, and items in this group',
+                icon: 'users',
+                open: this.group.members.length > 0,
+            })
+            : null;
+        if (membersBody) this.renderMemberSelectors(membersBody.createDiv('storyteller-group-members-section'));
 
         // === FACTION DETAILS === (only show if not collection type)
         if (this.group.groupType && this.group.groupType !== 'collection') {
-            contentEl.createEl('h3', { text: 'Faction details' });
+            const factionVisible = ['history', 'structure', 'goals', 'resources', 'strength', 'status'].some(k => this.shows(k));
+            const factionBody = factionVisible
+                ? createCollapsibleModalSection(contentEl, {
+                    title: 'Faction details',
+                    description: 'Origin, structure, goals, resources, and strength',
+                    icon: 'scroll-text',
+                    open: Boolean(this.group.history || this.group.structure || this.group.goals || this.group.resources || this.group.strength || this.group.status),
+                })
+                : null;
 
             // History
-            new Setting(contentEl)
-                .setName('History')
-                .setDesc('Origin and historical background')
-                .addTextArea(text => {
-                    text.setValue(this.group.history || '')
-                        .onChange(value => { this.group.history = value; });
-                    text.inputEl.rows = 4;
-                });
+            if (factionBody && this.shows('history')) {
+                new Setting(factionBody)
+                    .setName('History')
+                    .setDesc('Origin and historical background')
+                    .addTextArea(text => {
+                        text.setValue(this.group.history || '')
+                            .onChange(value => { this.group.history = value; });
+                        text.inputEl.rows = 4;
+                    });
+            }
 
             // Structure
-            new Setting(contentEl)
-                .setName('Structure')
-                .setDesc('Organizational hierarchy and leadership')
-                .addTextArea(text => {
-                    text.setValue(this.group.structure || '')
-                        .onChange(value => { this.group.structure = value; });
-                    text.inputEl.rows = 4;
-                });
+            if (factionBody && this.shows('structure')) {
+                new Setting(factionBody)
+                    .setName('Structure')
+                    .setDesc('Organizational hierarchy and leadership')
+                    .addTextArea(text => {
+                        text.setValue(this.group.structure || '')
+                            .onChange(value => { this.group.structure = value; });
+                        text.inputEl.rows = 4;
+                    });
+            }
 
             // Goals
-            new Setting(contentEl)
-                .setName('Goals')
-                .setDesc('Objectives and motivations')
-                .addTextArea(text => {
-                    text.setValue(this.group.goals || '')
-                        .onChange(value => { this.group.goals = value; });
-                    text.inputEl.rows = 4;
-                });
+            if (factionBody && this.shows('goals')) {
+                new Setting(factionBody)
+                    .setName('Goals')
+                    .setDesc('Objectives and motivations')
+                    .addTextArea(text => {
+                        text.setValue(this.group.goals || '')
+                            .onChange(value => { this.group.goals = value; });
+                        text.inputEl.rows = 4;
+                    });
+            }
 
             // Resources
-            new Setting(contentEl)
-                .setName('Resources')
-                .setDesc('Available assets and capabilities')
-                .addTextArea(text => {
-                    text.setValue(this.group.resources || '')
-                        .onChange(value => { this.group.resources = value; });
-                    text.inputEl.rows = 4;
-                });
+            if (factionBody && this.shows('resources')) {
+                new Setting(factionBody)
+                    .setName('Resources')
+                    .setDesc('Available assets and capabilities')
+                    .addTextArea(text => {
+                        text.setValue(this.group.resources || '')
+                            .onChange(value => { this.group.resources = value; });
+                        text.inputEl.rows = 4;
+                    });
+            }
 
             // Strength
-            new Setting(contentEl)
-                .setName('Strength')
-                .setDesc('Overall power level or description')
-                .addText(text => text
-                    .setValue(this.group.strength || '')
-                    .onChange(value => { this.group.strength = value; })
-                );
+            if (factionBody && this.shows('strength')) {
+                new Setting(factionBody)
+                    .setName('Strength')
+                    .setDesc('Overall power level or description')
+                    .addText(text => text
+                        .setValue(this.group.strength || '')
+                        .onChange(value => { this.group.strength = value; })
+                    );
+            }
 
             // Status
-            new Setting(contentEl)
-                .setName('Status')
-                .setDesc('Current state (active, dormant, disbanded, etc.)')
-                .addText(text => text
-                    .setValue(this.group.status || '')
-                    .onChange(value => { this.group.status = value; })
-                );
+            if (factionBody && this.shows('status')) {
+                new Setting(factionBody)
+                    .setName('Status')
+                    .setDesc('Current state (active, dormant, disbanded, etc.)')
+                    .addText(text => text
+                        .setValue(this.group.status || '')
+                        .onChange(value => { this.group.status = value; })
+                    );
+            }
 
-            // === POWER & INFLUENCE ===
-            contentEl.createEl('h3', { text: 'Power & influence' });
-
-            // Military Power
-            new Setting(contentEl)
-                .setName('Military power')
-                .setDesc('Military strength (0-100)')
-                .addSlider(slider => slider
-                    .setLimits(0, 100, 1)
-                    .setValue(this.group.militaryPower || 50)
-                    .setDynamicTooltip()
-                    .onChange(value => { this.group.militaryPower = value; })
-                );
-
-            // Economic Power
-            new Setting(contentEl)
-                .setName('Economic power')
-                .setDesc('Economic influence (0-100)')
-                .addSlider(slider => slider
-                    .setLimits(0, 100, 1)
-                    .setValue(this.group.economicPower || 50)
-                    .setDynamicTooltip()
-                    .onChange(value => { this.group.economicPower = value; })
-                );
-
-            // Political Influence
-            new Setting(contentEl)
-                .setName('Political influence')
-                .setDesc('Political power (0-100)')
-                .addSlider(slider => slider
-                    .setLimits(0, 100, 1)
-                    .setValue(this.group.politicalInfluence || 50)
-                    .setDynamicTooltip()
-                    .onChange(value => { this.group.politicalInfluence = value; })
-                );
-
-            // === IDENTITY & SYMBOLS ===
-            contentEl.createEl('h3', { text: 'Identity & symbols' });
-
-            // Colors
-            new Setting(contentEl)
-                .setName('Colors')
-                .setDesc('Faction colors (comma-separated)')
-                .addText(text => text
-                    .setValue((this.group.colors || []).join(', '))
-                    .onChange(value => {
-                        this.group.colors = value.split(',').map(c => c.trim()).filter(Boolean);
-                    })
-                );
-
-            // Emblem
-            new Setting(contentEl)
-                .setName('Emblem')
-                .setDesc('Symbol or emblem description')
-                .addText(text => text
-                    .setValue(this.group.emblem || '')
-                    .onChange(value => { this.group.emblem = value; })
-                );
-
-            // Motto
-            new Setting(contentEl)
-                .setName('Motto')
-                .setDesc('Slogan or motto')
-                .addText(text => text
-                    .setValue(this.group.motto || '')
-                    .onChange(value => { this.group.motto = value; })
-                );
-
-            // Territories
-            new Setting(contentEl)
-                .setName('Territories')
-                .setDesc('Controlled territories (comma-separated)')
-                .addTextArea(text => {
-                    text.setValue((this.group.territories || []).join(', '))
-                        .onChange(value => {
-                            this.group.territories = value.split(',').map(t => t.trim()).filter(Boolean);
-                        });
-                    text.inputEl.rows = 3;
+            if (this.shows('powerInfluence')) {
+                const powerBody = createCollapsibleModalSection(contentEl, {
+                    title: 'Power and influence',
+                    description: 'Military, economic, and political strength on a 0 to 100 scale',
+                    icon: 'swords',
+                    open: this.group.militaryPower !== undefined || this.group.economicPower !== undefined || this.group.politicalInfluence !== undefined,
                 });
+
+                // Military Power
+                new Setting(powerBody)
+                    .setName('Military power')
+                    .setDesc('Military strength (0-100)')
+                    .addSlider(slider => slider
+                        .setLimits(0, 100, 1)
+                        .setValue(this.group.militaryPower || 50)
+                        .setDynamicTooltip()
+                        .onChange(value => { this.group.militaryPower = value; })
+                    );
+
+                // Economic Power
+                new Setting(powerBody)
+                    .setName('Economic power')
+                    .setDesc('Economic influence (0-100)')
+                    .addSlider(slider => slider
+                        .setLimits(0, 100, 1)
+                        .setValue(this.group.economicPower || 50)
+                        .setDynamicTooltip()
+                        .onChange(value => { this.group.economicPower = value; })
+                    );
+
+                // Political Influence
+                new Setting(powerBody)
+                    .setName('Political influence')
+                    .setDesc('Political power (0-100)')
+                    .addSlider(slider => slider
+                        .setLimits(0, 100, 1)
+                        .setValue(this.group.politicalInfluence || 50)
+                        .setDynamicTooltip()
+                        .onChange(value => { this.group.politicalInfluence = value; })
+                    );
+            }
+
+            if (this.shows('identity')) {
+                const identityBody = createCollapsibleModalSection(contentEl, {
+                    title: 'Identity and symbols',
+                    description: 'Colors, emblem, motto, and territories',
+                    icon: 'sparkles',
+                    open: Boolean(this.group.colors?.length || this.group.emblem || this.group.motto || this.group.territories?.length),
+                });
+
+                // Colors
+                new Setting(identityBody)
+                    .setName('Colors')
+                    .setDesc('Faction colors (comma-separated)')
+                    .addText(text => text
+                        .setValue((this.group.colors || []).join(', '))
+                        .onChange(value => {
+                            this.group.colors = value.split(',').map(c => c.trim()).filter(Boolean);
+                        })
+                    );
+
+                // Emblem
+                new Setting(identityBody)
+                    .setName('Emblem')
+                    .setDesc('Symbol or emblem description')
+                    .addText(text => text
+                        .setValue(this.group.emblem || '')
+                        .onChange(value => { this.group.emblem = value; })
+                    );
+
+                // Motto
+                new Setting(identityBody)
+                    .setName('Motto')
+                    .setDesc('Slogan or motto')
+                    .addText(text => text
+                        .setValue(this.group.motto || '')
+                        .onChange(value => { this.group.motto = value; })
+                    );
+
+                // Territories
+                new Setting(identityBody)
+                    .setName('Territories')
+                    .setDesc('Controlled territories (comma-separated)')
+                    .addTextArea(text => {
+                        text.setValue((this.group.territories || []).join(', '))
+                            .onChange(value => {
+                                this.group.territories = value.split(',').map(t => t.trim()).filter(Boolean);
+                            });
+                        text.inputEl.rows = 3;
+                    });
+            }
 
             // === RELATIONSHIPS ===
-            contentEl.createEl('h3', { text: 'Relationships' });
+            const relationshipsVisible = ['groupRelationships', 'linkedCulture', 'parentGroup', 'subgroups'].some(k => this.shows(k));
+            const relationshipsBody = relationshipsVisible
+                ? createCollapsibleModalSection(contentEl, {
+                    title: 'Relationships',
+                    description: 'Inter-group ties, the culture, parent group, and subgroups',
+                    icon: 'link',
+                    open: Boolean(this.group.groupRelationships?.length || this.group.linkedCulture || this.group.parentGroup || this.group.subgroups?.length),
+                })
+                : null;
 
-            // Group Relationships
-            if (!this.group.groupRelationships) {
-                this.group.groupRelationships = [];
+            if (relationshipsBody && this.shows('groupRelationships')) {
+                // Group Relationships
+                if (!this.group.groupRelationships) {
+                    this.group.groupRelationships = [];
+                }
+                const relationshipEditorEl = relationshipsBody.createDiv('storyteller-group-relationship-editor');
+                this.renderGroupRelationshipEditor(relationshipEditorEl);
             }
-            const relationshipEditorEl = contentEl.createDiv('storyteller-group-relationship-editor');
-            this.renderGroupRelationshipEditor(relationshipEditorEl);
 
             // Linked Culture
-            new Setting(contentEl)
-                .setName('Linked culture')
-                .setDesc('Associated culture')
-                .addDropdown(dropdown => {
-                    dropdown.addOption('', 'None');
-                    this.allCultures.forEach(c => { dropdown.addOption(c.name, c.name); });
-                    dropdown.setValue(this.group.linkedCulture || '')
-                        .onChange(value => { this.group.linkedCulture = value || undefined; });
-                });
+            if (relationshipsBody && this.shows('linkedCulture')) {
+                new Setting(relationshipsBody)
+                    .setName('Linked culture')
+                    .setDesc('Associated culture')
+                    .addDropdown(dropdown => {
+                        dropdown.addOption('', 'None');
+                        this.allCultures.forEach(c => { dropdown.addOption(c.name, c.name); });
+                        dropdown.setValue(this.group.linkedCulture || '')
+                            .onChange(value => { this.group.linkedCulture = value || undefined; });
+                    });
+            }
 
             // Parent Group
-            new Setting(contentEl)
-                .setName('Parent group')
-                .setDesc('Larger organization this group belongs to')
-                .addDropdown(dropdown => {
-                    dropdown.addOption('', 'None');
-                    this.allGroups
-                        .filter(g => g.id !== this.group.id)
-                        .forEach(g => { dropdown.addOption(g.name, g.name); });
-                    dropdown.setValue(this.group.parentGroup || '')
-                        .onChange(value => { this.group.parentGroup = value || undefined; });
-                });
+            if (relationshipsBody && this.shows('parentGroup')) {
+                new Setting(relationshipsBody)
+                    .setName('Parent group')
+                    .setDesc('Larger organization this group belongs to')
+                    .addDropdown(dropdown => {
+                        dropdown.addOption('', 'None');
+                        this.allGroups
+                            .filter(g => g.id !== this.group.id)
+                            .forEach(g => { dropdown.addOption(g.name, g.name); });
+                        dropdown.setValue(this.group.parentGroup || '')
+                            .onChange(value => { this.group.parentGroup = value || undefined; });
+                    });
+            }
 
             // Subgroups
-            new Setting(contentEl)
-                .setName('Subgroups')
-                .setDesc('Smaller groups within this organization (comma-separated)')
-                .addTextArea(text => {
-                    text.setValue((this.group.subgroups || []).join(', '))
-                        .onChange(value => {
-                            this.group.subgroups = value.split(',').map(s => s.trim()).filter(Boolean);
-                        });
-                    text.inputEl.rows = 2;
-                });
+            if (relationshipsBody && this.shows('subgroups')) {
+                new Setting(relationshipsBody)
+                    .setName('Subgroups')
+                    .setDesc('Smaller groups within this organization (comma-separated)')
+                    .addTextArea(text => {
+                        text.setValue((this.group.subgroups || []).join(', '))
+                            .onChange(value => {
+                                this.group.subgroups = value.split(',').map(s => s.trim()).filter(Boolean);
+                            });
+                        text.inputEl.rows = 2;
+                    });
+            }
 
-            this.customFieldsEditor.renderSection(contentEl);
+        }
+
+        // Only the free-form rows follow the Custom fields switch.
+        if (this.shows('customFields')) {
+            const customFieldsBody = createCollapsibleModalSection(contentEl, {
+                title: 'Custom fields',
+                description: 'Additional properties specific to this project',
+                icon: 'list-plus',
+                open: Boolean(Object.keys(this.group.customFields || {}).length),
+            });
+            this.customFieldsEditor.renderFreeFormSection(customFieldsBody, { heading: false });
         }
 
         if (!this.isNew && this.onDelete) {
@@ -708,177 +820,184 @@ export class GroupModal extends ResponsiveModal {
 
     renderMemberSelectors(container: HTMLElement) {
         container.empty();
-        container.createEl('h3', { text: t('members') });
 
         const isMember = (type: 'character' | 'location' | 'event' | 'item', id: string) =>
             this.group.members.some(m => m.type === type && m.id === id);
 
-        // --- Characters Multi-Select ---
-        const charSetting = new Setting(container)
-            .setName(t('characters'));
-        const charTagContainer = charSetting.controlEl.createDiv('group-tag-list');
-        this.group.members.filter(m => m.type === 'character').forEach(member => {
-            const char = this.allCharacters.find(c => (c.id || c.name) === member.id);
-            if (char) {
-                const tag = charTagContainer.createSpan({ cls: 'group-tag' });
-                const nameLink = tag.createEl('a', { text: char.name, cls: 'group-member-link' });
-                nameLink.onclick = async (e) => {
-                    e.preventDefault();
-                    const { CharacterModal } = await import('./CharacterModal');
-                    new CharacterModal(this.app, this.plugin, char, async () => {}).open();
-                };
-                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                removeBtn.onclick = async () => {
-                    this.group.members = this.group.members.filter(m => !(m.type === 'character' && m.id === member.id));
-                    if (!this.isNew && this.group.id) {
-                        await this.plugin.removeMemberFromGroup(this.group.id, 'character', member.id);
-                    }
-                    this.renderMemberSelectors(container);
-                };
-            }
-        });
-        charSetting.addButton(btn => {
-            btn.setButtonText(t('add'))
-                .setCta()
-                .onClick(() => {
-                    new CharacterSuggestModal(this.app, this.plugin, (selectedChar) => { void (async () => {
-                        if (selectedChar && !isMember('character', selectedChar.id || selectedChar.name)) {
-                            this.group.members.push({ type: 'character', id: selectedChar.id || selectedChar.name, name: selectedChar.name });
-                            // Only update in settings if group already exists (not new)
-                            if (!this.isNew && this.group.id) {
-                                await this.plugin.addMemberToGroup(this.group.id, 'character', selectedChar.id || selectedChar.name);
-                            }
-                            this.renderMemberSelectors(container);
-                        }
-                    })(); }).open();
-                });
-        });
-
-        // --- Locations Multi-Select ---
-        const locSetting = new Setting(container)
-            .setName(t('locations'));
-        const locTagContainer = locSetting.controlEl.createDiv('group-tag-list');
-        this.group.members.filter(m => m.type === 'location').forEach(member => {
-            const loc = this.allLocations.find(l => (l.id || l.name) === member.id);
-            if (loc) {
-                const tag = locTagContainer.createSpan({ cls: 'group-tag' });
-                const nameLink = tag.createEl('a', { text: loc.name, cls: 'group-member-link' });
-                nameLink.onclick = async (e) => {
-                    e.preventDefault();
-                    const { LocationModal } = await import('./LocationModal');
-                    new LocationModal(this.app, this.plugin, loc, async () => {}).open();
-                };
-                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                removeBtn.onclick = async () => {
-                    this.group.members = this.group.members.filter(m => !(m.type === 'location' && m.id === member.id));
-                    if (!this.isNew && this.group.id) {
-                        await this.plugin.removeMemberFromGroup(this.group.id, 'location', member.id);
-                    }
-                    this.renderMemberSelectors(container);
-                };
-            }
-        });
-        locSetting.addButton(btn => {
-            btn.setButtonText(t('add'))
-                .setCta()
-                .onClick(() => {
-                    new LocationSuggestModal(this.app, this.plugin, (selectedLoc) => { void (async () => {
-                        if (selectedLoc && !isMember('location', selectedLoc.id || selectedLoc.name)) {
-                            this.group.members.push({ type: 'location', id: selectedLoc.id || selectedLoc.name, name: selectedLoc.name });
-                            // Only update in settings if group already exists (not new)
-                            if (!this.isNew && this.group.id) {
-                                await this.plugin.addMemberToGroup(this.group.id, 'location', selectedLoc.id || selectedLoc.name);
-                            }
-                            this.renderMemberSelectors(container);
-                        }
-                    })(); }).open();
-                });
-        });
-
-        // --- Events Multi-Select ---
-        const evtSetting = new Setting(container)
-            .setName(t('events'));
-        const evtTagContainer = evtSetting.controlEl.createDiv('group-tag-list');
-        this.group.members.filter(m => m.type === 'event').forEach(member => {
-            const evt = this.allEvents.find(e => (e.id || e.name) === member.id);
-            if (evt) {
-                const tag = evtTagContainer.createSpan({ cls: 'group-tag' });
-                const nameLink = tag.createEl('a', { text: evt.name, cls: 'group-member-link' });
-                nameLink.onclick = async (e) => {
-                    e.preventDefault();
-                    const { EventModal } = await import('./EventModal');
-                    new EventModal(this.app, this.plugin, evt, async updated => {
-                        await this.plugin.saveEvent(updated);
-                        const index = this.allEvents.findIndex(event => (event.id || event.name) === (updated.id || updated.name));
-                        if (index >= 0) this.allEvents[index] = updated;
-                        this.renderMemberSelectors(container);
-                    }).open();
-                };
-                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                removeBtn.onclick = async () => {
-                    this.group.members = this.group.members.filter(m => !(m.type === 'event' && m.id === member.id));
-                    if (!this.isNew && this.group.id) {
-                        await this.plugin.removeMemberFromGroup(this.group.id, 'event', member.id);
-                    }
-                    this.renderMemberSelectors(container);
-                };
-            }
-        });
-        evtSetting.addButton(btn => {
-            btn.setButtonText(t('add'))
-                .setCta()
-                .onClick(() => {
-                    new EventSuggestModal(this.app, this.plugin, (selectedEvt) => { void (async () => {
-                        if (selectedEvt && !isMember('event', selectedEvt.id || selectedEvt.name)) {
-                            this.group.members.push({ type: 'event', id: selectedEvt.id || selectedEvt.name, name: selectedEvt.name });
-                            // Only update in settings if group already exists (not new)
-                            if (!this.isNew && this.group.id) {
-                                await this.plugin.addMemberToGroup(this.group.id, 'event', selectedEvt.id || selectedEvt.name);
-                            }
-                            this.renderMemberSelectors(container);
-                        }
-                    })(); }).open();
-                });
-        });
-
-        // --- Items Multi-Select ---
-        const itemSetting = new Setting(container).setName(t('items'));
-        const itemTagContainer = itemSetting.controlEl.createDiv('group-tag-list');
-        this.group.members.filter(m => m.type === 'item').forEach(member => {
-            const item = this.allPlotItems.find(i => (i.id || i.name) === member.id);
-            if (item) {
-                const tag = itemTagContainer.createSpan({ cls: 'group-tag' });
-                const nameLink = tag.createEl('a', { text: item.name, cls: 'group-member-link' });
-                nameLink.onclick = async (e) => {
-                    e.preventDefault();
-                    const { PlotItemModal } = await import('./PlotItemModal');
-                    new PlotItemModal(this.app, this.plugin, item, async () => {}).open();
-                };
-                const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
-                removeBtn.onclick = async () => {
-                    this.group.members = this.group.members.filter(m => !(m.type === 'item' && m.id === member.id));
-                    if (!this.isNew && this.group.id) {
-                        await this.plugin.removeMemberFromGroup(this.group.id, 'item', member.id);
-                    }
-                    this.renderMemberSelectors(container);
-                };
-            }
-        });
-        itemSetting.addButton(btn => {
-            btn.setButtonText(t('add')).setCta().onClick(() => {
-                new PlotItemSuggestModal(this.app, this.plugin, (selectedItem) => { void (async () => {
-                    const itemId = selectedItem.id || selectedItem.name;
-                    if (selectedItem && !this.group.members.some(m => m.type === 'item' && m.id === itemId)) {
-                        this.group.members.push({ type: 'item', id: itemId, name: selectedItem.name });
-                        // Only update in settings if group already exists (not new)
+        if (this.shows('memberCharacters')) {
+            // --- Characters Multi-Select ---
+            const charSetting = new Setting(container)
+                .setName(t('characters'));
+            const charTagContainer = charSetting.controlEl.createDiv('group-tag-list');
+            this.group.members.filter(m => m.type === 'character').forEach(member => {
+                const char = this.allCharacters.find(c => (c.id || c.name) === member.id);
+                if (char) {
+                    const tag = charTagContainer.createSpan({ cls: 'group-tag' });
+                    const nameLink = tag.createEl('a', { text: char.name, cls: 'group-member-link' });
+                    nameLink.onclick = async (e) => {
+                        e.preventDefault();
+                        const { CharacterModal } = await import('./CharacterModal');
+                        new CharacterModal(this.app, this.plugin, char, async () => {}).open();
+                    };
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                    removeBtn.onclick = async () => {
+                        this.group.members = this.group.members.filter(m => !(m.type === 'character' && m.id === member.id));
                         if (!this.isNew && this.group.id) {
-                            await this.plugin.addMemberToGroup(this.group.id, 'item', itemId);
+                            await this.plugin.removeMemberFromGroup(this.group.id, 'character', member.id);
                         }
                         this.renderMemberSelectors(container);
-                    }
-                })(); }).open();
+                    };
+                }
             });
-        });
+            charSetting.addButton(btn => {
+                btn.setButtonText(t('add'))
+                    .setCta()
+                    .onClick(() => {
+                        new CharacterSuggestModal(this.app, this.plugin, (selectedChar) => { void (async () => {
+                            if (selectedChar && !isMember('character', selectedChar.id || selectedChar.name)) {
+                                this.group.members.push({ type: 'character', id: selectedChar.id || selectedChar.name, name: selectedChar.name });
+                                // Only update in settings if group already exists (not new)
+                                if (!this.isNew && this.group.id) {
+                                    await this.plugin.addMemberToGroup(this.group.id, 'character', selectedChar.id || selectedChar.name);
+                                }
+                                this.renderMemberSelectors(container);
+                            }
+                        })(); }).open();
+                    });
+            });
+        }
+
+        if (this.shows('memberLocations')) {
+            // --- Locations Multi-Select ---
+            const locSetting = new Setting(container)
+                .setName(t('locations'));
+            const locTagContainer = locSetting.controlEl.createDiv('group-tag-list');
+            this.group.members.filter(m => m.type === 'location').forEach(member => {
+                const loc = this.allLocations.find(l => (l.id || l.name) === member.id);
+                if (loc) {
+                    const tag = locTagContainer.createSpan({ cls: 'group-tag' });
+                    const nameLink = tag.createEl('a', { text: loc.name, cls: 'group-member-link' });
+                    nameLink.onclick = async (e) => {
+                        e.preventDefault();
+                        const { LocationModal } = await import('./LocationModal');
+                        new LocationModal(this.app, this.plugin, loc, async () => {}).open();
+                    };
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                    removeBtn.onclick = async () => {
+                        this.group.members = this.group.members.filter(m => !(m.type === 'location' && m.id === member.id));
+                        if (!this.isNew && this.group.id) {
+                            await this.plugin.removeMemberFromGroup(this.group.id, 'location', member.id);
+                        }
+                        this.renderMemberSelectors(container);
+                    };
+                }
+            });
+            locSetting.addButton(btn => {
+                btn.setButtonText(t('add'))
+                    .setCta()
+                    .onClick(() => {
+                        new LocationSuggestModal(this.app, this.plugin, (selectedLoc) => { void (async () => {
+                            if (selectedLoc && !isMember('location', selectedLoc.id || selectedLoc.name)) {
+                                this.group.members.push({ type: 'location', id: selectedLoc.id || selectedLoc.name, name: selectedLoc.name });
+                                // Only update in settings if group already exists (not new)
+                                if (!this.isNew && this.group.id) {
+                                    await this.plugin.addMemberToGroup(this.group.id, 'location', selectedLoc.id || selectedLoc.name);
+                                }
+                                this.renderMemberSelectors(container);
+                            }
+                        })(); }).open();
+                    });
+            });
+        }
+
+        if (this.shows('memberEvents')) {
+            // --- Events Multi-Select ---
+            const evtSetting = new Setting(container)
+                .setName(t('events'));
+            const evtTagContainer = evtSetting.controlEl.createDiv('group-tag-list');
+            this.group.members.filter(m => m.type === 'event').forEach(member => {
+                const evt = this.allEvents.find(e => (e.id || e.name) === member.id);
+                if (evt) {
+                    const tag = evtTagContainer.createSpan({ cls: 'group-tag' });
+                    const nameLink = tag.createEl('a', { text: evt.name, cls: 'group-member-link' });
+                    nameLink.onclick = async (e) => {
+                        e.preventDefault();
+                        const { EventModal } = await import('./EventModal');
+                        new EventModal(this.app, this.plugin, evt, async updated => {
+                            await this.plugin.saveEvent(updated);
+                            const index = this.allEvents.findIndex(event => (event.id || event.name) === (updated.id || updated.name));
+                            if (index >= 0) this.allEvents[index] = updated;
+                            this.renderMemberSelectors(container);
+                        }).open();
+                    };
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                    removeBtn.onclick = async () => {
+                        this.group.members = this.group.members.filter(m => !(m.type === 'event' && m.id === member.id));
+                        if (!this.isNew && this.group.id) {
+                            await this.plugin.removeMemberFromGroup(this.group.id, 'event', member.id);
+                        }
+                        this.renderMemberSelectors(container);
+                    };
+                }
+            });
+            evtSetting.addButton(btn => {
+                btn.setButtonText(t('add'))
+                    .setCta()
+                    .onClick(() => {
+                        new EventSuggestModal(this.app, this.plugin, (selectedEvt) => { void (async () => {
+                            if (selectedEvt && !isMember('event', selectedEvt.id || selectedEvt.name)) {
+                                this.group.members.push({ type: 'event', id: selectedEvt.id || selectedEvt.name, name: selectedEvt.name });
+                                // Only update in settings if group already exists (not new)
+                                if (!this.isNew && this.group.id) {
+                                    await this.plugin.addMemberToGroup(this.group.id, 'event', selectedEvt.id || selectedEvt.name);
+                                }
+                                this.renderMemberSelectors(container);
+                            }
+                        })(); }).open();
+                    });
+            });
+        }
+
+        if (this.shows('memberItems')) {
+            // --- Items Multi-Select ---
+            const itemSetting = new Setting(container).setName(t('items'));
+            const itemTagContainer = itemSetting.controlEl.createDiv('group-tag-list');
+            this.group.members.filter(m => m.type === 'item').forEach(member => {
+                const item = this.allPlotItems.find(i => (i.id || i.name) === member.id);
+                if (item) {
+                    const tag = itemTagContainer.createSpan({ cls: 'group-tag' });
+                    const nameLink = tag.createEl('a', { text: item.name, cls: 'group-member-link' });
+                    nameLink.onclick = async (e) => {
+                        e.preventDefault();
+                        const { PlotItemModal } = await import('./PlotItemModal');
+                        new PlotItemModal(this.app, this.plugin, item, async () => {}).open();
+                    };
+                    const removeBtn = tag.createSpan({ text: ' ×', cls: 'remove-group-btn' });
+                    removeBtn.onclick = async () => {
+                        this.group.members = this.group.members.filter(m => !(m.type === 'item' && m.id === member.id));
+                        if (!this.isNew && this.group.id) {
+                            await this.plugin.removeMemberFromGroup(this.group.id, 'item', member.id);
+                        }
+                        this.renderMemberSelectors(container);
+                    };
+                }
+            });
+            itemSetting.addButton(btn => {
+                btn.setButtonText(t('add')).setCta().onClick(() => {
+                    new PlotItemSuggestModal(this.app, this.plugin, (selectedItem) => { void (async () => {
+                        const itemId = selectedItem.id || selectedItem.name;
+                        if (selectedItem && !this.group.members.some(m => m.type === 'item' && m.id === itemId)) {
+                            this.group.members.push({ type: 'item', id: itemId, name: selectedItem.name });
+                            // Only update in settings if group already exists (not new)
+                            if (!this.isNew && this.group.id) {
+                                await this.plugin.addMemberToGroup(this.group.id, 'item', itemId);
+                            }
+                            this.renderMemberSelectors(container);
+                        }
+                    })(); }).open();
+                });
+            });
+        }
     }
 
     // THIS is where the extra '}' was, which I removed.

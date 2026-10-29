@@ -1,0 +1,16 @@
+
+- The campaign is staged at **A Shadow in the Shire**.
+- Test the stealth branch first, then test using the Ring.
+- Using the Ring should set `ring-used` and reveal [[../Compendium/The Ringwraiths]].
+- Advance clocks as pursuit and corruption increase.
+- Location *The Shire* sets flags: left-home
+- Entered *01 - A Shadow in the Shire*
+- Session paused.
+- Entered *01 - A Shadow in the Shire*
+- Used *The One Ring*: Reveals the bearer to the Enemy and increases corruption pressure.
+- Thread Aragorn Claims His Name: resolved
+- Thread Destroy the One Ring: resolved
+- Session closed.
+- Entered *01 - A Shadow in the Shire*
+- Session closed.
+- Entered *01 - A Shadow in the Shire*

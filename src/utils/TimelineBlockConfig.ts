@@ -5,6 +5,8 @@
 
 import type { TimelineFilters } from './NativeTimelineRenderer';
 import type { TimelineGroupMode } from '../types';
+import { parseTimelineIconMode } from './TimelineIconLayout';
+import type { TimelineIconMode } from './TimelineIconLayout';
 
 /** Every knob a fenced timeline block can turn. */
 export interface TimelineBlockConfig {
@@ -16,6 +18,8 @@ export interface TimelineBlockConfig {
     showPresence: boolean;
     narrativeOrder: boolean;
     stackEnabled: boolean;
+    /** Icon mode from `icons:`. Undefined keeps the plugin default. */
+    iconMode?: TimelineIconMode;
     filters: TimelineFilters;
     /**
      * Theme to draw with, by id or name, instead of the story's own. Resolved
@@ -105,6 +109,12 @@ export function parseTimelineBlock(source: string): TimelineBlockConfig {
             case 'presence': config.showPresence = asBoolean(value); break;
             case 'narrative': config.narrativeOrder = asBoolean(value); break;
             case 'stack': config.stackEnabled = asBoolean(value); break;
+            case 'icons': {
+                const mode = parseTimelineIconMode(value);
+                if (mode) config.iconMode = mode;
+                else config.errors.push(`Icons "${value}" is not one of: off, icons, images`);
+                break;
+            }
             case 'milestones': config.filters.milestonesOnly = asBoolean(value); break;
             case 'characters': config.filters.characters = asList(value); break;
             case 'locations': config.filters.locations = asList(value); break;
