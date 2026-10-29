@@ -31,7 +31,7 @@ export function prepareFuzzySearch() { return () => null; }
 // Records every control so the harness can drive it by setting name.
 window.controls = [];
 class Component {
-    constructor(kind, setting) { this.kind = kind; this.setting = setting; this.inputEl = document.createElement('input'); window.controls.push(this); }
+    constructor(kind, setting) { this.kind = kind; this.setting = setting; this.inputEl = document.createElement('input'); this.sliderEl = document.createElement('input'); window.controls.push(this); }
     setValue(v) { this.value = v; return this; } getValue() { return this.value; }
     onChange(f) { this.change = f; return this; } onClick(f) { this.click = f; return this; }
     setPlaceholder() { return this; } setLimits() { return this; } setDynamicTooltip() { return this; }
@@ -95,6 +95,7 @@ export class Setting {
             };
             HTMLElement.prototype.createDiv = function (options) { return this.createEl('div', options); };
             HTMLElement.prototype.empty = function () { this.replaceChildren(); };
+            HTMLElement.prototype.setAttr = function (key, value) { this.setAttribute(key, value); };
             HTMLElement.prototype.hide = function () { this.style.display = 'none'; };
             HTMLElement.prototype.show = function () { this.style.display = ''; };
             HTMLElement.prototype.toggleClass = function (cls, on) { this.classList.toggle(cls, on); };
@@ -246,19 +247,41 @@ export class Setting {
         await settle();
         assert.equal(await previewPixel(), '#00aa55', 'preview follows the draft');
         assert.equal(await page.evaluate(() => plugin.settings.stories[0].activeTimelineThemeId), 'custom', 'nothing saved before Save');
+        // Opacity and visibility, which the colour picker alone cannot express.
+        const control = (kind, name) => `controls.findLast(c => c.kind === '${kind}' && c.setting.name === '${name}')`;
+        await page.evaluate(`${control('slider', 'Background')}.change(40)`);
+        await page.waitForTimeout(150);
+        await settle();
+        const previewAlpha = await page.evaluate(() => {
+            const canvas = document.querySelector('.storyteller-theme-preview-canvas canvas');
+            return canvas.getContext('2d').getImageData(canvas.width - 4, canvas.height - 4, 1, 1).data[3];
+        });
+        assert(Math.abs(previewAlpha - 102) <= 2, `a 40% background paints see-through (alpha ${previewAlpha})`);
+        assert.equal(await page.evaluate(`${control('toggle', 'Background')}.value`), true, 'still visible at 40%');
+        await page.evaluate(`${control('toggle', 'Grid')}.change(false)`);
+        assert.equal(await page.evaluate(`${control('slider', 'Grid')}.value`), 0, 'hiding moves the slider to 0');
+        assert.match(await page.evaluate(() => editor.draft.colors.grid), /^#[0-9a-f]{6}00$/, 'hidden is opacity 0');
+        await page.evaluate(`${control('slider', 'Grid')}.change(30)`);
+        await page.evaluate(`${control('toggle', 'Grid')}.change(false)`);
+        await page.evaluate(`${control('toggle', 'Grid')}.change(true)`);
+        assert.equal(await page.evaluate(`${control('slider', 'Grid')}.value`), 30, 'showing again restores the previous opacity');
+        await page.evaluate(`${control('toggle', 'Grid')}.change(false)`);
         await page.evaluate(() => controls.find(c => c.kind === 'toggle' && c.setting.name === 'Custom palette').change(true));
+        await page.evaluate(`${control('slider', 'Colour 1')}.change(50)`);
         const paletteRows = await page.evaluate(() => controls.filter(c => c.kind === 'color' && /^Colour \d+$/.test(c.setting.name)).length);
         assert.equal(paletteRows, 10, 'custom palette starts from the inherited ten colours');
         await page.evaluate(async () => { await controls.find(c => c.kind === 'button' && c.text === 'Save theme').click(); });
         await page.waitForTimeout(50);
         const saved = await page.evaluate(() => ({ active: plugin.settings.stories[0].activeTimelineThemeId, theme: plugin.settings.timelineThemes.find(t => t.id === 'edited') }));
         assert.equal(saved.active, 'edited');
-        assert.equal(saved.theme.colors.background, '#00aa55');
+        assert.equal(saved.theme.colors.background, '#00aa5566', 'opacity is saved as #rrggbbaa');
+        assert.match(saved.theme.colors.grid, /^#[0-9a-f]{6}00$/, 'a hidden colour is saved invisible');
+        assert.match(saved.theme.palette[0], /^#[0-9a-f]{6}80$/, 'palette colours keep their opacity');
         assert.equal(saved.theme.palette.length, 10);
         assert.equal(await page.locator('.storyteller-theme-preview-canvas canvas').count(), 0, 'closing tears the preview down');
 
         assert.deepEqual(errors, []);
-        console.log('PASS native, CSS snippet + css-change, theme switch, custom palette/label width/background image, export, preview override, theme editor preview and save.');
+        console.log('PASS native, CSS snippet + css-change, theme switch, custom palette/label width/background image, export, preview override, theme editor preview, opacity/visibility and save.');
     } finally {
         await browser.close();
     }

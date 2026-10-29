@@ -18,7 +18,10 @@ import {
     MAX_TIMELINE_PALETTE,
     TIMELINE_COLOR_ROLES,
     TIMELINE_LANE_COUNT_VARIABLE,
+    joinColorAlpha,
     laneVariable,
+    splitColorAlpha,
+    type ColorWithAlpha,
     type TimelineColorRole,
 } from '../utils/TimelineStyle';
 import { ImageSuggestModal } from './GalleryModal';
@@ -328,19 +331,75 @@ export class TimelineThemeEditorModal extends Modal {
             .onChange(next => { apply(next); this.changed(); }));
     }
 
+    /**
+     * One colour role: picker, opacity, visibility and reset in a single row.
+     *
+     * The picker only speaks solid hex, so opacity rides alongside it and the
+     * two are joined into `#rrggbbaa` on save. Hiding a colour sets its opacity
+     * to zero and remembers the opacity it had, so turning it back on returns
+     * to the same strength rather than to solid.
+     */
     private renderColor(role: TimelineColorRole): void {
         const spec = TIMELINE_COLOR_ROLES[role];
-        const own = this.draft.colors?.[role];
+        const current = toColorWithAlpha(this.draft.colors?.[role] || this.inherited(spec.variable, spec.fallback));
+        let lastVisibleAlpha = current.alpha > 0 ? current.alpha : 1;
+        let syncing = false;
         const setting = new Setting(this.formEl).setName(spec.label);
-        const describe = () => setting.setDesc(`${spec.description} ${this.draft.colors?.[role] ? 'Set by this theme.' : 'Inherited from Obsidian.'}`);
+        const describe = () => {
+            const own = this.draft.colors?.[role];
+            const state = !own ? 'Inherited from Obsidian.'
+                : current.alpha <= 0 ? 'Hidden.'
+                : current.alpha < 1 ? `Set by this theme, ${Math.round(current.alpha * 100)}% opacity.`
+                : 'Set by this theme.';
+            setting.setDesc(`${spec.description} ${state}`);
+        };
+        const write = () => {
+            (this.draft.colors ||= {} as TimelineThemeColors)[role] = joinColorAlpha(current.hex, current.alpha);
+            describe();
+            this.changed();
+        };
         describe();
         setting.addColorPicker(picker => {
-            picker.setValue(toHex(own || this.inherited(spec.variable, spec.fallback)));
+            picker.setValue(current.hex);
             picker.onChange(value => {
-                (this.draft.colors ||= {} as TimelineThemeColors)[role] = value;
-                describe();
-                this.changed();
+                current.hex = value;
+                write();
             });
+        });
+        let slider: { setValue(value: number): unknown } | null = null;
+        let toggle: { setValue(value: boolean): unknown } | null = null;
+        setting.addSlider(component => {
+            slider = component;
+            component
+                .setLimits(0, 100, 5)
+                .setValue(Math.round(current.alpha * 100))
+                // Still needed: before Obsidian 1.13 a slider shows no value without it.
+                // eslint-disable-next-line @typescript-eslint/no-deprecated
+                .setDynamicTooltip()
+                .onChange(value => {
+                    if (syncing) return;
+                    current.alpha = value / 100;
+                    if (current.alpha > 0) lastVisibleAlpha = current.alpha;
+                    syncing = true;
+                    toggle?.setValue(current.alpha > 0);
+                    syncing = false;
+                    write();
+                });
+            component.sliderEl.setAttr('aria-label', `${spec.label} opacity`);
+        });
+        setting.addToggle(component => {
+            toggle = component;
+            component
+                .setTooltip('Visible')
+                .setValue(current.alpha > 0)
+                .onChange(visible => {
+                    if (syncing) return;
+                    current.alpha = visible ? lastVisibleAlpha : 0;
+                    syncing = true;
+                    slider?.setValue(Math.round(current.alpha * 100));
+                    syncing = false;
+                    write();
+                });
         });
         setting.addExtraButton(button => button.setIcon('rotate-ccw').setTooltip('Inherit from Obsidian').onClick(() => {
             if (this.draft.colors) delete this.draft.colors[role];
@@ -363,12 +422,30 @@ export class TimelineThemeEditorModal extends Modal {
         if (!custom) return;
         const palette = this.draft.palette || [];
         palette.forEach((color, index) => {
+            const current = toColorWithAlpha(color);
+            const write = () => {
+                palette[index] = joinColorAlpha(current.hex, current.alpha);
+                this.changed();
+            };
             new Setting(this.formEl)
                 .setName(`Colour ${index + 1}`)
-                .addColorPicker(picker => picker.setValue(toHex(color)).onChange(value => {
-                    palette[index] = value;
-                    this.changed();
+                .addColorPicker(picker => picker.setValue(current.hex).onChange(value => {
+                    current.hex = value;
+                    write();
                 }))
+                .addSlider(slider => {
+                    slider
+                        .setLimits(0, 100, 5)
+                        .setValue(Math.round(current.alpha * 100))
+                        // Still needed: before Obsidian 1.13 a slider shows no value without it.
+                        // eslint-disable-next-line @typescript-eslint/no-deprecated
+                        .setDynamicTooltip()
+                        .onChange(value => {
+                            current.alpha = value / 100;
+                            write();
+                        });
+                    slider.sliderEl.setAttr('aria-label', `Colour ${index + 1} opacity`);
+                })
                 .addExtraButton(button => button.setIcon('trash-2').setTooltip('Remove').setDisabled(palette.length <= 1).onClick(() => {
                     palette.splice(index, 1);
                     this.changed();
@@ -452,24 +529,27 @@ export class TimelineThemeEditorModal extends Modal {
     private inheritedPalette(): string[] {
         const count = Number.parseInt(this.inherited(TIMELINE_LANE_COUNT_VARIABLE, String(DEFAULT_TIMELINE_PALETTE.length)), 10) || DEFAULT_TIMELINE_PALETTE.length;
         return Array.from({ length: Math.min(MAX_TIMELINE_PALETTE, count) }, (_, index) =>
-            toHex(this.inherited(laneVariable(index), DEFAULT_TIMELINE_PALETTE[index % DEFAULT_TIMELINE_PALETTE.length])));
+            normalizeColor(this.inherited(laneVariable(index), DEFAULT_TIMELINE_PALETTE[index % DEFAULT_TIMELINE_PALETTE.length])));
     }
 }
 
 /**
- * Any CSS colour as #rrggbb, for a colour picker that only speaks hex.
- * The canvas does the parsing, so named colours, rgb() and hsl() all work.
+ * Any CSS colour as hex and opacity, for a colour picker that only speaks
+ * solid hex. The canvas does the parsing, so named colours, `transparent`,
+ * rgb() and hsl() all work.
  */
-function toHex(value: string): string {
+function toColorWithAlpha(value: string): ColorWithAlpha {
     const ctx = activeDocument.createElement('canvas').getContext('2d');
-    if (!ctx) return '#000000';
+    if (!ctx) return { hex: '#000000', alpha: 1 };
     ctx.fillStyle = '#000000';
     ctx.fillStyle = value;
-    const parsed = String(ctx.fillStyle);
-    if (/^#[0-9a-f]{6}$/i.test(parsed)) return parsed;
-    const match = parsed.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/i);
-    if (!match) return '#000000';
-    return `#${match.slice(1, 4).map(part => Math.round(Number(part)).toString(16).padStart(2, '0')).join('')}`;
+    return splitColorAlpha(String(ctx.fillStyle)) || { hex: '#000000', alpha: 1 };
+}
+
+/** Any CSS colour as `#rrggbb`, or `#rrggbbaa` when it is see-through. */
+function normalizeColor(value: string): string {
+    const color = toColorWithAlpha(value);
+    return joinColorAlpha(color.hex, color.alpha);
 }
 
 function duplicateTheme(theme: TimelineTheme, existing: TimelineTheme[]): TimelineTheme {

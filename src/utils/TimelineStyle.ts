@@ -267,3 +267,51 @@ export function dashFor(style: 'solid' | 'dashed' | 'dotted' | undefined): numbe
     if (style === 'dotted') return [2, 4];
     return [];
 }
+
+/** A colour split into its solid part and its opacity, as the theme editor edits it. */
+export interface ColorWithAlpha {
+    /** `#rrggbb`, the only form a colour picker accepts. */
+    hex: string;
+    /** 0 (invisible) to 1 (solid). */
+    alpha: number;
+}
+
+const toHexByte = (value: number) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0');
+
+/**
+ * Split a colour the canvas has already normalised (`#rrggbb`, `#rrggbbaa`,
+ * `rgb(...)` or `rgba(...)`) into hex and opacity. Anything else, such as a
+ * named colour the caller has not normalised, returns null.
+ */
+export function splitColorAlpha(value: string): ColorWithAlpha | null {
+    const text = value.trim().toLowerCase();
+    const hex = text.match(/^#([0-9a-f]{6})([0-9a-f]{2})?$/);
+    if (hex) return { hex: `#${hex[1]}`, alpha: hex[2] ? parseInt(hex[2], 16) / 255 : 1 };
+    const short = text.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])([0-9a-f])?$/);
+    if (short) {
+        const [r, g, b, a] = short.slice(1).map(part => part === undefined ? undefined : part + part);
+        return { hex: `#${r}${g}${b}`, alpha: a ? parseInt(a, 16) / 255 : 1 };
+    }
+    const fn = text.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+%?))?\s*\)$/);
+    if (fn) {
+        const alphaText = fn[4];
+        const alpha = alphaText === undefined ? 1
+            : alphaText.endsWith('%') ? Number(alphaText.slice(0, -1)) / 100 : Number(alphaText);
+        return {
+            hex: `#${[fn[1], fn[2], fn[3]].map(part => toHexByte(Number(part))).join('')}`,
+            alpha: Math.max(0, Math.min(1, Number.isFinite(alpha) ? alpha : 1)),
+        };
+    }
+    return null;
+}
+
+/**
+ * A hex colour at the given opacity: plain `#rrggbb` when solid, `#rrggbbaa`
+ * otherwise. Both pass theme sanitizing and both draw on the canvas, so a
+ * see-through colour survives a share code like any other.
+ */
+export function joinColorAlpha(hex: string, alpha: number): string {
+    const solid = /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : '#000000';
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(alpha) ? alpha : 1));
+    return clamped >= 1 ? solid : `${solid}${toHexByte(clamped * 255)}`;
+}

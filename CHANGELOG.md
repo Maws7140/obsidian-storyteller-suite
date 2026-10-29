@@ -4,6 +4,7 @@
 
 ### Added
 - **Timeline theme editor**: create and edit timeline themes with a live preview of the active story. Open it from the new **Theme** field in the timeline toolbar (*Edit theme…*, *Manage themes…*), from Settings → Timeline → Timeline theme, or with the *Edit timeline theme* and *Manage timeline themes* commands. Editing a built-in theme saves a copy and switches the story to it.
+- **See-through and hidden theme colours**: every colour row in the theme editor has an opacity slider (0–100%) and a *Visible* toggle beside the colour picker. Lane palette colours have an opacity slider too. Hiding a colour sets it to 0% and remembers the previous opacity, so turning it back on restores it. Colours are saved as `#rrggbbaa`, so themes and share codes carry the opacity.
 - **Timeline background images**: a theme can draw an image behind the timeline, from the vault or an `https` link, with cover, contain, stretch, or tile fit, an anchor edge, opacity, and blur. The image is included in image exports.
 - **Bundled themes**: High contrast, Parchment, and Quiet, alongside Obsidian native.
 - **Theme for a timeline block**: a fenced `timeline` block accepts `theme: <name or id>` to draw with a theme other than the story's.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OBSIDIAN_NATIVE_THEME, type TimelineTheme } from '../../src/calendar/TimelineDocuments';
+import { OBSIDIAN_NATIVE_THEME, sanitizeTheme, type TimelineTheme } from '../../src/calendar/TimelineDocuments';
 import { BUILTIN_TIMELINE_THEMES, PARCHMENT_THEME } from '../../src/calendar/themes';
 import {
     DEFAULT_TIMELINE_METRICS,
@@ -15,6 +15,8 @@ import {
     resolveTimelineStyle,
     rowHeightFor,
     themeCssVariables,
+    splitColorAlpha,
+    joinColorAlpha,
 } from '../../src/utils/TimelineStyle';
 
 /** A stand-in for getComputedStyle: the stylesheet, then inline theme values on top. */
@@ -190,5 +192,43 @@ describe('background image', () => {
     it('draws nothing onto an empty surface or from an empty image', () => {
         expect(backgroundDrawRects('cover', 'center', 0, 100, 10, 10)).toEqual([]);
         expect(backgroundDrawRects('cover', 'center', 100, 100, 0, 10)).toEqual([]);
+    });
+});
+
+describe('colour opacity for the theme editor', () => {
+    it('splits canvas-normalised colours into hex and opacity', () => {
+        expect(splitColorAlpha('#1a2b3c')).toEqual({ hex: '#1a2b3c', alpha: 1 });
+        expect(splitColorAlpha('#1A2B3C80')?.hex).toBe('#1a2b3c');
+        expect(splitColorAlpha('#1a2b3c80')?.alpha).toBeCloseTo(128 / 255, 5);
+        expect(splitColorAlpha('#abc')).toEqual({ hex: '#aabbcc', alpha: 1 });
+        expect(splitColorAlpha('#abc0')).toEqual({ hex: '#aabbcc', alpha: 0 });
+        expect(splitColorAlpha('rgb(255, 0, 16)')).toEqual({ hex: '#ff0010', alpha: 1 });
+        expect(splitColorAlpha('rgba(0, 0, 0, 0)')).toEqual({ hex: '#000000', alpha: 0 });
+        expect(splitColorAlpha('rgba(10, 20, 30, 0.4)')).toEqual({ hex: '#0a141e', alpha: 0.4 });
+        expect(splitColorAlpha('rgb(10 20 30 / 25%)')).toEqual({ hex: '#0a141e', alpha: 0.25 });
+        expect(splitColorAlpha('teal')).toBeNull();
+    });
+
+    it('writes solid colours as plain hex and see-through ones with an alpha byte', () => {
+        expect(joinColorAlpha('#1A2B3C', 1)).toBe('#1a2b3c');
+        expect(joinColorAlpha('#1a2b3c', 0.5)).toBe('#1a2b3c80');
+        expect(joinColorAlpha('#1a2b3c', 0)).toBe('#1a2b3c00');
+        expect(joinColorAlpha('#1a2b3c', 7)).toBe('#1a2b3c');
+        expect(joinColorAlpha('not a colour', 0.5)).toBe('#00000080');
+    });
+
+    it('round-trips through split and join', () => {
+        for (const alpha of [0, 0.2, 0.35, 0.5, 0.9, 1]) {
+            const joined = joinColorAlpha('#336699', alpha);
+            const split = splitColorAlpha(joined)!;
+            expect(split.hex).toBe('#336699');
+            expect(Math.abs(split.alpha - alpha)).toBeLessThan(1 / 255);
+        }
+    });
+
+    it('survives theme sanitizing, so share codes keep the opacity', () => {
+        const theme = sanitizeTheme({ id: 't', name: 'T', colors: { grid: joinColorAlpha('#336699', 0), surface: joinColorAlpha('#112233', 0.4) }, palette: [joinColorAlpha('#445566', 0.5)] });
+        expect(theme.colors).toEqual({ grid: '#33669900', surface: '#11223366' });
+        expect(theme.palette).toEqual(['#44556680']);
     });
 });
