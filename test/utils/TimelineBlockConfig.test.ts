@@ -74,4 +74,11 @@ describe('parseTimelineBlock', () => {
         expect(config.ganttMode).toBe(true);
         expect(config.errors).toEqual([]);
     });
+
+    it('reads a theme to draw the block with', () => {
+        expect(parseTimelineBlock('theme: Parchment').theme).toBe('Parchment');
+        expect(parseTimelineBlock('theme: Parchment').errors).toEqual([]);
+        expect(parseTimelineBlock('').theme).toBeUndefined();
+    });
 });
+

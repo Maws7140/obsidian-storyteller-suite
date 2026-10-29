@@ -19,19 +19,75 @@ export interface CalendarDocument {
   calendar: CalendarSystem;
 }
 
+/**
+ * Colour roles a timeline theme can set. Each one maps onto a
+ * `--sts-timeline-*` CSS variable (see `utils/TimelineStyle.ts`), so a theme
+ * file and a CSS snippet restyle exactly the same things. Any role left out
+ * keeps the stylesheet default, which follows the active Obsidian theme.
+ */
+export interface TimelineThemeColors {
+  background?: string;
+  surface?: string;
+  sidebar?: string;
+  grid?: string;
+  gridStrong?: string;
+  text?: string;
+  mutedText?: string;
+  accentText?: string;
+  onAccent?: string;
+  accent?: string;
+  now?: string;
+  conflictError?: string;
+  conflictWarning?: string;
+  connector?: string;
+  flashback?: string;
+  flashforward?: string;
+  era?: string;
+  holiday?: string;
+  milestone?: string;
+  milestoneEdge?: string;
+  slot?: string;
+}
+
+/** Every colour role, in the order the theme editor lists them. */
+export const TIMELINE_THEME_COLOR_KEYS: Array<keyof TimelineThemeColors> = [
+  'background', 'surface', 'sidebar', 'grid', 'gridStrong',
+  'text', 'mutedText', 'accentText', 'onAccent', 'accent',
+  'now', 'conflictError', 'conflictWarning', 'connector',
+  'flashback', 'flashforward', 'era', 'holiday',
+  'milestone', 'milestoneEdge', 'slot',
+];
+
+export type TimelineBackgroundFit = 'cover' | 'contain' | 'stretch' | 'tile';
+export type TimelineBackgroundPosition = 'center' | 'top' | 'bottom' | 'left' | 'right';
+
+/**
+ * An image drawn behind the timeline.
+ *
+ * `image` is a vault path (or `[[wikilink]]`), an `https://` URL, or a
+ * `data:image/...` URI. Only the last two travel in a share code; a vault path
+ * names a file on the author's machine.
+ */
+export interface TimelineThemeBackground {
+  image?: string;
+  fit?: TimelineBackgroundFit;
+  position?: TimelineBackgroundPosition;
+  /** 0 to 1. How strongly the image shows through the background colour. */
+  opacity?: number;
+  /** Blur radius in pixels, 0 to 24. */
+  blur?: number;
+}
+
 export interface TimelineTheme {
   id: string;
   name: string;
   description?: string;
-  colors?: {
-    background?: string;
-    surface?: string;
-    grid?: string;
-    text?: string;
-    mutedText?: string;
-    accent?: string;
-    now?: string;
-  };
+  colors?: TimelineThemeColors;
+  /** Colours handed out to lanes, characters, locations and cycles in turn. */
+  palette?: string[];
+  /** CSS font-family for every label on the canvas. */
+  font?: string;
+  background?: TimelineThemeBackground;
   event?: { radius?: number; height?: number; opacity?: number };
   lane?: { height?: number; gap?: number; labelWidth?: number };
   axis?: { density?: number; showCycles?: boolean; showHolidays?: boolean };
@@ -54,7 +110,8 @@ export const OBSIDIAN_NATIVE_THEME: TimelineTheme = {
   event: { radius: 3, height: 24, opacity: 1 },
   lane: { height: 36, gap: 8, labelWidth: 174 },
   axis: { density: 50, showCycles: true, showHolidays: true },
-  connectors: { width: 2, dependencyStyle: 'solid' },
+  // No dependencyStyle: left unset, the arrow style setting decides.
+  connectors: { width: 2 },
 };
 
 export function makeCalendarDocument(calendar: CalendarSystem, metadata?: PortableDocumentMetadata): CalendarDocument {
@@ -107,8 +164,115 @@ function validateThemeDocument(value: Record<string, unknown>): TimelineThemeDoc
   if (value.schemaVersion !== TIMELINE_THEME_SCHEMA_VERSION) throw new Error(`Unsupported timeline theme schema version: ${String(value.schemaVersion)}.`);
   if (!isRecord(value.theme)) throw new Error('Timeline theme payload is missing.');
   const theme = value.theme as unknown as TimelineTheme;
-  if (!theme.id?.trim() || !theme.name?.trim()) throw new Error('Timeline theme id and name are required.');
-  return value as unknown as TimelineThemeDocument;
+  if (typeof theme.id !== 'string' || !theme.id.trim() || typeof theme.name !== 'string' || !theme.name.trim()) {
+    throw new Error('Timeline theme id and name are required.');
+  }
+  return { ...(value as unknown as TimelineThemeDocument), theme: sanitizeTheme(theme) };
+}
+
+const COLOR_PATTERN = /^(#[0-9a-f]{3,4}|#[0-9a-f]{6}|#[0-9a-f]{8}|(rgb|rgba|hsl|hsla)\([0-9.,%\s/+-]+\)|[a-z]{3,20})$/i;
+const FONT_PATTERN = /^[\w\s,"'-]{1,120}$/;
+const FITS: TimelineBackgroundFit[] = ['cover', 'contain', 'stretch', 'tile'];
+const POSITIONS: TimelineBackgroundPosition[] = ['center', 'top', 'bottom', 'left', 'right'];
+const ARROW_STYLES = ['solid', 'dashed', 'dotted'] as const;
+
+/** A colour a canvas can use and a CSS variable can hold, or undefined. */
+export function sanitizeColor(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return COLOR_PATTERN.test(trimmed) ? trimmed : undefined;
+}
+
+/**
+ * Where a background image may come from. Vault paths, https URLs and inline
+ * image data only: a theme arriving as a share code is somebody else's file,
+ * and `http:`, `file:` or `javascript:` sources have no business in it.
+ */
+export function sanitizeImageSource(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 4_000_000) return undefined;
+  if (/^data:image\/(png|jpe?g|gif|webp|avif|svg\+xml);base64,[a-z0-9+/=\s]+$/i.test(trimmed)) return trimmed;
+  if (/^https:\/\/[^\s"'<>]+$/i.test(trimmed)) return trimmed;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return undefined;
+  if (/[<>"]/.test(trimmed)) return undefined;
+  return trimmed;
+}
+
+function finite(value: unknown, min: number, max: number): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : undefined;
+}
+
+function bool(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+/** Drop undefined keys, and the object itself when nothing is left. */
+function compact<T extends object>(value: T): T | undefined {
+  const entries = Object.entries(value).filter(([, entry]) => entry !== undefined);
+  return entries.length ? Object.fromEntries(entries) as T : undefined;
+}
+
+/**
+ * A theme with every field checked and clamped.
+ *
+ * Imported themes are other people's JSON. Anything malformed is dropped
+ * rather than rejected outright, so one bad colour does not cost the user the
+ * rest of a theme they wanted, and nothing unchecked reaches a CSS variable or
+ * the canvas.
+ */
+export function sanitizeTheme(theme: TimelineTheme): TimelineTheme {
+  const source = theme as unknown as Record<string, unknown>;
+  const colorsIn = isRecord(source.colors) ? source.colors : {};
+  const colors: TimelineThemeColors = {};
+  for (const key of TIMELINE_THEME_COLOR_KEYS) {
+    const color = sanitizeColor(colorsIn[key]);
+    if (color) colors[key] = color;
+  }
+  const palette = Array.isArray(source.palette)
+    ? source.palette.map(sanitizeColor).filter((entry): entry is string => !!entry).slice(0, 24)
+    : [];
+  const font = typeof source.font === 'string' && FONT_PATTERN.test(source.font.trim()) ? source.font.trim() : undefined;
+  const backgroundIn = isRecord(source.background) ? source.background : {};
+  const eventIn = isRecord(source.event) ? source.event : {};
+  const laneIn = isRecord(source.lane) ? source.lane : {};
+  const axisIn = isRecord(source.axis) ? source.axis : {};
+  const connectorsIn = isRecord(source.connectors) ? source.connectors : {};
+  const result: TimelineTheme = {
+    id: String(theme.id).trim(),
+    name: String(theme.name).trim(),
+    description: typeof theme.description === 'string' ? theme.description : undefined,
+    colors: compact(colors),
+    palette: palette.length ? palette : undefined,
+    font,
+    background: compact({
+      image: sanitizeImageSource(backgroundIn.image),
+      fit: FITS.find(fit => fit === backgroundIn.fit),
+      position: POSITIONS.find(position => position === backgroundIn.position),
+      opacity: finite(backgroundIn.opacity, 0, 1),
+      blur: finite(backgroundIn.blur, 0, 24),
+    }),
+    event: compact({
+      radius: finite(eventIn.radius, 0, 16),
+      height: finite(eventIn.height, 16, 48),
+      opacity: finite(eventIn.opacity, 0.2, 1),
+    }),
+    lane: compact({
+      height: finite(laneIn.height, 20, 200),
+      gap: finite(laneIn.gap, 0, 40),
+      labelWidth: finite(laneIn.labelWidth, 80, 400),
+    }),
+    axis: compact({
+      density: finite(axisIn.density, 0, 100),
+      showCycles: bool(axisIn.showCycles),
+      showHolidays: bool(axisIn.showHolidays),
+    }),
+    connectors: compact({
+      width: finite(connectorsIn.width, 0.5, 6),
+      dependencyStyle: ARROW_STYLES.find(style => style === connectorsIn.dependencyStyle),
+    }),
+  };
+  return compact(result) as TimelineTheme;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

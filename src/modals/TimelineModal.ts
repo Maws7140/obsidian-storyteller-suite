@@ -92,6 +92,7 @@ export class TimelineModal extends Modal {
         this.controlsBuilder.createEditModeToggle(toolbarContainer);
         this.controlsBuilder.createCopyRangeButton(toolbarContainer);
         this.controlsBuilder.createDensityPresetButton(toolbarContainer);
+        this.controlsBuilder.createThemeDropdown(toolbarContainer);
 
         // Quick jump-to-event search
         const searchWrap = toolbarContainer.createDiv('storyteller-timeline-search-wrap');

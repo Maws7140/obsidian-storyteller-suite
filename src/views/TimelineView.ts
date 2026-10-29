@@ -199,6 +199,7 @@ export class TimelineView extends ItemView {
 
         // How is it drawn
         const display = this.toolbarEl.createDiv('storyteller-toolbar-group');
+        this.buildThemeField(display);
         this.controlsBuilder.createEditModeToggle(display);
         this.controlsBuilder.createDisplayMenu(display, {
             getShowScenes: () => this.showScenes,
@@ -220,6 +221,12 @@ export class TimelineView extends ItemView {
         const field = container.createDiv('storyteller-toolbar-field');
         field.createSpan({ cls: 'storyteller-toolbar-field-label', text: label });
         return field;
+    }
+
+    /** The story's look, beside the other controls for how it is drawn. */
+    private buildThemeField(container: HTMLElement): void {
+        const field = this.labelledField(container, 'Theme');
+        this.controlsBuilder.createThemeDropdown(field);
     }
 
     private buildGroupingField(container: HTMLElement): void {

@@ -1,7 +1,7 @@
 // Timeline Controls Builder - Shared toolbar control creation for Timeline UI components
 // Provides factory methods for creating common timeline toolbar controls
 
-import { setIcon, Menu, Notice, Setting } from 'obsidian';
+import { setIcon, Menu, Notice, Setting, DropdownComponent } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
 import { TimelineRenderer } from './NativeTimelineRenderer';
@@ -10,6 +10,7 @@ import { TrackManagerModal } from '../modals/TrackManagerModal';
 import { ConflictViewModal } from '../modals/ConflictViewModal';
 import { TagTimelineModal } from '../modals/TagTimelineModal';
 import { ConflictDetector } from './ConflictDetector';
+import { CalendarRegistry, onTimelineThemeChange } from '../calendar/CalendarRegistry';
 
 /**
  * Callbacks for control state changes
@@ -53,6 +54,8 @@ const DENSITY_PRESETS = [
 ] as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const EDIT_THEME_OPTION = '__edit-theme__';
+const MANAGE_THEMES_OPTION = '__manage-themes__';
 
 function plural(count: number, one: string, many: string): string {
     return `${count} ${count === 1 ? one : many}`;
@@ -198,6 +201,50 @@ export class TimelineControlsBuilder {
     /**
      * Create grouping mode dropdown
      */
+    /**
+     * The timeline theme picker, with its editor and manager as the last
+     * options, the same way the track and branch pickers carry theirs.
+     *
+     * The theme belongs to the story, so picking one here restyles every open
+     * timeline of it, not only this one. The list keeps itself current when a
+     * theme is saved or deleted elsewhere, and lets go of its subscription
+     * once the toolbar it sat in has been rebuilt.
+     */
+    createThemeDropdown(container: HTMLElement): DropdownComponent {
+        const registry = new CalendarRegistry(this.plugin);
+        const dropdown = new DropdownComponent(container);
+        dropdown.selectEl.addClass('storyteller-theme-select');
+        dropdown.selectEl.setAttr('aria-label', 'Timeline theme');
+        const populate = () => {
+            dropdown.selectEl.empty();
+            registry.listThemes().forEach(theme => { dropdown.addOption(theme.id, theme.name); });
+            dropdown.addOption(EDIT_THEME_OPTION, 'Edit theme…');
+            dropdown.addOption(MANAGE_THEMES_OPTION, 'Manage themes…');
+            dropdown.setValue(registry.getActiveTheme().id);
+        };
+        populate();
+        const unsubscribe = onTimelineThemeChange(() => {
+            if (!dropdown.selectEl.isConnected) { unsubscribe(); return; }
+            populate();
+        });
+        dropdown.onChange(value => {
+            if (value === EDIT_THEME_OPTION || value === MANAGE_THEMES_OPTION) {
+                dropdown.setValue(registry.getActiveTheme().id);
+                void (async () => {
+                    const { TimelineThemeManagerModal, openActiveTimelineThemeEditor } = await import('../modals/TimelineThemeModal');
+                    if (value === EDIT_THEME_OPTION) openActiveTimelineThemeEditor(this.plugin.app, this.plugin);
+                    else new TimelineThemeManagerModal(this.plugin.app, this.plugin).open();
+                })();
+                return;
+            }
+            void registry.setActiveTheme(value).catch((error: unknown) => {
+                dropdown.setValue(registry.getActiveTheme().id);
+                new Notice(error instanceof Error ? error.message : String(error));
+            });
+        });
+        return dropdown;
+    }
+
     createGroupingDropdown(container: HTMLElement): HTMLSelectElement {
         const groupingContainer = container.createDiv('storyteller-grouping-container');
         const select = groupingContainer.createEl('select', {

@@ -17,6 +17,11 @@ export interface TimelineBlockConfig {
     narrativeOrder: boolean;
     stackEnabled: boolean;
     filters: TimelineFilters;
+    /**
+     * Theme to draw with, by id or name, instead of the story's own. Resolved
+     * against the installed themes when the block renders.
+     */
+    theme?: string;
     /** Initial visible window, when the block asked for one. */
     from?: string;
     to?: string;
@@ -107,6 +112,7 @@ export function parseTimelineBlock(source: string): TimelineBlockConfig {
             case 'tags': config.filters.tags = asList(value); break;
             case 'era': config.filters.eras = asList(value); break;
             case 'branch': config.filters.forkId = value || undefined; break;
+            case 'theme': config.theme = value || undefined; break;
             case 'from': config.from = value; break;
             case 'to': config.to = value; break;
             default: config.errors.push(`Unknown setting "${key}"`);

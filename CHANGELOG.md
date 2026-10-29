@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Timeline theme editor**: create and edit timeline themes with a live preview of the active story. Open it from the new **Theme** field in the timeline toolbar (*Edit theme…*, *Manage themes…*), from Settings → Timeline → Timeline theme, or with the *Edit timeline theme* and *Manage timeline themes* commands. Editing a built-in theme saves a copy and switches the story to it.
+- **Timeline background images**: a theme can draw an image behind the timeline, from the vault or an `https` link, with cover, contain, stretch, or tile fit, an anchor edge, opacity, and blur. The image is included in image exports.
+- **Bundled themes**: High contrast, Parchment, and Minimal, alongside Obsidian native.
+- **Theme for a timeline block**: a fenced `timeline` block accepts `theme: <name or id>` to draw with a theme other than the story's.
+- **Documented CSS variables**: every colour on the timeline canvas, the lane palette (`--sts-timeline-lane-1` … `--sts-timeline-lane-24`, `--sts-timeline-lane-count`), and the label font (`--sts-timeline-font`) are `--sts-timeline-*` variables. A CSS snippet can override any of them, and a theme sets them for its story.
+
+### Fixed
+- Timeline theme files declared event size, corner radius and opacity, lane label width, height and gap, axis label density, and connector width and style, but the timeline ignored them. Every field now applies.
+- Changing the timeline theme, switching Obsidian between light and dark, or editing a CSS snippet now repaints open timelines straight away instead of after they are reopened.
+- The conflict colour no longer changes with the "today" line colour; each has its own role.
+
+### Changed
+- Theme files are checked field by field on import. A malformed colour, number, or image source is dropped instead of reaching the canvas, and the rest of the theme still imports. Background images accept vault paths, `https` links, and inline `data:image` URIs only.
+- The Obsidian native theme no longer fixes the dependency arrow style, so the arrow style setting applies unless a theme chooses one.
+
 ## 2.0.0-beta.2
 
 ### Added

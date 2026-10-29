@@ -146,6 +146,7 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                         <li><strong>Inline Note Embedding.</strong> Embed interactive timeline blocks inside any note using a fenced <code>timeline</code> code block.</li>
                         <li><strong>Trackpad Pinch Zoom & Canvas Export.</strong> Pinch to zoom on laptop trackpads and export the entire timeline canvas.</li>
                         <li><strong>Smart Gantt Bars.</strong> Short Gantt events automatically render as readable chips with shading for duration.</li>
+                        <li><strong>Timeline Themes.</strong> Pick a theme from the <em>Theme</em> field in the timeline toolbar, or choose <em>Edit theme…</em> to change colours, the lane palette, the label font, chip and lane sizes, connector lines and a background image, with a live preview. Themes are shared as codes or <code>.storytl.json</code> files, and every colour is also a <code>--sts-timeline-*</code> CSS variable for snippets.</li>
                     </ul>
                 `
             },

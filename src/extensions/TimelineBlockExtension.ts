@@ -8,6 +8,7 @@
 import { MarkdownRenderChild } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
 import { TimelineRenderer } from '../utils/NativeTimelineRenderer';
+import { CalendarRegistry } from '../calendar/CalendarRegistry';
 import { parseTimelineBlock } from '../utils/TimelineBlockConfig';
 import type { TimelineBlockConfig } from '../utils/TimelineBlockConfig';
 import { parseEventDate, toMillis } from '../utils/DateParsing';
@@ -31,7 +32,25 @@ class TimelineBlockChild extends MarkdownRenderChild {
     }
 
     onload(): void {
+        const registry = new CalendarRegistry(this.plugin);
+        const wanted = this.config.theme?.toLowerCase();
+        const theme = wanted
+            ? registry.listThemes().find(candidate => candidate.id.toLowerCase() === wanted || candidate.name.toLowerCase() === wanted)
+            : undefined;
+        if (wanted && !theme) {
+            // Same rule as unknown settings: say so rather than quietly drawing
+            // the story's theme and letting the writer think theirs applied.
+            const parent = this.containerEl.parentElement;
+            if (parent) {
+                const problem = parent.createDiv({
+                    cls: 'sts-timeline-block-errors',
+                    text: `Unknown timeline theme "${this.config.theme}". Using the story's theme.`
+                });
+                parent.insertBefore(problem, this.containerEl);
+            }
+        }
         const renderer = new TimelineRenderer(this.containerEl, this.plugin, {
+            themeId: theme?.id,
             groupMode: this.config.groupMode,
             ganttMode: this.config.ganttMode,
             timelineLayout: this.config.orientation === 'vertical' ? 'timeline' : 'chronology',

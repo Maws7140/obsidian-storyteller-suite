@@ -1,11 +1,13 @@
-import { App, Notice, TFile } from 'obsidian';
+import { App, Notice, TFile, requestUrl } from 'obsidian';
+import type { EventRef } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import type { Character, Culture, Event, Location, MagicSystem, PlotItem, Scene, TimelineFork, TimelineGroupMode, TimelineTrack } from '../types';
 import { EventModal } from '../modals/EventModal';
 import { parseEventDate, toMillis } from './DateParsing';
 import type { DetectedConflict } from './ConflictDetector';
 import { ConflictDetector } from './ConflictDetector';
-import { CalendarRegistry } from '../calendar/CalendarRegistry';
+import { CalendarRegistry, onTimelineThemeChange } from '../calendar/CalendarRegistry';
+import type { TimelineTheme } from '../calendar/TimelineDocuments';
 import { GREGORIAN_CALENDAR } from '../calendar/builtins';
 import { parseToAbsoluteDay, formatAbsoluteDay, formatCalendarYear } from '../calendar/CalendarDateText';
 import { daysInYear, fromAbsolute, monthsInYear, normalYearLength, toAbsolute } from '../calendar/CalendarEngine';
@@ -18,6 +20,16 @@ import { placeAlternatingTimelineCards } from './TimelineCardLayout';
 import { placeReadableAxisLabels } from './AxisLabelLayout';
 import { narrativeDirectionOf, narrativeSequenceOf, timelineDateForMode } from './NarrativeTimeline';
 import type { NarrativeDirection } from './NarrativeTimeline';
+import {
+    TIMELINE_THEME_VARIABLES,
+    axisLabelSpacing,
+    backgroundDrawRects,
+    dashFor,
+    resolveTimelineStyle,
+    rowHeightFor,
+    themeCssVariables,
+} from './TimelineStyle';
+import type { ResolvedTimelineBackground, ResolvedTimelineStyle, TimelineColorRole } from './TimelineStyle';
 
 export interface TimelineRendererOptions {
     ganttMode?: boolean;
@@ -35,6 +47,13 @@ export interface TimelineRendererOptions {
     /** Draw where characters were, as bands behind their lanes. */
     showPresence?: boolean;
     narrativeOrder?: boolean;
+    /**
+     * Draw with this theme instead of the active story's. The theme editor
+     * previews an unsaved draft this way.
+     */
+    theme?: TimelineTheme;
+    /** Draw with the theme of this id, as a fenced timeline block can ask. */
+    themeId?: string;
     onConflictsDetected?: (conflicts: DetectedConflict[]) => void;
     onEventSelected?: (event: Event | null) => void;
     /** Fired after each frame so a toolbar can mirror the visible range. */
@@ -142,7 +161,6 @@ interface CalendarBand {
 
 const DAY_MS = 86_400_000;
 const YEAR_MS = 365.2425 * DAY_MS;
-const SIDEBAR_WIDTH = 174;
 const BASE_AXIS_HEIGHT = 42;
 const CALENDAR_BAND_HEIGHT = 16;
 const MAX_SPAN = 2_000_000 * YEAR_MS;
@@ -178,21 +196,17 @@ const EXPORT_WIDTH = 2400;
 const EXPORT_VERTICAL_WIDTH = 1000;
 const EXPORT_MIN_HEIGHT = 600;
 const EXPORT_SCALE = 2;
-/** Milestone gold, overridable through --sts-timeline-milestone. */
-const MILESTONE_GOLD = '#d9a520';
 /** Radius of an empty date slot on the lane baseline. */
 const SLOT_RADIUS = 3;
-const SLOT_COLOR = '#0b0f16';
 /** How close a pointer must be to an axis marker to grab it. */
 const MARKER_GRAB_RADIUS = 11;
-const MILESTONE_GOLD_EDGE = '#8a6410';
 
 export class NativeTimelineRenderer {
     private readonly app: App;
     private readonly plugin: StorytellerSuitePlugin;
     private readonly container: HTMLElement;
     private readonly calendarRegistry: CalendarRegistry;
-    private options: Required<Omit<TimelineRendererOptions, 'onConflictsDetected' | 'onEventSelected' | 'onViewChange'>> & Pick<TimelineRendererOptions, 'onConflictsDetected' | 'onEventSelected' | 'onViewChange'>;
+    private options: Required<Omit<TimelineRendererOptions, 'onConflictsDetected' | 'onEventSelected' | 'onViewChange' | 'theme' | 'themeId'>> & Pick<TimelineRendererOptions, 'onConflictsDetected' | 'onEventSelected' | 'onViewChange' | 'theme' | 'themeId'>;
     private filters: TimelineFilters = {};
     private events: Event[] = [];
     private locations: Location[] = [];
@@ -238,7 +252,14 @@ export class NativeTimelineRenderer {
     private activePointers = new Map<number, { x: number; y: number }>();
     private pinch: { distance: number; span: number; anchorTime: number } | null = null;
     private referenceDate = new Date();
-    private palette = ['#7c3aed', '#2563eb', '#059669', '#ca8a04', '#dc2626', '#ea580c', '#0ea5e9', '#22c55e', '#d946ef', '#f59e0b'];
+    /** Colours, palette, font and shape for the frame being drawn. */
+    private style: ResolvedTimelineStyle = resolveTimelineStyle(() => '', { id: 'none', name: 'none' });
+    /** The theme variables last written onto the root, so unchanged ones are not rewritten every frame. */
+    private appliedThemeVariables = '';
+    private unsubscribeTheme: (() => void) | null = null;
+    private cssChangeRef: EventRef | null = null;
+    /** Background image for the current theme, once it has loaded. */
+    private backgroundImage: { source: string; image: CanvasImageSource & { width: number; height: number } | null } | null = null;
 
     constructor(container: HTMLElement, plugin: StorytellerSuitePlugin, options: TimelineRendererOptions = {}) {
         this.container = container;
@@ -311,10 +332,18 @@ export class NativeTimelineRenderer {
     setDensity(value: number): void { this.options.density = Math.max(0, Math.min(100, value)); this.rebuild(false); }
     redraw(): void { this.resizeCanvas(); this.scheduleDraw(); }
 
+    /** Swap the theme this renderer draws with. Undefined goes back to the story's. */
+    setTheme(theme: TimelineTheme | undefined): void { this.options.theme = theme; this.rebuild(false); }
+
     destroy(): void {
         if (this.frame) (this.container.ownerDocument.defaultView || window).cancelAnimationFrame(this.frame);
         this.resizeObserver?.disconnect();
         this.resizeObserver = null;
+        this.unsubscribeTheme?.();
+        this.unsubscribeTheme = null;
+        if (this.cssChangeRef) this.app.workspace.offref(this.cssChangeRef);
+        this.cssChangeRef = null;
+        this.appliedThemeVariables = '';
         this.root?.remove();
         this.root = null;
         this.canvas = null;
@@ -520,6 +549,12 @@ export class NativeTimelineRenderer {
         this.bindEvents();
         this.resizeObserver = new ResizeObserver(() => this.redraw());
         this.resizeObserver.observe(this.root);
+        // Colours are read off the stylesheet, which the canvas cannot watch,
+        // so a theme switch, a light/dark toggle or an edited CSS snippet only
+        // shows up if somebody says so. Rebuild rather than redraw: lane
+        // colours are handed out from the palette when the lanes are built.
+        this.unsubscribeTheme = onTimelineThemeChange(() => { if (this.root) this.rebuild(false); });
+        this.cssChangeRef = this.app.workspace.on('css-change', () => { if (this.root) this.rebuild(false); });
         this.resizeCanvas();
     }
 
@@ -537,6 +572,7 @@ export class NativeTimelineRenderer {
 
     private rebuild(fit: boolean): void {
         this.referenceDate = new Date();
+        this.refreshStyle();
         const sourceEvents = this.collectEvents();
         // Conflict analysis is secondary to rendering and can be quadratic for
         // dense character histories. Keep large timelines interactive; users
@@ -621,7 +657,7 @@ export class NativeTimelineRenderer {
         const forks = this.plugin.getTimelineForks();
         const byId = new Map(forks.map(fork => [fork.id, fork]));
         const main = events.filter(event => isEventOnMain(this.eventKeys(event), forks));
-        const lanes: Lane[] = [{ id: '__main__', label: 'Main timeline', color: this.css('--interactive-accent', '#7c3aed'), items: [], top: 0, height: 0, branchDepth: 0 }];
+        const lanes: Lane[] = [{ id: '__main__', label: 'Main timeline', color: this.color('accent'), items: [], top: 0, height: 0, branchDepth: 0 }];
         main.forEach((event, index) => lanes[0].items.push(this.makeItem(event, index, lanes[0], 0)));
         const depthOf = (fork: TimelineFork, seen = new Set<string>()): number => {
             if (!fork.parentTimelineId || seen.has(fork.id)) return 1;
@@ -631,7 +667,7 @@ export class NativeTimelineRenderer {
         };
         orderForksByParent(forks).forEach((fork, laneIndex) => {
             const parentLaneId = fork.parentTimelineId && byId.has(fork.parentTimelineId) ? `fork:${fork.parentTimelineId}` : '__main__';
-            const lane: Lane = { id: `fork:${fork.id}`, label: fork.name, color: fork.color || this.palette[laneIndex % this.palette.length], explicitColor: !!fork.color, items: [], top: 0, height: 0, branchDepth: depthOf(fork), forkId: fork.id, parentLaneId };
+            const lane: Lane = { id: `fork:${fork.id}`, label: fork.name, color: fork.color || this.style.palette[laneIndex % this.style.palette.length], explicitColor: !!fork.color, items: [], top: 0, height: 0, branchDepth: depthOf(fork), forkId: fork.id, parentLaneId };
             const divergence = this.parseDate(fork.divergenceDate);
             // Same rule as the single-branch view: the trunk up to the
             // divergence is inherited, and an unreadable divergence date keeps
@@ -730,6 +766,11 @@ export class NativeTimelineRenderer {
         }
     }
 
+    /** Certainty and inheritance fade, scaled by the theme's event opacity. */
+    private itemAlpha(item: NativeItem): number {
+        return (item.inherited ? 0.45 : this.certaintyAlpha(item.event)) * this.style.metrics.eventOpacity;
+    }
+
     /** A usable colour string, or undefined when the value is blank or junk. */
     private normalizeColor(value: string | undefined): string | undefined {
         const trimmed = value?.trim();
@@ -756,7 +797,7 @@ export class NativeTimelineRenderer {
      * of its neighbour, so both paths read the answer from here.
      */
     private chipWidth(ctx: CanvasRenderingContext2D, item: NativeItem, minimum: number): number {
-        ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.font = this.font(11);
         const narrativeIconWidth = narrativeDirectionOf(item.event) ? 18 : 0;
         return Math.max(minimum, Math.min(MAX_CHIP_WIDTH, ctx.measureText(this.itemLabel(item)).width + 34 + narrativeIconWidth));
     }
@@ -831,7 +872,7 @@ export class NativeTimelineRenderer {
             // when the view is panned. Packing what happens to be on screen made
             // the row count, and so the lane's height, change as you scrolled,
             // which shifted every lane below it mid-scroll.
-            const pxToTime = (this.viewEnd - this.viewStart) / Math.max(1, width - SIDEBAR_WIDTH);
+            const pxToTime = (this.viewEnd - this.viewStart) / Math.max(1, width - this.sidebarWidth());
             const rowEnds: number[] = [];
             lane.items.forEach(item => {
                 item.labelSuppressed = false;
@@ -847,7 +888,9 @@ export class NativeTimelineRenderer {
             // lane has to reserve that offset on top of the rows themselves or
             // a tall stack runs past the bottom of its own lane.
             const chipOffset = chronology ? CHRONOLOGY_CHIP_TOP : 0;
-            lane.height = Math.max(rowHeight + 12, chipOffset + rowEnds.length * rowHeight + 12);
+            // Gap plus the four pixels the separator line has always had.
+            const padding = this.style.metrics.laneGap + 4;
+            lane.height = Math.max(this.style.metrics.laneMinHeight, rowHeight + padding, chipOffset + rowEnds.length * rowHeight + padding);
             top += lane.height;
         });
         if (this.lanes.length === 1 && this.root) {
@@ -892,7 +935,7 @@ export class NativeTimelineRenderer {
             const track = this.matchTrack(event);
             return [{ id: `track:${track?.id || '__unassigned__'}`, label: track?.name || 'Unassigned', color: track?.color || this.colorFor(track?.id || 'unassigned'), explicitColor: !!track?.color }];
         }
-        return [{ id: '__timeline__', label: 'Timeline', color: this.css('--interactive-accent', '#7c3aed') }];
+        return [{ id: '__timeline__', label: 'Timeline', color: this.color('accent') }];
     }
 
     private matchTrack(event: Event): TimelineTrack | undefined {
@@ -925,13 +968,15 @@ export class NativeTimelineRenderer {
 
     private draw(): void {
         if (!this.canvas || !this.ctx || !this.root) return;
+        this.refreshStyle();
         this.layoutRows();
         const ctx = this.ctx;
         const width = this.viewportWidth();
         const height = this.viewportHeight();
         ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = this.css('--background-primary', '#111827');
+        ctx.fillStyle = this.color('background');
         ctx.fillRect(0, 0, width, height);
+        this.drawBackgroundImage(ctx, width, height);
         // Reset before the orientation split: both layouts fill these, and the
         // vertical branch returns early.
         this.visibleItems = [];
@@ -979,8 +1024,8 @@ export class NativeTimelineRenderer {
         this.drawHorizontalTimelineCalendarLayers(ctx, calendar, absoluteStart, absoluteEnd, left, right, height);
 
         ctx.save();
-        ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
-        ctx.fillStyle = this.css('--background-modifier-border', '#374151');
+        ctx.strokeStyle = this.color('grid');
+        ctx.fillStyle = this.color('grid');
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(left, axisY); ctx.lineTo(right - 8, axisY); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(right, axisY); ctx.lineTo(right - 10, axisY - 5); ctx.lineTo(right - 10, axisY + 5); ctx.closePath(); ctx.fill();
@@ -988,9 +1033,9 @@ export class NativeTimelineRenderer {
         const ticks = generateTicks(
             calendar,
             { startDay: absoluteStart, endDay: absoluteEnd, widthPx: right - left },
-            Math.max(3, Math.floor((right - left) / 120))
+            Math.max(3, Math.floor((right - left) / this.axisSpacing(120)))
         );
-        ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.font = this.font(11);
         const labelCandidates = ticks.map((tick, index) => {
             const x = left + tick.x;
             const tickDate = fromAbsolute(calendar, { absoluteDay: tick.absoluteDay });
@@ -1015,11 +1060,11 @@ export class NativeTimelineRenderer {
         );
         ticks.forEach(tick => {
             const x = left + tick.x;
-            ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
+            ctx.strokeStyle = this.color('grid');
             ctx.beginPath(); ctx.moveTo(x, axisY - 5); ctx.lineTo(x, axisY + 5); ctx.stroke();
             const positioned = readableLabels.get(tick);
             if (!positioned) return;
-            ctx.fillStyle = this.css('--text-muted', '#9ca3af');
+            ctx.fillStyle = this.color('mutedText');
             ctx.fillText(positioned.value.label, positioned.left, axisY + 20);
         });
         ctx.restore();
@@ -1078,11 +1123,11 @@ export class NativeTimelineRenderer {
             const x2 = Math.min(right, this.horizontalTimelineTimeToX(end, this.viewportWidth()));
             ctx.save();
             ctx.globalAlpha = 0.09;
-            ctx.fillStyle = era.color || '#8b5cf6';
+            ctx.fillStyle = era.color || this.color('era');
             ctx.fillRect(x1, 0, Math.max(2, x2 - x1), height);
             ctx.globalAlpha = 0.85;
-            ctx.font = `600 10px ${this.css('--font-interface', 'sans-serif')}`;
-            ctx.fillStyle = era.color || this.css('--text-accent', '#a78bfa');
+            ctx.font = this.font(10, 600);
+            ctx.fillStyle = era.color || this.color('accentText');
             const label = (era.abbreviation || era.name).toUpperCase();
             ctx.fillText(this.truncate(ctx, label, Math.max(0, x2 - x1 - 12)), x1 + 6, 16);
             ctx.restore();
@@ -1117,7 +1162,7 @@ export class NativeTimelineRenderer {
     private drawHorizontalTimelineSlots(ctx: CanvasRenderingContext2D, left: number, right: number, axisY: number): void {
         if (!this.slotTimes.length) return;
         ctx.save();
-        ctx.strokeStyle = this.css('--sts-timeline-slot', SLOT_COLOR);
+        ctx.strokeStyle = this.color('slot');
         ctx.globalAlpha = 0.55;
         this.slotTimes.forEach(time => {
             const x = this.horizontalTimelineTimeToX(time, this.viewportWidth());
@@ -1131,7 +1176,7 @@ export class NativeTimelineRenderer {
         const dragging = this.dragging;
         if (!dragging || dragging.kind !== 'marker' || this.dragGhost === null) return;
         const x = this.horizontalTimelineTimeToX(this.dragGhost, width);
-        const accent = this.css('--interactive-accent', '#7c3aed');
+        const accent = this.color('accent');
         const label = this.formatEditDate(this.dragGhost);
         ctx.save();
         ctx.strokeStyle = accent;
@@ -1142,12 +1187,12 @@ export class NativeTimelineRenderer {
         ctx.globalAlpha = 1;
         ctx.fillStyle = accent;
         ctx.beginPath(); ctx.arc(x, axisY, SLOT_RADIUS + 2.5, 0, Math.PI * 2); ctx.fill();
-        ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.font = this.font(11, 600);
         const textWidth = ctx.measureText(label).width;
         const boxX = Math.max(4, Math.min(width - textWidth - 12, x + 9));
-        ctx.fillStyle = this.css('--background-secondary', '#1f2937');
+        ctx.fillStyle = this.color('surface');
         ctx.fillRect(boxX, axisY + 4, textWidth + 8, 16);
-        ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
+        ctx.fillStyle = this.color('text');
         ctx.fillText(label, boxX + 4, axisY + 16);
         ctx.restore();
     }
@@ -1157,7 +1202,7 @@ export class NativeTimelineRenderer {
         if (now < this.viewStart || now > this.viewEnd) return;
         const x = this.horizontalTimelineTimeToX(now, width);
         ctx.save();
-        ctx.strokeStyle = this.css('--color-red', '#ef4444');
+        ctx.strokeStyle = this.color('now');
         ctx.setLineDash([4, 4]);
         ctx.beginPath(); ctx.moveTo(x, axisY - 18); ctx.lineTo(x, axisY + 18); ctx.stroke();
         ctx.restore();
@@ -1165,31 +1210,31 @@ export class NativeTimelineRenderer {
 
     private drawAxis(ctx: CanvasRenderingContext2D, width: number, _height: number): void {
         const axisHeight = this.axisHeight();
-        ctx.fillStyle = this.css('--background-secondary', '#1f2937');
+        ctx.fillStyle = this.color('surface');
         ctx.fillRect(0, 0, width, axisHeight);
-        ctx.fillStyle = this.css('--text-muted', '#9ca3af');
-        ctx.font = `12px ${this.css('--font-interface', 'sans-serif')}`;
-        const plotWidth = Math.max(1, width - SIDEBAR_WIDTH);
+        ctx.fillStyle = this.color('mutedText');
+        ctx.font = this.font(12);
+        const plotWidth = Math.max(1, width - this.sidebarWidth());
         const span = this.viewEnd - this.viewStart;
         const calendar = this.calendarRegistry.getActiveCalendar();
         if (calendar.id !== GREGORIAN_CALENDAR.id) {
             const startDay = this.viewStart / DAY_MS + this.unixEpochAbsoluteDay();
             const endDay = this.viewEnd / DAY_MS + this.unixEpochAbsoluteDay();
-            const ticks = generateTicks(calendar, { startDay, endDay, widthPx: plotWidth }, Math.max(2, Math.floor(plotWidth / 120)));
-            ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
+            const ticks = generateTicks(calendar, { startDay, endDay, widthPx: plotWidth }, Math.max(2, Math.floor(plotWidth / this.axisSpacing(120))));
+            ctx.strokeStyle = this.color('grid');
             ticks.forEach(tick => {
-                const x = SIDEBAR_WIDTH + tick.x;
+                const x = this.sidebarWidth() + tick.x;
                 ctx.beginPath(); ctx.moveTo(x, axisHeight); ctx.lineTo(x, this.viewportHeight()); ctx.stroke();
                 ctx.fillText(tick.label, x + 5, 25);
             });
             ctx.strokeRect(0, 0, width, axisHeight);
             return;
         }
-        const desired = Math.max(2, Math.floor(plotWidth / 120));
+        const desired = Math.max(2, Math.floor(plotWidth / this.axisSpacing(120)));
         const rawStep = span / desired;
         const step = this.niceTimeStep(rawStep);
         const first = Math.ceil(this.viewStart / step) * step;
-        ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
+        ctx.strokeStyle = this.color('grid');
         ctx.lineWidth = 1;
         for (let time = first; time < this.viewEnd; time += step) {
             const x = this.timeToX(time, width);
@@ -1207,20 +1252,20 @@ export class NativeTimelineRenderer {
 
     private calendarLayerRows(): number {
         const calendar = this.calendarRegistry.getActiveCalendar();
-        const theme = this.calendarRegistry.getActiveTheme().axis;
+        const metrics = this.style.metrics;
         const spanDays = (this.viewEnd - this.viewStart) / DAY_MS;
         if (spanDays > normalYearLength(calendar) * 8) return 0;
-        const cycleRows = theme?.showCycles === false ? 0 : Math.min(2, calendar.cycles?.length || 0);
-        const holidayRows = theme?.showHolidays === false || !calendar.holidays?.length ? 0 : 1;
+        const cycleRows = metrics.showCycles ? Math.min(2, calendar.cycles?.length || 0) : 0;
+        const holidayRows = metrics.showHolidays && calendar.holidays?.length ? 1 : 0;
         return cycleRows + holidayRows;
     }
 
     private calendarBands(calendar: CalendarSystem, absoluteStart: number, absoluteEnd: number): CalendarBand[] {
         const rows = this.calendarLayerRows();
         if (!rows) return [];
-        const theme = this.calendarRegistry.getActiveTheme().axis;
-        const cycles = theme?.showCycles === false ? [] : (calendar.cycles || []).slice(0, 2);
-        const includeHolidays = theme?.showHolidays !== false && !!calendar.holidays?.length;
+        const metrics = this.style.metrics;
+        const cycles = metrics.showCycles ? (calendar.cycles || []).slice(0, 2) : [];
+        const includeHolidays = metrics.showHolidays && !!calendar.holidays?.length;
         const firstYear = fromAbsolute(calendar, { absoluteDay: absoluteStart }).year - 1;
         const lastYear = fromAbsolute(calendar, { absoluteDay: absoluteEnd }).year + 1;
         const bands: CalendarBand[] = [];
@@ -1238,7 +1283,7 @@ export class NativeTimelineRenderer {
                         endDay,
                         label: entry.name,
                         group: cycle.name,
-                        color: cycle.color || this.palette[row % this.palette.length],
+                        color: cycle.color || this.style.palette[row % this.style.palette.length],
                         row,
                         kind: 'cycle',
                     });
@@ -1258,7 +1303,7 @@ export class NativeTimelineRenderer {
                         endDay,
                         label: holiday.name,
                         group: 'Holidays',
-                        color: holiday.color || '#f59e0b',
+                        color: holiday.color || this.color('holiday'),
                         row: cycles.length,
                         kind: 'holiday',
                     });
@@ -1275,11 +1320,11 @@ export class NativeTimelineRenderer {
         const bands = this.calendarBands(calendar, absoluteStart, absoluteEnd);
         if (!bands.length) return;
         ctx.save();
-        ctx.font = `10px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.font = this.font(10);
         const groups = new Map<number, string>();
         bands.forEach(band => {
             groups.set(band.row, band.group);
-            const x1 = Math.max(SIDEBAR_WIDTH, this.timeToX((band.startDay - this.unixEpochAbsoluteDay()) * DAY_MS, width));
+            const x1 = Math.max(this.sidebarWidth(), this.timeToX((band.startDay - this.unixEpochAbsoluteDay()) * DAY_MS, width));
             const x2 = Math.min(width, this.timeToX((band.endDay - this.unixEpochAbsoluteDay()) * DAY_MS, width));
             const y = BASE_AXIS_HEIGHT + band.row * CALENDAR_BAND_HEIGHT;
             if (x2 <= x1) return;
@@ -1287,14 +1332,14 @@ export class NativeTimelineRenderer {
             ctx.fillStyle = band.color;
             ctx.fillRect(x1, y, x2 - x1, CALENDAR_BAND_HEIGHT - 1);
             ctx.globalAlpha = 0.95;
-            ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
+            ctx.fillStyle = this.color('text');
             if (x2 - x1 > 34) ctx.fillText(this.truncate(ctx, band.label, x2 - x1 - 8), x1 + 4, y + 11);
         });
         ctx.globalAlpha = 1;
-        ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
-        ctx.fillRect(0, BASE_AXIS_HEIGHT, SIDEBAR_WIDTH, this.axisHeight() - BASE_AXIS_HEIGHT);
-        ctx.fillStyle = this.css('--text-muted', '#9ca3af');
-        groups.forEach((label, row) => ctx.fillText(this.truncate(ctx, label.toUpperCase(), SIDEBAR_WIDTH - 18), 9, BASE_AXIS_HEIGHT + row * CALENDAR_BAND_HEIGHT + 11));
+        ctx.fillStyle = this.color('sidebar');
+        ctx.fillRect(0, BASE_AXIS_HEIGHT, this.sidebarWidth(), this.axisHeight() - BASE_AXIS_HEIGHT);
+        ctx.fillStyle = this.color('mutedText');
+        groups.forEach((label, row) => ctx.fillText(this.truncate(ctx, label.toUpperCase(), this.sidebarWidth() - 18), 9, BASE_AXIS_HEIGHT + row * CALENDAR_BAND_HEIGHT + 11));
         ctx.restore();
     }
 
@@ -1305,14 +1350,14 @@ export class NativeTimelineRenderer {
         }
         const top = lane.top - this.scrollTop;
         if (top > height || top + lane.height < this.axisHeight()) return;
-        ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
-        ctx.fillRect(0, top, SIDEBAR_WIDTH, lane.height);
+        ctx.fillStyle = this.color('sidebar');
+        ctx.fillRect(0, top, this.sidebarWidth(), lane.height);
         // The lane name takes the lane's colour, so a row in the sidebar can be
         // matched to its markers out on the timeline without counting rows.
         ctx.fillStyle = lane.color;
-        ctx.font = `600 12px ${this.css('--font-interface', 'sans-serif')}`;
-        ctx.fillText(this.truncate(ctx, lane.label, SIDEBAR_WIDTH - 24), 13, top + 22);
-        ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
+        ctx.font = this.font(12, 600);
+        ctx.fillText(this.truncate(ctx, lane.label, this.sidebarWidth() - 24), 13, top + 22);
+        ctx.strokeStyle = this.color('grid');
         ctx.beginPath(); ctx.moveTo(0, top + lane.height); ctx.lineTo(width, top + lane.height); ctx.stroke();
         const rowHeight = this.rowHeight();
         const leftTime = this.viewStart;
@@ -1321,7 +1366,7 @@ export class NativeTimelineRenderer {
         // to be clipped rather than pinned, or it would paint over the sidebar.
         ctx.save();
         ctx.beginPath();
-        ctx.rect(SIDEBAR_WIDTH, this.axisHeight(), Math.max(0, width - SIDEBAR_WIDTH), height);
+        ctx.rect(this.sidebarWidth(), this.axisHeight(), Math.max(0, width - this.sidebarWidth()), height);
         ctx.clip();
         const startIndex = this.firstVisible(lane, leftTime);
         for (let i = startIndex; i < lane.items.length; i++) {
@@ -1339,18 +1384,18 @@ export class NativeTimelineRenderer {
     private drawChronologyLane(ctx: CanvasRenderingContext2D, lane: Lane, width: number, height: number): void {
         const top = lane.top - this.scrollTop;
         if (top > height || top + lane.height < this.axisHeight()) return;
-        ctx.fillStyle = this.css('--background-secondary-alt', '#18202d');
-        ctx.fillRect(0, top, SIDEBAR_WIDTH, lane.height);
+        ctx.fillStyle = this.color('sidebar');
+        ctx.fillRect(0, top, this.sidebarWidth(), lane.height);
         // The lane name takes the lane's colour, so a row in the sidebar can be
         // matched to its markers out on the timeline without counting rows.
         ctx.fillStyle = lane.color;
-        ctx.font = `600 12px ${this.css('--font-interface', 'sans-serif')}`;
-        ctx.fillText(this.truncate(ctx, lane.label, SIDEBAR_WIDTH - 24), 13, top + 22);
+        ctx.font = this.font(12, 600);
+        ctx.fillText(this.truncate(ctx, lane.label, this.sidebarWidth() - 24), 13, top + 22);
 
         const baselineY = top + 18;
-        ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
+        ctx.strokeStyle = this.color('grid');
         ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(SIDEBAR_WIDTH, baselineY); ctx.lineTo(width, baselineY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(this.sidebarWidth(), baselineY); ctx.lineTo(width, baselineY); ctx.stroke();
 
         const rowHeight = this.rowHeight();
         // Right edge of the last chip drawn on each row, so a chip that would
@@ -1360,7 +1405,7 @@ export class NativeTimelineRenderer {
         // to the plot area rather than pinned to its edge.
         ctx.save();
         ctx.beginPath();
-        ctx.rect(SIDEBAR_WIDTH, this.axisHeight(), Math.max(0, width - SIDEBAR_WIDTH), height);
+        ctx.rect(this.sidebarWidth(), this.axisHeight(), Math.max(0, width - this.sidebarWidth()), height);
         ctx.clip();
         this.drawSlots(ctx, baselineY, width);
         const startIndex = this.firstVisible(lane, this.viewStart);
@@ -1436,13 +1481,13 @@ export class NativeTimelineRenderer {
         this.drawVerticalEras(ctx, absoluteStart, absoluteEnd, top, bottom, width);
         this.drawVerticalCalendarLayers(ctx, calendar, absoluteStart, absoluteEnd, top, bottom, width);
         this.drawVerticalCalendarPeriods(ctx, calendar, absoluteStart, absoluteEnd, axisX, top, bottom, width);
-        ctx.strokeStyle = this.css('--background-modifier-border', '#374151');
+        ctx.strokeStyle = this.color('grid');
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(axisX, top); ctx.lineTo(axisX, bottom); ctx.stroke();
-        ctx.fillStyle = this.css('--text-muted', '#9ca3af');
-        ctx.font = `12px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.fillStyle = this.color('mutedText');
+        ctx.font = this.font(12);
 
-        const ticks = generateTicks(calendar, { startDay: absoluteStart, endDay: absoluteEnd, widthPx: bottom - top }, Math.max(4, Math.floor((bottom - top) / 90)));
+        const ticks = generateTicks(calendar, { startDay: absoluteStart, endDay: absoluteEnd, widthPx: bottom - top }, Math.max(4, Math.floor((bottom - top) / this.axisSpacing(90))));
         ticks.forEach(tick => {
             const time = (tick.absoluteDay - this.unixEpochAbsoluteDay()) * DAY_MS;
             const ratio = (time - this.viewStart) / (this.viewEnd - this.viewStart);
@@ -1525,16 +1570,16 @@ export class NativeTimelineRenderer {
         periods.filter(period => period.day >= absoluteStart && period.day < absoluteEnd).forEach((period, index) => {
             const y = top + (period.day - absoluteStart) / spanDays * (bottom - top);
             ctx.save();
-            ctx.strokeStyle = this.css('--background-modifier-border-hover', '#4b5563');
+            ctx.strokeStyle = this.color('gridStrong');
             ctx.globalAlpha = index === 0 ? 0.9 : 0.55;
             ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(4, y); ctx.lineTo(width - 4, y); ctx.stroke();
             ctx.globalAlpha = 1;
-            ctx.fillStyle = this.css('--background-primary', '#111827');
+            ctx.fillStyle = this.color('background');
             const labelWidth = Math.min(150, Math.max(86, axisX - 18));
             this.roundedRect(ctx, 6, Math.max(4, y - 13), labelWidth, 22, 3); ctx.fill();
-            ctx.fillStyle = this.css('--text-accent', '#a78bfa');
-            ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
+            ctx.fillStyle = this.color('accentText');
+            ctx.font = this.font(11, 600);
             ctx.fillText(this.truncate(ctx, period.label.toUpperCase(), labelWidth - 12), 12, Math.max(19, y + 2));
             ctx.restore();
         });
@@ -1553,7 +1598,7 @@ export class NativeTimelineRenderer {
         const bands = this.calendarBands(calendar, absoluteStart, absoluteEnd);
         if (!bands.length) return;
         ctx.save();
-        ctx.font = `600 9px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.font = this.font(9, 600);
         bands.forEach(band => {
             const y1 = top + (Math.max(absoluteStart, band.startDay) - absoluteStart) / span * (bottom - top);
             const y2 = top + (Math.min(absoluteEnd, band.endDay) - absoluteStart) / span * (bottom - top);
@@ -1582,11 +1627,11 @@ export class NativeTimelineRenderer {
             const y2 = top + (Math.min(end, absoluteEnd) - absoluteStart) / span * (bottom - top);
             ctx.save();
             ctx.globalAlpha = 0.09;
-            ctx.fillStyle = era.color || '#8b5cf6';
+            ctx.fillStyle = era.color || this.color('era');
             ctx.fillRect(0, y1, width, Math.max(2, y2 - y1));
             ctx.globalAlpha = 0.85;
-            ctx.fillStyle = era.color || this.css('--text-accent', '#a78bfa');
-            ctx.font = `600 10px ${this.css('--font-interface', 'sans-serif')}`;
+            ctx.fillStyle = era.color || this.color('accentText');
+            ctx.font = this.font(10, 600);
             const label = (era.abbreviation || era.name).toUpperCase();
             ctx.fillText(this.truncate(ctx, label, 150), Math.max(8, width - Math.min(160, ctx.measureText(label).width + 10)), Math.min(bottom - 5, y1 + 14));
             ctx.restore();
@@ -1596,24 +1641,24 @@ export class NativeTimelineRenderer {
     /** Shared card renderer for horizontal and vertical timeline orientations. */
     private drawTimelineEventCard(ctx: CanvasRenderingContext2D, item: NativeItem, calendar: ReturnType<CalendarRegistry['getActiveCalendar']>): void {
         const rect = item.rect!;
-        const accent = item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : item.laneColor;
+        const accent = item === this.selected ? this.color('accent') : item.laneColor;
         const title = item.event.name || '(Untitled event)';
         const narrativeDirection = narrativeDirectionOf(item.event);
         const dateLabel = this.verticalEventDate(item.start, calendar);
         const meta = this.lanes.length > 1 ? item.laneLabel : (item.event.status || (item.event.isMilestone ? 'Milestone' : 'Event'));
         ctx.save();
-        ctx.globalAlpha = item.inherited ? 0.45 : this.certaintyAlpha(item.event);
-        ctx.fillStyle = this.css('--background-secondary', '#1f2937');
-        this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 4); ctx.fill();
-        ctx.strokeStyle = item === this.selected ? accent : this.css('--background-modifier-border', '#374151');
+        ctx.globalAlpha = this.itemAlpha(item);
+        ctx.fillStyle = this.color('surface');
+        this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, this.style.metrics.eventRadius + 1); ctx.fill();
+        ctx.strokeStyle = item === this.selected ? accent : this.color('grid');
         ctx.lineWidth = item === this.selected ? 2 : 1; ctx.stroke();
-        ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
-        ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.fillStyle = this.color('text');
+        ctx.font = this.font(11, 600);
         const titleX = narrativeDirection ? rect.x + 29 : rect.x + 10;
         if (narrativeDirection) this.drawNarrativeIcon(ctx, narrativeDirection, rect.x + 14, rect.y + 12, 12);
         ctx.fillText(this.truncate(ctx, title, rect.width - (titleX - rect.x) - 8), titleX, rect.y + 16);
-        ctx.fillStyle = this.css('--text-muted', '#9ca3af');
-        ctx.font = `10px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.fillStyle = this.color('mutedText');
+        ctx.font = this.font(10);
         const detail = `${dateLabel}  ·  ${meta}`;
         ctx.fillText(this.truncate(ctx, detail, rect.width - 18), rect.x + 10, rect.y + 32);
         ctx.restore();
@@ -1643,14 +1688,14 @@ export class NativeTimelineRenderer {
     private drawItem(ctx: CanvasRenderingContext2D, item: NativeItem, isPoint: boolean, labelOverride?: string, withMarker = true, durationSpan = 0): void {
         const rect = item.rect!;
         ctx.save();
-        ctx.globalAlpha = item.inherited ? 0.45 : this.certaintyAlpha(item.event);
+        ctx.globalAlpha = this.itemAlpha(item);
         const accent = item.customColor
-            || (item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : item.laneColor);
+            || (item === this.selected ? this.color('accent') : item.laneColor);
         if (isPoint) {
-            ctx.fillStyle = this.css('--background-secondary', '#1f2937');
-            this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 3);
+            ctx.fillStyle = this.color('surface');
+            this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, this.style.metrics.eventRadius);
             ctx.fill();
-            ctx.strokeStyle = item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : this.css('--background-modifier-border', '#374151');
+            ctx.strokeStyle = item === this.selected ? this.color('accent') : this.color('grid');
             ctx.lineWidth = item === this.selected ? 2 : 1;
             if (item.approximate) ctx.setLineDash([3, 3]);
             ctx.stroke();
@@ -1661,7 +1706,7 @@ export class NativeTimelineRenderer {
                 ctx.save();
                 ctx.globalAlpha = 0.3;
                 ctx.fillStyle = accent;
-                this.roundedRect(ctx, rect.x + 7, rect.y, Math.min(durationSpan, rect.width - 7), rect.height, 3);
+                this.roundedRect(ctx, rect.x + 7, rect.y, Math.min(durationSpan, rect.width - 7), rect.height, this.style.metrics.eventRadius);
                 ctx.fill();
                 ctx.restore();
             }
@@ -1673,7 +1718,7 @@ export class NativeTimelineRenderer {
                     this.starPath(ctx, markerX, markerY, 6.5);
                     ctx.fill();
                     if (!item.customColor) {
-                        ctx.strokeStyle = this.css('--sts-timeline-milestone-edge', MILESTONE_GOLD_EDGE);
+                        ctx.strokeStyle = this.color('milestoneEdge');
                         ctx.lineWidth = 1;
                         ctx.stroke();
                     }
@@ -1685,17 +1730,17 @@ export class NativeTimelineRenderer {
             }
         } else {
             ctx.fillStyle = accent;
-            this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 3); ctx.fill();
+            this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, this.style.metrics.eventRadius); ctx.fill();
             if (item.approximate) {
-                ctx.strokeStyle = this.css('--background-primary', '#111827');
+                ctx.strokeStyle = this.color('background');
                 ctx.lineWidth = 1;
                 ctx.setLineDash([3, 3]);
-                this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, 3);
+                this.roundedRect(ctx, rect.x, rect.y, rect.width, rect.height, this.style.metrics.eventRadius);
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
             if (this.options.showProgressBars && typeof item.event.progress === 'number') {
-                ctx.fillStyle = this.css('--text-on-accent', '#fff');
+                ctx.fillStyle = this.color('onAccent');
                 ctx.globalAlpha = 0.3;
                 ctx.fillRect(rect.x, rect.y + rect.height - 3, rect.width * Math.max(0, Math.min(1, item.event.progress / 100)), 3);
             }
@@ -1715,11 +1760,11 @@ export class NativeTimelineRenderer {
         if (available > 18) {
             const severity = this.conflictSeverity(item.event);
             ctx.fillStyle = severity === 'error'
-                ? this.css('--color-red', '#ef4444')
+                ? this.color('conflictError')
                 : severity === 'warning'
-                    ? this.css('--color-yellow', '#eab308')
-                    : isPoint ? this.css('--text-normal', '#e5e7eb') : this.css('--text-on-accent', '#fff');
-            ctx.font = `11px ${this.css('--font-interface', 'sans-serif')}`;
+                    ? this.color('conflictWarning')
+                    : isPoint ? this.color('text') : this.color('onAccent');
+            ctx.font = this.font(11);
             ctx.fillText(this.truncate(ctx, labelOverride || this.itemLabel(item), available), labelX, rect.y + rect.height / 2 + 4);
         }
         ctx.restore();
@@ -1761,8 +1806,8 @@ export class NativeTimelineRenderer {
         const triangleHeight = size * 0.46;
         const centerGap = size * 0.03;
         const color = backward
-            ? this.css('--color-purple', '#a78bfa')
-            : this.css('--color-orange', '#f59e0b');
+            ? this.color('flashback')
+            : this.color('flashforward');
 
         ctx.save();
         ctx.globalAlpha = 1;
@@ -1770,7 +1815,7 @@ export class NativeTimelineRenderer {
         ctx.beginPath();
         ctx.arc(x, y, radius, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = this.css('--background-primary', '#111827');
+        ctx.fillStyle = this.color('background');
 
         for (const offset of [-1, 1]) {
             const centerX = x + offset * (triangleWidth / 2 + centerGap);
@@ -1800,8 +1845,8 @@ export class NativeTimelineRenderer {
      */
     private markerColor(item: NativeItem): string {
         if (item.customColor) return item.customColor;
-        if (item.event.isMilestone) return this.css('--sts-timeline-milestone', MILESTONE_GOLD);
-        return item === this.selected ? this.css('--interactive-accent', '#8b5cf6') : item.laneColor;
+        if (item.event.isMilestone) return this.color('milestone');
+        return item === this.selected ? this.color('accent') : item.laneColor;
     }
 
     /**
@@ -1860,12 +1905,12 @@ export class NativeTimelineRenderer {
     private drawSlots(ctx: CanvasRenderingContext2D, baselineY: number, width: number): void {
         if (!this.slotTimes.length) return;
         ctx.save();
-        ctx.strokeStyle = this.css('--sts-timeline-slot', SLOT_COLOR);
+        ctx.strokeStyle = this.color('slot');
         ctx.lineWidth = 1;
         ctx.globalAlpha = 0.55;
         this.slotTimes.forEach(time => {
             const x = this.timeToX(time, width);
-            if (x < SIDEBAR_WIDTH || x > width) return;
+            if (x < this.sidebarWidth() || x > width) return;
             ctx.beginPath();
             ctx.arc(x, baselineY, SLOT_RADIUS, 0, Math.PI * 2);
             ctx.stroke();
@@ -1883,7 +1928,7 @@ export class NativeTimelineRenderer {
         if (!dragging || dragging.kind !== 'marker' || !dragging.item) return;
         if (dragging.item.laneId !== lane.id || this.dragGhost === null) return;
         const x = this.timeToX(this.dragGhost, width);
-        const accent = this.css('--interactive-accent', '#7c3aed');
+        const accent = this.color('accent');
 
         ctx.save();
         ctx.strokeStyle = accent;
@@ -1899,12 +1944,12 @@ export class NativeTimelineRenderer {
         // Below the baseline, not above: the plot is clipped at the axis, so a
         // label over the first lane's baseline would be sliced off.
         const label = this.formatEditDate(this.dragGhost);
-        ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.font = this.font(11, 600);
         const textWidth = ctx.measureText(label).width;
         const boxX = Math.min(width - textWidth - 12, x + 9);
-        ctx.fillStyle = this.css('--background-secondary', '#1f2937');
+        ctx.fillStyle = this.color('surface');
         ctx.fillRect(boxX, baselineY + 3, textWidth + 8, 16);
-        ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
+        ctx.fillStyle = this.color('text');
         ctx.fillText(label, boxX + 4, baselineY + 15);
         ctx.restore();
     }
@@ -1913,7 +1958,7 @@ export class NativeTimelineRenderer {
     private drawVerticalSlots(ctx: CanvasRenderingContext2D, axisX: number, top: number, bottom: number, timeToY: (time: number) => number): void {
         if (!this.slotTimes.length) return;
         ctx.save();
-        ctx.strokeStyle = this.css('--sts-timeline-slot', SLOT_COLOR);
+        ctx.strokeStyle = this.color('slot');
         ctx.lineWidth = 1;
         ctx.globalAlpha = 0.55;
         this.slotTimes.forEach(time => {
@@ -1930,7 +1975,7 @@ export class NativeTimelineRenderer {
         const dragging = this.dragging;
         if (!dragging || dragging.kind !== 'marker' || this.dragGhost === null) return;
         const y = timeToY(this.dragGhost);
-        const accent = this.css('--interactive-accent', '#7c3aed');
+        const accent = this.color('accent');
 
         ctx.save();
         ctx.strokeStyle = accent;
@@ -1944,11 +1989,11 @@ export class NativeTimelineRenderer {
         ctx.beginPath(); ctx.arc(axisX, y, SLOT_RADIUS + 2.5, 0, Math.PI * 2); ctx.fill();
 
         const label = this.formatEditDate(this.dragGhost);
-        ctx.font = `600 11px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.font = this.font(11, 600);
         const textWidth = ctx.measureText(label).width;
-        ctx.fillStyle = this.css('--background-secondary', '#1f2937');
+        ctx.fillStyle = this.color('surface');
         ctx.fillRect(axisX + 10, y - 8, textWidth + 8, 16);
-        ctx.fillStyle = this.css('--text-normal', '#e5e7eb');
+        ctx.fillStyle = this.color('text');
         ctx.fillText(label, axisX + 14, y + 4);
         ctx.restore();
     }
@@ -1963,7 +2008,7 @@ export class NativeTimelineRenderer {
             // theme or a pale era band. A chosen colour is left exactly as
             // chosen, so no rim there.
             if (!item.customColor) {
-                ctx.strokeStyle = this.css('--sts-timeline-milestone-edge', MILESTONE_GOLD_EDGE);
+                ctx.strokeStyle = this.color('milestoneEdge');
                 ctx.lineWidth = 1;
                 ctx.stroke();
             }
@@ -1975,7 +2020,7 @@ export class NativeTimelineRenderer {
         // closer than the pitch, so at a wide view turning edit mode on changed
         // nothing on screen and read as the toggle being broken.
         if (this.slotsVisible() && this.isDraggable(item)) {
-            ctx.strokeStyle = this.css('--interactive-accent', '#7c3aed');
+            ctx.strokeStyle = this.color('accent');
             ctx.lineWidth = 1.5;
             ctx.globalAlpha = 0.9;
             ctx.beginPath(); ctx.arc(x, y, item.event.isMilestone ? 10.5 : 8.5, 0, Math.PI * 2); ctx.stroke();
@@ -1991,17 +2036,17 @@ export class NativeTimelineRenderer {
             if (!Number.isFinite(start) || !Number.isFinite(end)) return;
             const x1 = this.timeToX(start, width); const x2 = this.timeToX(end, width);
             const axisHeight = this.axisHeight();
-            const left = Math.max(SIDEBAR_WIDTH + 4, x1 + 4);
+            const left = Math.max(this.sidebarWidth() + 4, x1 + 4);
             const right = Math.min(width - 4, x2 - 4);
             ctx.save();
             this.clipPlot(ctx, width, height);
             ctx.globalAlpha = 0.1;
-            ctx.fillStyle = era.color || '#8b5cf6';
+            ctx.fillStyle = era.color || this.color('era');
             ctx.fillRect(x1, axisHeight, x2 - x1, height - axisHeight);
             if (right > left) {
                 ctx.globalAlpha = 0.85;
-                ctx.font = `600 10px ${this.css('--font-interface', 'sans-serif')}`;
-                ctx.fillStyle = era.color || this.css('--text-accent', '#a78bfa');
+                ctx.font = this.font(10, 600);
+                ctx.fillStyle = era.color || this.color('accentText');
                 const label = (era.abbreviation || era.name).toUpperCase();
                 ctx.fillText(this.truncate(ctx, label, right - left), left, axisHeight + 13);
             }
@@ -2014,7 +2059,7 @@ export class NativeTimelineRenderer {
         const byId = new Map(this.lanes.map(lane => [lane.id, lane]));
         ctx.save();
         this.clipPlot(ctx, width, height);
-        ctx.font = `10px ${this.css('--font-interface', 'sans-serif')}`;
+        ctx.font = this.font(10);
         this.presence.forEach(span => {
             const lane = byId.get(span.laneId);
             if (!lane) return;
@@ -2023,7 +2068,7 @@ export class NativeTimelineRenderer {
             // stopped at it, so it reads as continuing instead of as ending
             // exactly where the window happens to stop.
             const x2 = span.end === undefined ? width + 40 : this.timeToX(span.end, width);
-            if (x2 <= SIDEBAR_WIDTH || x1 >= width) return;
+            if (x2 <= this.sidebarWidth() || x1 >= width) return;
             const top = lane.top - this.scrollTop;
             if (top + lane.height < this.axisHeight() || top > height) return;
             ctx.globalAlpha = 0.13;
@@ -2037,7 +2082,7 @@ export class NativeTimelineRenderer {
             // hold it without overlapping the next one.
             if (x2 - x1 > 54) {
                 ctx.globalAlpha = 0.75;
-                ctx.fillStyle = this.css('--text-muted', '#9ca3af');
+                ctx.fillStyle = this.color('mutedText');
                 ctx.fillText(span.label, x1 + 5, top + lane.height - 6);
             }
         });
@@ -2105,9 +2150,9 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         ctx.beginPath();
         ctx.rect(
-            vertical || horizontalTimeline ? 0 : SIDEBAR_WIDTH,
+            vertical || horizontalTimeline ? 0 : this.sidebarWidth(),
             vertical || horizontalTimeline ? 0 : this.axisHeight(),
-            vertical || horizontalTimeline ? width : Math.max(0, width - SIDEBAR_WIDTH),
+            vertical || horizontalTimeline ? width : Math.max(0, width - this.sidebarWidth()),
             height
         );
         ctx.clip();
@@ -2124,10 +2169,11 @@ export class NativeTimelineRenderer {
         }));
         ctx.save();
         this.clipPlot(ctx, width, height);
-        ctx.strokeStyle = this.css('--interactive-accent', '#8b5cf6');
-        ctx.lineWidth = 2;
-        if (this.options.dependencyArrowStyle === 'dashed') ctx.setLineDash([8, 5]);
-        if (this.options.dependencyArrowStyle === 'dotted') ctx.setLineDash([2, 4]);
+        ctx.strokeStyle = this.color('connector');
+        ctx.lineWidth = this.style.metrics.connectorWidth;
+        // A theme that names an arrow style wins; one that leaves it out
+        // defers to the arrow style setting.
+        ctx.setLineDash(dashFor(this.style.metrics.dependencyStyle ?? this.options.dependencyArrowStyle));
         const endsOf = (target: NativeItem, ref: string): { from: DOMRect; to: DOMRect } | null => {
             const targetEntry = (byKey.get(this.eventKey(target.event)) || []).find(entry => entry.item === target);
             if (!targetEntry) return null;
@@ -2253,14 +2299,14 @@ export class NativeTimelineRenderer {
 
     private drawNow(ctx: CanvasRenderingContext2D, width: number, height: number): void {
         const now = Date.now(); if (now < this.viewStart || now > this.viewEnd) return;
-        const x = this.timeToX(now, width); ctx.save(); ctx.strokeStyle = this.css('--color-red', '#ef4444'); ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(x, this.axisHeight()); ctx.lineTo(x, height); ctx.stroke(); ctx.restore();
+        const x = this.timeToX(now, width); ctx.save(); ctx.strokeStyle = this.color('now'); ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(x, this.axisHeight()); ctx.lineTo(x, height); ctx.stroke(); ctx.restore();
     }
 
     private drawNowVertical(ctx: CanvasRenderingContext2D, axisX: number, top: number, bottom: number): void {
         const now = Date.now();
         if (now < this.viewStart || now > this.viewEnd) return;
         const y = top + (now - this.viewStart) / (this.viewEnd - this.viewStart) * (bottom - top);
-        ctx.save(); ctx.strokeStyle = this.css('--color-red', '#ef4444'); ctx.setLineDash([4, 4]);
+        ctx.save(); ctx.strokeStyle = this.color('now'); ctx.setLineDash([4, 4]);
         ctx.beginPath(); ctx.moveTo(axisX - 16, y); ctx.lineTo(axisX + 16, y); ctx.stroke(); ctx.restore();
     }
 
@@ -2429,7 +2475,7 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const plotSize = vertical
             ? Math.max(1, this.root.clientHeight - 52)
-            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth()));
         const pointerDelta = vertical ? event.clientY - this.dragging.y : event.clientX - this.dragging.x;
         // Two different conversions, because dragging.start/end mean two
         // different things. For a pan they are the view window, and the content
@@ -2545,7 +2591,7 @@ export class NativeTimelineRenderer {
     private wheelPointer(event: WheelEvent, vertical: boolean, horizontalTimeline: boolean): number {
         return vertical
             ? Math.max(0, event.offsetY - 28)
-            : Math.max(0, event.offsetX - (horizontalTimeline ? 28 : SIDEBAR_WIDTH));
+            : Math.max(0, event.offsetX - (horizontalTimeline ? 28 : this.sidebarWidth()));
     }
 
     /**
@@ -2562,7 +2608,7 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const plotSize = vertical
             ? Math.max(1, this.root.clientHeight - 52)
-            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth()));
         const deltaY = this.wheelPixels(event.deltaY, event.deltaMode, plotSize);
         const deltaX = this.wheelPixels(event.deltaX, event.deltaMode, plotSize);
 
@@ -2576,7 +2622,7 @@ export class NativeTimelineRenderer {
             return;
         }
 
-        const overSidebar = !this.isTimelineLayout() && event.offsetX < SIDEBAR_WIDTH;
+        const overSidebar = !this.isTimelineLayout() && event.offsetX < this.sidebarWidth();
         // Lane scrolling means nothing in the vertical layout: the cards are
         // placed along the time axis and never read scrollTop, so a bare
         // trackpad scroll has to pan through time or the gesture looks dead.
@@ -2616,9 +2662,9 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const center = vertical ? (points[0].y + points[1].y) / 2 : (points[0].x + points[1].x) / 2;
         const bounds = this.root.getBoundingClientRect();
-        const inset = horizontalTimeline ? 28 : SIDEBAR_WIDTH;
+        const inset = horizontalTimeline ? 28 : this.sidebarWidth();
         const local = vertical ? center - bounds.top - 28 : center - bounds.left - inset;
-        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth()));
         const ratio = Math.max(0, Math.min(1, local / size));
         this.pinch = { distance: Math.max(1, distance), span: this.viewEnd - this.viewStart, anchorTime: this.viewStart + ratio * (this.viewEnd - this.viewStart) };
     }
@@ -2633,9 +2679,9 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const center = vertical ? (points[0].y + points[1].y) / 2 : (points[0].x + points[1].x) / 2;
         const bounds = this.root.getBoundingClientRect();
-        const inset = horizontalTimeline ? 28 : SIDEBAR_WIDTH;
+        const inset = horizontalTimeline ? 28 : this.sidebarWidth();
         const local = vertical ? center - bounds.top - 28 : center - bounds.left - inset;
-        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+        const size = vertical ? Math.max(1, this.root.clientHeight - 52) : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth()));
         const ratio = Math.max(0, Math.min(1, local / size));
         this.viewStart = this.pinch.anchorTime - span * ratio;
         this.viewEnd = this.viewStart + span;
@@ -2814,9 +2860,11 @@ export class NativeTimelineRenderer {
     private eventKeys(event: Event): string[] {
         return Array.from(new Set([event.id, event.name].filter((key): key is string => Boolean(key))));
     }
-    private timeToX(time: number, width: number): number { return SIDEBAR_WIDTH + (time - this.viewStart) / (this.viewEnd - this.viewStart) * Math.max(1, width - SIDEBAR_WIDTH); }
+    private timeToX(time: number, width: number): number { return this.sidebarWidth() + (time - this.viewStart) / (this.viewEnd - this.viewStart) * Math.max(1, width - this.sidebarWidth()); }
     private horizontalTimelineTimeToX(time: number, width: number): number { return 28 + (time - this.viewStart) / (this.viewEnd - this.viewStart) * Math.max(1, width - 56); }
-    private rowHeight(): number { return Math.round(24 + (100 - this.options.density) * 0.16); }
+    private rowHeight(): number { return rowHeightFor(this.style.metrics.eventHeight, this.options.density); }
+    private sidebarWidth(): number { return this.style.metrics.laneLabelWidth; }
+    private axisSpacing(base: number): number { return axisLabelSpacing(this.style.metrics.axisDensity, base); }
     private minimumSpan(): number { return this.calendarRegistry.getActiveCalendar().baseUnit === 'minute' ? 60_000 : DAY_MS; }
 
     /** The visible window expressed in the shared absolute-day space. */
@@ -2825,7 +2873,7 @@ export class NativeTimelineRenderer {
         const horizontalTimeline = this.isHorizontalTimeline();
         const size = !this.root ? 900
             : vertical ? Math.max(1, this.root.clientHeight - 52)
-            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : SIDEBAR_WIDTH));
+            : Math.max(1, this.root.clientWidth - (horizontalTimeline ? 56 : this.sidebarWidth()));
         const epoch = this.unixEpochAbsoluteDay();
         return { startDay: this.viewStart / DAY_MS + epoch, endDay: this.viewEnd / DAY_MS + epoch, widthPx: size };
     }
@@ -2858,20 +2906,79 @@ export class NativeTimelineRenderer {
     }
     private unixEpochAbsoluteDay(): number { return toAbsolute(GREGORIAN_CALENDAR, { year: 1970, month: 0, day: 1 }).absoluteDay; }
     private ensureLaneVisible(id: string): void { const lane = this.lanes.find(value => value.id === id); if (lane) this.scrollTop = Math.max(0, lane.top - this.axisHeight()); }
-    private colorFor(value: string): string { let hash = 0; for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0; return this.palette[Math.abs(hash) % this.palette.length]; }
-    private css(name: string, fallback: string): string {
-        const colors = this.calendarRegistry.getActiveTheme().colors;
-        const themeValue: Record<string, string | undefined> = {
-            '--background-primary': colors?.background,
-            '--background-secondary': colors?.surface,
-            '--background-secondary-alt': colors?.surface,
-            '--background-modifier-border': colors?.grid,
-            '--text-normal': colors?.text,
-            '--text-muted': colors?.mutedText,
-            '--interactive-accent': colors?.accent,
-            '--color-red': colors?.now,
-        };
-        return themeValue[name] || getComputedStyle(this.container).getPropertyValue(name).trim() || fallback;
+    private colorFor(value: string): string { let hash = 0; for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0; return this.style.palette[Math.abs(hash) % this.style.palette.length]; }
+    private color(role: TimelineColorRole): string { return this.style.colors[role]; }
+    private font(size: number, weight?: number): string { return `${weight ? `${weight} ` : ''}${size}px ${this.style.font}`; }
+
+    /**
+     * The theme this renderer draws with: an override handed to it (the theme
+     * editor's draft, or a block's `theme:`), else the active story's.
+     */
+    private activeTheme(): TimelineTheme {
+        return this.options.theme
+            || this.calendarRegistry.getTheme(this.options.themeId)
+            || this.calendarRegistry.getActiveTheme();
+    }
+
+    /**
+     * Resolve everything the next frame paints with.
+     *
+     * The theme's values go onto the root as inline `--sts-timeline-*`
+     * variables, then every variable is read back through the cascade. That
+     * one path is what makes a theme file, a CSS snippet and the Obsidian
+     * theme interchangeable: whichever set a variable last, the canvas sees.
+     */
+    private refreshStyle(): void {
+        const theme = this.activeTheme();
+        const root = this.root;
+        if (!root) {
+            this.style = resolveTimelineStyle(() => '', theme);
+            return;
+        }
+        const variables = themeCssVariables(theme);
+        const signature = JSON.stringify(variables);
+        if (signature !== this.appliedThemeVariables) {
+            TIMELINE_THEME_VARIABLES.forEach(name => root.style.removeProperty(name));
+            Object.entries(variables).forEach(([name, value]) => root.style.setProperty(name, value));
+            this.appliedThemeVariables = signature;
+        }
+        const computed = getComputedStyle(root);
+        this.style = resolveTimelineStyle(name => computed.getPropertyValue(name).trim(), theme);
+        this.loadBackgroundImage(this.style.background);
+    }
+
+    /**
+     * Fetch the theme's background image once, then redraw.
+     *
+     * Read as bytes and drawn from a blob URL rather than pointed at directly:
+     * a vault resource URL or a remote image is another origin to the canvas,
+     * and drawing one would taint it, which silently breaks image export.
+     */
+    private loadBackgroundImage(background: ResolvedTimelineBackground | null): void {
+        const source = background?.image;
+        if (!source) { this.backgroundImage = null; return; }
+        if (this.backgroundImage?.source === source) return;
+        const entry: { source: string; image: (CanvasImageSource & { width: number; height: number }) | null } = { source, image: null };
+        this.backgroundImage = entry;
+        void loadTimelineImage(this.app, source).then(image => {
+            if (this.backgroundImage !== entry) return;
+            entry.image = image;
+            if (image) this.scheduleDraw();
+        });
+    }
+
+    private drawBackgroundImage(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+        const background = this.style.background;
+        const image = this.backgroundImage?.image;
+        if (!background || !image || background.opacity <= 0) return;
+        const rects = backgroundDrawRects(background.fit, background.position, width, height, image.width, image.height);
+        if (!rects.length) return;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(0, 0, width, height); ctx.clip();
+        ctx.globalAlpha = background.opacity;
+        if (background.blur > 0) ctx.filter = `blur(${background.blur}px)`;
+        rects.forEach(rect => ctx.drawImage(image, rect.x, rect.y, rect.width, rect.height));
+        ctx.restore();
     }
     private truncate(ctx: CanvasRenderingContext2D, value: string, width: number): string { if (ctx.measureText(value).width <= width) return value; let text = value; while (text.length > 1 && ctx.measureText(`${text}…`).width > width) text = text.slice(0, -1); return `${text}…`; }
     private lowerBound(items: NativeItem[], target: number): number { let low = 0, high = items.length; while (low < high) { const mid = (low + high) >>> 1; if (items[mid].start < target) low = mid + 1; else high = mid; } return low; }
@@ -2970,6 +3077,77 @@ export class NativeTimelineRenderer {
     private resizeCanvas(): void { if (!this.canvas || !this.root || !this.ctx) return; const ratio = Math.max(1, window.devicePixelRatio || 1); const width = Math.max(1, this.root.clientWidth); const height = Math.max(1, this.root.clientHeight); this.canvas.width = Math.round(width * ratio); this.canvas.height = Math.round(height * ratio); this.canvas.style.width = `${width}px`; this.canvas.style.height = `${height}px`; this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0); }
     private toCsv(): string { const escape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`; return ['Name,Date,Status,Location,Characters,Description', ...this.getVisibleEvents().map(event => [event.name, event.dateTime, event.status, event.location, (event.characters || []).join('; '), event.description].map(escape).join(','))].join('\n'); }
     private async writeExport(extension: string, content: string): Promise<void> { const path = `StorytellerSuite/Exports/timeline-${new Date().toISOString().slice(0, 10)}.${extension}`; const existing = this.app.vault.getAbstractFileByPath(path); if (existing instanceof TFile) await this.app.vault.modify(existing, content); else { const folder = 'StorytellerSuite/Exports'; if (!this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder); await this.app.vault.create(path, content); } new Notice(`Timeline exported to ${path}`); }
+}
+
+const IMAGE_TYPES: Record<string, string> = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+    webp: 'image/webp', avif: 'image/avif', svg: 'image/svg+xml', bmp: 'image/bmp',
+};
+
+type TimelineImage = CanvasImageSource & { width: number; height: number };
+const timelineImageCache = new Map<string, Promise<TimelineImage | null>>();
+
+/**
+ * A background image as something the canvas can draw without being tainted.
+ *
+ * Cached by source for the session, since every open timeline using the same
+ * theme asks for the same file. A failure is cached as null too: a missing
+ * image should cost one warning, not one per frame.
+ */
+export function loadTimelineImage(app: App, source: string): Promise<TimelineImage | null> {
+    const cached = timelineImageCache.get(source);
+    if (cached) return cached;
+    const loading = readImageBytes(app, source)
+        .then(blob => blob ? decodeImage(blob) : null)
+        .catch(error => {
+            console.warn(`Storyteller Suite: timeline background "${source.slice(0, 120)}" could not be loaded`, error);
+            return null;
+        });
+    timelineImageCache.set(source, loading);
+    return loading;
+}
+
+/** Forget a cached image, so a replaced vault file is read again. */
+export function forgetTimelineImage(source: string): void {
+    timelineImageCache.delete(source);
+}
+
+async function readImageBytes(app: App, source: string): Promise<Blob | null> {
+    if (source.startsWith('data:')) {
+        const [header, data] = source.split(',', 2);
+        const type = header.slice(5).split(';')[0] || 'image/png';
+        const binary = atob(data || '');
+        return new Blob([Uint8Array.from(binary, char => char.charCodeAt(0))], { type });
+    }
+    if (/^https:\/\//i.test(source)) {
+        const response = await requestUrl({ url: source });
+        const type = response.headers['content-type'] || response.headers['Content-Type'] || 'image/png';
+        return new Blob([response.arrayBuffer], { type });
+    }
+    const link = source.replace(/^!?\[\[/, '').replace(/\]\]$/, '').split('|')[0].trim();
+    const file = app.vault.getAbstractFileByPath(link) || app.metadataCache.getFirstLinkpathDest(link, '');
+    if (!(file instanceof TFile)) throw new Error('No such file in the vault');
+    const type = IMAGE_TYPES[file.extension.toLowerCase()];
+    if (!type) throw new Error(`"${file.extension}" is not an image type the timeline can draw`);
+    return new Blob([await app.vault.readBinary(file)], { type });
+}
+
+async function decodeImage(blob: Blob): Promise<TimelineImage | null> {
+    const url = URL.createObjectURL(blob);
+    try {
+        const image = activeDocument.createElement('img');
+        image.decoding = 'async';
+        image.src = url;
+        await image.decode();
+        // Copied onto a canvas so the blob URL can be released straight away.
+        const canvas = activeDocument.createElement('canvas');
+        canvas.width = image.naturalWidth || 1;
+        canvas.height = image.naturalHeight || 1;
+        canvas.getContext('2d')?.drawImage(image, 0, 0);
+        return canvas;
+    } finally {
+        URL.revokeObjectURL(url);
+    }
 }
 
 export { NativeTimelineRenderer as TimelineRenderer };

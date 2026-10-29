@@ -25,6 +25,7 @@ import type { TemplateEntityType } from './templates/TemplateTypes';
 import { CalendarRegistry } from './calendar/CalendarRegistry';
 import { encodeShareCode, makeCalendarDocument, makeThemeDocument } from './calendar/TimelineDocuments';
 import { CalendarManagerModal } from './modals/CalendarManagerModal';
+import { TimelineThemeManagerModal, openActiveTimelineThemeEditor } from './modals/TimelineThemeModal';
 import { PlatformUtils } from './utils/PlatformUtils';
 
 type TabId = 'stories' | 'dashboard' | 'modals' | 'folders' | 'timeline' | 'maps' | 'templates' | 'gallery' | 'help';
@@ -1001,7 +1002,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
         new Setting(container)
             .setName('Timeline theme')
-            .setDesc('Appearance layer applied over the active Obsidian theme for this story.')
+            .setDesc('Colours, lane palette, font, shapes and background image of the timeline for this story. Also available from the timeline toolbar.')
             .addDropdown(dropdown => {
                 calendarRegistry.listThemes().forEach(theme => dropdown.addOption(theme.id, theme.name));
                 dropdown.setValue(activeTheme.id).onChange(async id => {
@@ -1009,6 +1010,15 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     new Notice(`Timeline theme changed to ${calendarRegistry.getActiveTheme().name}`);
                 });
             })
+            .addButton(button => button
+                .setButtonText('Manage themes')
+                .setTooltip('Create, edit, duplicate, or delete timeline themes')
+                .onClick(() => {
+                    new TimelineThemeManagerModal(this.app, this.plugin, () => this.refreshSettingsView()).open();
+                }))
+            .addExtraButton(button => button.setIcon('pencil').setTooltip('Edit this theme').onClick(() => {
+                openActiveTimelineThemeEditor(this.app, this.plugin, () => this.refreshSettingsView());
+            }))
             .addExtraButton(button => button.setIcon('copy').setTooltip('Copy timeline theme share code').onClick(() => { void (async () => {
                 await navigator.clipboard.writeText(encodeShareCode(makeThemeDocument(calendarRegistry.getActiveTheme())));
                 new Notice('Timeline theme share code copied');

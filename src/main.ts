@@ -2728,6 +2728,24 @@ export default class StorytellerSuitePlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: 'manage-timeline-themes',
+			name: 'Manage timeline themes',
+			callback: async () => {
+				const { TimelineThemeManagerModal } = await import('./modals/TimelineThemeModal');
+				new TimelineThemeManagerModal(this.app, this).open();
+			}
+		});
+
+		this.addCommand({
+			id: 'edit-timeline-theme',
+			name: 'Edit timeline theme',
+			callback: async () => {
+				const { openActiveTimelineThemeEditor } = await import('./modals/TimelineThemeModal');
+				openActiveTimelineThemeEditor(this.app, this);
+			}
+		});
+
+		this.addCommand({
 			id: 'manage-custom-calendars',
 			name: 'Manage custom calendars',
 			callback: async () => {

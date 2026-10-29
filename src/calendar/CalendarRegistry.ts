@@ -2,8 +2,10 @@ import type StorytellerSuitePlugin from '../main';
 import type { CalendarSystem } from './types';
 import { GREGORIAN_CALENDAR } from './builtins';
 import { PRESET_CALENDARS } from './presets';
+import { BUILTIN_TIMELINE_THEMES } from './themes';
 import {
   OBSIDIAN_NATIVE_THEME,
+  sanitizeTheme,
   type CalendarDocument,
   type PortableTimelineDocument,
   type TimelineTheme,
@@ -11,6 +13,26 @@ import {
   decodeShareCode,
   parsePortableDocument,
 } from './TimelineDocuments';
+
+type ThemeListener = () => void;
+const themeListeners = new Set<ThemeListener>();
+
+/**
+ * Hear about any change to how timelines should look: a different active
+ * theme, a theme saved or deleted. Registries are created on demand all over
+ * the plugin, so the listeners live at module level rather than on an
+ * instance. Returns the function that unsubscribes.
+ */
+export function onTimelineThemeChange(listener: ThemeListener): () => void {
+  themeListeners.add(listener);
+  return () => { themeListeners.delete(listener); };
+}
+
+export function notifyTimelineThemeChange(): void {
+  themeListeners.forEach(listener => {
+    try { listener(); } catch (error) { console.error('Storyteller Suite: timeline theme listener failed', error); }
+  });
+}
 
 export class CalendarRegistry {
   constructor(private readonly plugin: StorytellerSuitePlugin) {}
@@ -21,7 +43,15 @@ export class CalendarRegistry {
   }
 
   listThemes(): TimelineTheme[] {
-    return uniqueById([OBSIDIAN_NATIVE_THEME, ...(this.plugin.settings.timelineThemes || [])]);
+    return uniqueById([...BUILTIN_TIMELINE_THEMES, ...(this.plugin.settings.timelineThemes || [])]);
+  }
+
+  getTheme(id: string | undefined): TimelineTheme | undefined {
+    return id ? this.listThemes().find(theme => theme.id === id) : undefined;
+  }
+
+  isBuiltInTheme(id: string): boolean {
+    return BUILTIN_TIMELINE_THEMES.some(theme => theme.id === id);
   }
 
   getActiveCalendar(): CalendarSystem {
@@ -70,6 +100,35 @@ export class CalendarRegistry {
     if (!this.listThemes().some(theme => theme.id === id)) throw new Error('Timeline theme not found.');
     story.activeTimelineThemeId = id;
     await this.plugin.saveSettings();
+    notifyTimelineThemeChange();
+  }
+
+  async saveTheme(theme: TimelineTheme): Promise<TimelineTheme> {
+    if (this.isBuiltInTheme(theme.id)) throw new Error('Built-in themes cannot be overwritten. Duplicate it first.');
+    const saved = sanitizeTheme(theme);
+    if (!saved.name) throw new Error('Give the theme a name.');
+    const values = [...(this.plugin.settings.timelineThemes || [])];
+    const index = values.findIndex(value => value.id === saved.id);
+    if (index >= 0) values[index] = saved;
+    else values.push(saved);
+    this.plugin.settings.timelineThemes = values;
+    await this.plugin.saveSettings();
+    notifyTimelineThemeChange();
+    return saved;
+  }
+
+  async deleteTheme(id: string): Promise<void> {
+    if (this.isBuiltInTheme(id)) throw new Error('Built-in themes cannot be deleted.');
+    this.plugin.settings.timelineThemes = (this.plugin.settings.timelineThemes || [])
+      .filter(theme => theme.id !== id);
+    // Any story using it falls back to the native theme, not just the active
+    // one: a deleted theme left selected elsewhere would silently read as
+    // native anyway, and the picker would show a theme that no longer exists.
+    for (const story of this.plugin.settings.stories || []) {
+      if (story.activeTimelineThemeId === id) story.activeTimelineThemeId = OBSIDIAN_NATIVE_THEME.id;
+    }
+    await this.plugin.saveSettings();
+    notifyTimelineThemeChange();
   }
 
   async importText(text: string, collision: 'replace' | 'copy' = 'copy'): Promise<PortableTimelineDocument> {
@@ -103,11 +162,12 @@ export class CalendarRegistry {
     }
     this.plugin.settings.timelineThemes = values;
     await this.plugin.saveSettings();
+    notifyTimelineThemeChange();
   }
 
   private requireStory() {
     const story = this.plugin.getActiveStory();
-    if (!story) throw new Error('Select a story before changing its dating system.');
+    if (!story) throw new Error('Select a story before changing its dating system or timeline theme.');
     return story;
   }
 }

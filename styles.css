@@ -11523,14 +11523,40 @@ body.mod-rtl .storyteller-group-members {
   height: 100%;
   min-height: 240px;
   overflow: hidden;
-  background: var(--background-primary);
-  color: var(--text-normal);
+  background: var(--sts-timeline-background);
+  color: var(--sts-timeline-text);
   outline: none;
   touch-action: none;
   user-select: none;
 
+  /* Timeline theme variables.
+     Every colour, the lane palette and the label font on the timeline canvas
+     come from these. The defaults follow the active Obsidian theme; a CSS
+     snippet targeting .sts-native-timeline can override any of them, and a
+     timeline theme (Settings → Timeline → Timeline theme) sets them inline,
+     which takes precedence over a snippet. */
+  --sts-timeline-background: var(--background-primary);
+  --sts-timeline-surface: var(--background-secondary);
+  --sts-timeline-sidebar: var(--background-secondary-alt);
+  --sts-timeline-grid: var(--background-modifier-border);
+  --sts-timeline-grid-strong: var(--background-modifier-border-hover);
+  --sts-timeline-text: var(--text-normal);
+  --sts-timeline-text-muted: var(--text-muted);
+  --sts-timeline-text-accent: var(--text-accent);
+  --sts-timeline-text-on-accent: var(--text-on-accent);
+  --sts-timeline-accent: var(--interactive-accent);
+  --sts-timeline-now: var(--color-red);
+  --sts-timeline-conflict-error: var(--color-red);
+  --sts-timeline-conflict-warning: var(--color-yellow);
+  --sts-timeline-connector: var(--interactive-accent);
+  --sts-timeline-flashback: var(--color-purple);
+  --sts-timeline-flashforward: var(--color-orange);
+  --sts-timeline-era: #8b5cf6;
+  --sts-timeline-holiday: #f59e0b;
+  --sts-timeline-font: var(--font-interface);
+
   /* Milestone stars are gold whatever lane they sit in, so they can be found
-     without first reading the legend. Override these to restyle them. */
+     without first reading the legend. */
   --sts-timeline-milestone: #d9a520;
   --sts-timeline-milestone-edge: #8a6410;
 
@@ -11538,10 +11564,56 @@ body.mod-rtl .storyteller-group-members {
      marker uses, hollow, so a date and the event that could fill it read as one
      system. */
   --sts-timeline-slot: #0b0f16;
+
+  /* Lane palette, handed out to lanes, characters, locations and cycles in
+     turn. Set --sts-timeline-lane-count to use fewer, or up to 24 with
+     --sts-timeline-lane-11 and on. */
+  --sts-timeline-lane-count: 10;
+  --sts-timeline-lane-1: #7c3aed;
+  --sts-timeline-lane-2: #2563eb;
+  --sts-timeline-lane-3: #059669;
+  --sts-timeline-lane-4: #ca8a04;
+  --sts-timeline-lane-5: #dc2626;
+  --sts-timeline-lane-6: #ea580c;
+  --sts-timeline-lane-7: #0ea5e9;
+  --sts-timeline-lane-8: #22c55e;
+  --sts-timeline-lane-9: #d946ef;
+  --sts-timeline-lane-10: #f59e0b;
 }
 
 .theme-light .sts-native-timeline {
   --sts-timeline-slot: #9aa4b2;
+}
+
+/* Theme editor: the live preview stays in view while the form scrolls
+   beneath it, so a colour can be judged where it is used. */
+.storyteller-theme-preview {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 0 var(--size-4-3);
+  padding-bottom: var(--size-4-2);
+  background: var(--background-primary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-theme-preview-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  margin-bottom: var(--size-4-1);
+}
+
+.storyteller-theme-preview-canvas {
+  position: relative;
+  height: 240px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+}
+
+/* Reads the stylesheet defaults for inherited colours; never shown. */
+.storyteller-theme-probe {
+  display: none;
 }
 
 .sts-native-timeline:focus-visible {
