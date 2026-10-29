@@ -8,12 +8,15 @@
 - **Timeline background images**: a theme can draw an image behind the timeline, from the vault or an `https` link, with cover, contain, stretch, or tile fit, an anchor edge, opacity, and blur. The image is included in image exports.
 - **Bundled themes**: High contrast, Parchment, and Quiet, alongside Obsidian native.
 - **Theme for a timeline block**: a fenced `timeline` block accepts `theme: <name or id>` to draw with a theme other than the story's.
+- **Today per story**: each story can set its own "today" (where the now marker sits, what *Jump to today* shows, and what relative dates count from), typed as an ISO date, a BCE year, or a date in the story's own calendar. Set it from the timeline's zoom menu (*Set today for this story…*, *Use the default today*) or Settings → Timeline → Today for this story. A story without one uses the plugin-wide custom today, then the system date.
+- **Today for a timeline block**: a fenced `timeline` block accepts `today: <date>` to draw against a today of its own.
 - **Documented CSS variables**: every colour on the timeline canvas, the lane palette (`--sts-timeline-lane-1` … `--sts-timeline-lane-24`, `--sts-timeline-lane-count`), and the label font (`--sts-timeline-font`) are `--sts-timeline-*` variables. A CSS snippet can override any of them, and a theme sets them for its story.
 
 ### Fixed
 - The Gantt view was slow with many dependencies. Every frame measured and laid out every dependency arrow in the story, including ones far off screen, and set the canvas font once per event to measure its label. Arrows that cannot reach the screen are now skipped before any measuring, label widths are remembered per event until the label or font changes, and arrowheads no longer save and restore canvas state. In a 1,500-event benchmark a Gantt frame went from about 10 ms to about 3.5 ms; the drawn result is pixel-identical.
 - Timeline theme files declared event size, corner radius and opacity, lane label width, height and gap, axis label density, and connector width and style, but the timeline ignored them. Every field now applies.
 - Changing the timeline theme, switching Obsidian between light and dark, or editing a CSS snippet now repaints open timelines straight away instead of after they are reopened.
+- In a story with a custom calendar, the custom today is now read in that calendar, so it lands on the same day as an event with the same date. It used to be read as a Gregorian date only.
 - The conflict colour no longer changes with the "today" line colour; each has its own role.
 - Gregorian year labels on the Chronology and Gantt axis no longer repeat or skip (for example "1420, 1420, 1422"). The axis stepped by a fixed 365.2425-day year from 1970, so gridlines drifted off 1 January. It now uses the same calendar-aware ticks as custom calendars and the Timeline view. Months and days thin to whole steps (every 3 or 6 months, days 1/11/21, ...), each month label carries its year, and years before 1 CE read as BCE instead of negative numbers. Gregorian month labels now use the calendar's month names rather than the system locale's.
 

@@ -17,7 +17,9 @@ import * as L from 'leaflet';
 // import 'leaflet.markercluster/dist/leaflet.markercluster';
 
 import { Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf, debounce } from 'obsidian';
-import { parseEventDate, parseReferenceDate, toMillis } from './utils/DateParsing';
+import { parseEventDate, toMillis } from './utils/DateParsing';
+import { CalendarRegistry } from './calendar/CalendarRegistry';
+import { resolveReferenceToday } from './calendar/ReferenceToday';
 import {
     EntityType,
     buildFrontmatter,
@@ -870,17 +872,27 @@ export default class StorytellerSuitePlugin extends Plugin {
         return normalizePath(stripped);
     }
 
-    /** Get the Date object for the plugin's notion of "today" (custom override or system). */
-    getReferenceTodayDate(): Date {
-        const iso = this.settings.customTodayISO;
-        if (iso) {
-            // Read with the event date parser: `new Date` drops the sign of a BCE year ("-0044" became 2044)
-            // and cannot read "44 BCE" at all. Unreadable text falls back to the system clock, and the
-            // settings tab tells the user when they enter it.
-            const parsed = parseReferenceDate(iso);
-            if (parsed) return parsed;
-        }
-        return new Date();
+    /**
+     * The plugin's notion of "today": `override` (an embedded timeline's
+     * `today:`), else the active story's own today, else the plugin-wide custom
+     * today, else the system clock. Each is read the way the timeline reads an
+     * event date in the active story, so a date in its own calendar works.
+     * Unreadable text falls through to the next level; the places that take it
+     * say so when it is entered.
+     */
+    getReferenceTodayDate(override?: string): Date {
+        const story = this.settings.stories?.find(s => s.id === this.settings.activeStoryId);
+        const calendar = new CalendarRegistry(this).calendarFor(story);
+        return resolveReferenceToday([override, story?.customToday, this.settings.customTodayISO], calendar);
+    }
+
+    /** Set a story's own today, or clear it with blank text, and redraw every timeline. */
+    async setStoryToday(storyId: string, text: string | undefined): Promise<void> {
+        const story = this.settings.stories.find(s => s.id === storyId);
+        if (!story) throw new Error('Story not found');
+        story.customToday = text?.trim() || undefined;
+        await this.saveSettings();
+        this.refreshTimelineViews();
     }
 
 	/**

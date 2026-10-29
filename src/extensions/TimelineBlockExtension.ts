@@ -14,6 +14,7 @@ import { parseTimelineBlock } from '../utils/TimelineBlockConfig';
 import type { TimelineBlockConfig } from '../utils/TimelineBlockConfig';
 import { parseEventDate, toMillis } from '../utils/DateParsing';
 import { openNewEventModal } from '../utils/OpenNewEventModal';
+import { todayTextProblem } from '../calendar/ReferenceToday';
 
 /**
  * Owns one block's renderer for as long as the note is on screen.
@@ -44,18 +45,11 @@ class TimelineBlockChild extends MarkdownRenderChild {
         const theme = wanted
             ? registry.listThemes().find(candidate => candidate.id.toLowerCase() === wanted || candidate.name.toLowerCase() === wanted)
             : undefined;
-        if (wanted && !theme) {
-            // Same rule as unknown settings: say so rather than quietly drawing
-            // the story's theme and letting the writer think theirs applied.
-            const parent = this.containerEl.parentElement;
-            if (parent) {
-                const problem = parent.createDiv({
-                    cls: 'sts-timeline-block-errors',
-                    text: `Unknown timeline theme "${this.config.theme}". Using the story's theme.`
-                });
-                parent.insertBefore(problem, this.containerEl);
-            }
-        }
+        // Same rule as unknown settings: say so rather than quietly drawing the
+        // story's theme or today and letting the writer think theirs applied.
+        if (wanted && !theme) this.showProblem(`Unknown timeline theme "${this.config.theme}". Using the story's theme.`);
+        const todayProblem = this.config.today ? todayTextProblem(this.config.today, registry.getActiveCalendar()) : null;
+        if (todayProblem) this.showProblem(`${todayProblem} Using the story's today.`);
         const renderer = new TimelineRenderer(this.containerEl, this.plugin, {
             themeId: theme?.id,
             groupMode: this.config.groupMode,
@@ -71,7 +65,7 @@ class TimelineBlockChild extends MarkdownRenderChild {
             // one. Dragging an event here would rewrite a note the reader may
             // not even know they have open.
             editMode: false,
-            getReferenceDate: () => this.plugin.getReferenceTodayDate()
+            getReferenceDate: () => this.plugin.getReferenceTodayDate(this.config.today)
         });
         this.renderer = renderer;
         this.unregisterLive = this.plugin.registerLiveTimeline(this);
@@ -87,6 +81,14 @@ class TimelineBlockChild extends MarkdownRenderChild {
             // whatever the fit happened to choose for the other.
             if (start != null && end != null) renderer.setVisibleRange(new Date(start), new Date(end));
         })();
+    }
+
+    /** A line above the block naming a setting it could not use. */
+    private showProblem(text: string): void {
+        const parent = this.containerEl.parentElement;
+        if (!parent) return;
+        const problem = parent.createDiv({ cls: 'sts-timeline-block-errors', text });
+        parent.insertBefore(problem, this.containerEl);
     }
 
     /** Called by the plugin when timeline data or the story's today has moved. */

@@ -550,7 +550,7 @@
   "galleryFolderDesc": "Folder where uploaded gallery images will be stored",
   "customFieldsDesc": "Choose how custom fields are stored in frontmatter",
   "forwardDateBiasDesc": "Prefer future interpretation for relative dates (e.g., \"Friday\")",
-  "customTodayDesc": "Optional date used for the Today button and relative parsing. Supports BCE dates (e.g., 2024-01-15 for CE, or -00499-01-01 for 500 BCE). Leave empty to use system today.",
+  "customTodayDesc": "Optional date used for the Today button and relative parsing in every story that does not set its own (see Today for this story). Supports BCE dates (e.g., 2024-01-15 for CE, or -00499-01-01 for 500 BCE). Leave empty to use system today.",
   "timelineHeightDesc": "Adjust the height of the timeline modal",
   "useCustomFoldersDesc": "When enabled, use the folder paths below. You can include {storyName}, {storySlug}, or {storyId} to make per-story folders (e.g., Creative/Writing/{storyName}/Characters).",
   "previewFoldersDesc": "See each entity's resolved folder path based on current settings and active story",

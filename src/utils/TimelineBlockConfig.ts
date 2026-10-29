@@ -26,6 +26,8 @@ export interface TimelineBlockConfig {
      * against the installed themes when the block renders.
      */
     theme?: string;
+    /** This block's own today, as typed. Undefined uses the story's. */
+    today?: string;
     /** Initial visible window, when the block asked for one. */
     from?: string;
     to?: string;
@@ -123,6 +125,7 @@ export function parseTimelineBlock(source: string): TimelineBlockConfig {
             case 'era': config.filters.eras = asList(value); break;
             case 'branch': config.filters.forkId = value || undefined; break;
             case 'theme': config.theme = value || undefined; break;
+            case 'today': config.today = value || undefined; break;
             case 'from': config.from = value; break;
             case 'to': config.to = value; break;
             default: config.errors.push(`Unknown setting "${key}"`);

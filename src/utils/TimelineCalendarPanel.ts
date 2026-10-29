@@ -6,13 +6,18 @@
  *
  * Canvas views draw on a canvas. This one is ordinary DOM, which is what lets
  * the week rows, "+N more" menus and month header use the same Obsidian
- * controls as the rest of the plugin.
+ * controls as the rest of the plugin. Its look comes from the same timeline
+ * theme as the canvas: the `--sts-timeline-*` colours and font through CSS, the
+ * chip height, corner radius and event opacity through {@link TimelineCalendarHost.metrics},
+ * and the background colour and image from the canvas, which stays painted
+ * underneath the month.
  */
 import { Menu, setIcon } from 'obsidian';
 import type { App } from 'obsidian';
 import { formatCalendarYear } from '../calendar/CalendarDateText';
 import type { CalendarSystem } from '../calendar/types';
 import type { EntityIconSource } from './EntityIcon';
+import type { TimelineMetrics } from './TimelineStyle';
 import { renderIconPreview } from './IconPreview';
 import type { NativeItem } from './NativeTimelineRenderer';
 import {
@@ -20,8 +25,12 @@ import {
 } from './TimelineCalendarGrid';
 import type { CalendarDaySpan, CalendarMonthGrid, CalendarMonthRef, CalendarWeekLayout } from './TimelineCalendarGrid';
 
-/** Chip rows drawn per week before the rest collapse into "+N more". */
-const VISIBLE_LANES = 3;
+/** Height of a week's day-number row, in pixels. */
+const DAY_LABEL_PX = 30;
+/** Chip rows a week always has room for: below that the month scrolls rather than squeezing. */
+const MIN_LANES = 2;
+/** Chip rows a week shows at most, however tall the pane, before the rest collapse into "+N more". */
+const MAX_LANES = 12;
 /** Pane width below which the month becomes an agenda list. */
 const AGENDA_BELOW_PX = 600;
 /** Same slop the canvas uses to tell a tap from a drag. */
@@ -38,6 +47,12 @@ export interface TimelineCalendarHost {
     /** The events the calendar shows: the same filtered set the other views draw. */
     items(): NativeItem[];
     colorOf(item: NativeItem): string;
+    /** How solid an event draws: certainty and inheritance fade, scaled by the theme. */
+    alphaOf(item: NativeItem): number;
+    /** Clock time an event starts at, when it has one, written as the canvas writes it. */
+    timeOf(item: NativeItem): string | null;
+    /** The theme's chip height, corner radius and opacity. */
+    metrics(): TimelineMetrics;
     iconSourceFor(event: NativeItem['event']): EntityIconSource;
     photoUrl(source: EntityIconSource): string | null;
     isDraggable(item: NativeItem): boolean;
@@ -100,42 +115,61 @@ export class TimelineCalendarPanel {
         const cal = this.host.calendar();
         const grid = buildMonthGrid(cal, ref);
         const items = this.host.items().filter(item => Number.isFinite(item.start));
+        const spans = new Map<string, CalendarDaySpan>();
+        for (const item of items) {
+            const span = daySpanOf(this.host.dayOfTime(item.start), this.host.dayOfTime(item.end));
+            // Order breaks ties inside a day, so a morning event sits above an evening one.
+            spans.set(item.id, { key: item.id, ...span, order: item.start });
+        }
+        const metrics = this.host.metrics();
+        const laneHeight = calendarLaneHeight(metrics.eventHeight);
         this.el.empty();
-        this.renderHeader(cal, grid);
-        if (this.host.paneWidth() < AGENDA_BELOW_PX) this.renderAgenda(cal, grid, items);
-        else this.renderGrid(grid, items);
+        this.el.setCssProps({
+            '--storyteller-timeline-calendar-lane-height': `${laneHeight}px`,
+            '--storyteller-timeline-calendar-daynum-height': `${DAY_LABEL_PX}px`,
+            '--storyteller-timeline-calendar-week-min': `${DAY_LABEL_PX + MIN_LANES * laneHeight + 6}px`,
+            '--storyteller-timeline-calendar-radius': `${metrics.eventRadius + 2}px`,
+        });
+        const inMonth = Array.from(spans.values()).filter(span => span.lastDay >= grid.firstDay && span.firstDay <= grid.lastDay).length;
+        this.renderHeader(cal, grid, inMonth);
+        if (this.host.paneWidth() < AGENDA_BELOW_PX) this.renderAgenda(cal, grid, items, spans);
+        else this.renderGrid(grid, items, spans, laneHeight);
     }
 
-    private renderHeader(cal: CalendarSystem, grid: CalendarMonthGrid): void {
+    private renderHeader(cal: CalendarSystem, grid: CalendarMonthGrid, eventCount: number): void {
         const header = this.el.createDiv('storyteller-timeline-calendar-header');
-        const previous = header.createEl('button', {
+        const title = header.createDiv('storyteller-timeline-calendar-title');
+        title.createSpan({ cls: 'storyteller-timeline-calendar-title-month', text: grid.monthName });
+        title.createSpan({ cls: 'storyteller-timeline-calendar-title-year', text: formatCalendarYear(cal, grid.ref.year) });
+        title.createSpan({
+            cls: 'storyteller-timeline-calendar-title-count',
+            text: eventCount === 1 ? '1 event' : `${eventCount} events`
+        });
+
+        const nav = header.createDiv('storyteller-timeline-calendar-nav-group');
+        const today = nav.createEl('button', {
+            cls: 'storyteller-timeline-calendar-today',
+            text: 'Today',
+            attr: { 'aria-label': 'Show today', 'title': 'Show today' }
+        });
+        today.addEventListener('click', () => this.host.showToday());
+
+        const previous = nav.createEl('button', {
             cls: 'clickable-icon storyteller-timeline-calendar-nav',
             attr: { 'aria-label': 'Previous month', 'title': 'Previous month' }
         });
         setIcon(previous, 'chevron-left');
         previous.addEventListener('click', () => this.host.showMonth(shiftMonth(cal, grid.ref, -1)));
 
-        header.createDiv({
-            cls: 'storyteller-timeline-calendar-title',
-            text: `${grid.monthName} ${formatCalendarYear(cal, grid.ref.year)}`
-        });
-
-        const next = header.createEl('button', {
+        const next = nav.createEl('button', {
             cls: 'clickable-icon storyteller-timeline-calendar-nav',
             attr: { 'aria-label': 'Next month', 'title': 'Next month' }
         });
         setIcon(next, 'chevron-right');
         next.addEventListener('click', () => this.host.showMonth(shiftMonth(cal, grid.ref, 1)));
-
-        const today = header.createEl('button', {
-            cls: 'storyteller-timeline-calendar-today',
-            text: 'Today',
-            attr: { 'aria-label': 'Show today', 'title': 'Show today' }
-        });
-        today.addEventListener('click', () => this.host.showToday());
     }
 
-    private renderGrid(grid: CalendarMonthGrid, items: NativeItem[]): void {
+    private renderGrid(grid: CalendarMonthGrid, items: NativeItem[], spans: Map<string, CalendarDaySpan>, laneHeight: number): void {
         const board = this.el.createDiv('storyteller-timeline-calendar-board');
         board.setCssProps({ '--storyteller-timeline-calendar-columns': String(grid.columns) });
         board.addEventListener('click', event => {
@@ -144,23 +178,24 @@ export class TimelineCalendarPanel {
         });
 
         const weekdays = board.createDiv('storyteller-timeline-calendar-weekdays');
-        grid.weekdays.forEach(name => weekdays.createDiv({ cls: 'storyteller-timeline-calendar-weekday', text: name }));
+        grid.weekdays.forEach(name => weekdays.createDiv({ cls: 'storyteller-timeline-calendar-weekday', text: name, attr: { title: name } }));
 
-        const spans = new Map<string, CalendarDaySpan>();
-        const itemByKey = new Map<string, NativeItem>();
-        for (const item of items) {
-            const span = daySpanOf(this.host.dayOfTime(item.start), this.host.dayOfTime(item.end));
-            spans.set(item.id, { key: item.id, ...span });
-            itemByKey.set(item.id, item);
-        }
+        // The weeks share the board's height, so the month fills the pane, and
+        // each week shows as many chip rows as its share of that height holds.
+        const weekHeight = (board.clientHeight - weekdays.offsetHeight) / grid.rows;
+        const lanes = calendarLanesFor(weekHeight, laneHeight);
+
+        const itemByKey = new Map(items.map(item => [item.id, item]));
         const spanList = Array.from(spans.values());
         const dayByAbsolute = new Map(grid.days.map(day => [day.absoluteDay, day]));
         const todayDay = this.host.todayDay();
 
         for (let row = 0; row < grid.rows; row++) {
             const weekStart = grid.gridStart + row * grid.columns;
-            const layout = layoutCalendarWeek(spanList, weekStart, grid.columns, grid.firstDay, grid.lastDay, VISIBLE_LANES);
-            this.renderWeek(board, grid, weekStart, layout, itemByKey, dayByAbsolute, todayDay);
+            let layout = layoutCalendarWeek(spanList, weekStart, grid.columns, grid.firstDay, grid.lastDay, lanes);
+            // "+N more" takes a row of its own, so a week that overflows gives up its last chip row for it.
+            if (layout.overflow.length && lanes > 1) layout = layoutCalendarWeek(spanList, weekStart, grid.columns, grid.firstDay, grid.lastDay, lanes - 1);
+            this.renderWeek(board, grid, weekStart, layout, itemByKey, spans, dayByAbsolute, todayDay);
         }
     }
 
@@ -170,6 +205,7 @@ export class TimelineCalendarPanel {
         weekStart: number,
         layout: CalendarWeekLayout,
         itemByKey: Map<string, NativeItem>,
+        spans: Map<string, CalendarDaySpan>,
         dayByAbsolute: Map<number, CalendarMonthGrid['days'][number]>,
         todayDay: number,
     ): void {
@@ -186,6 +222,7 @@ export class TimelineCalendarPanel {
             cell.setAttribute('data-day', String(absoluteDay));
             cell.setCssStyles({ gridColumn: String(column + 1), gridRow: '1 / -1' });
             if (!day) cell.addClass('is-outside');
+            if (column === grid.columns - 1) cell.addClass('is-last-column');
             if (absoluteDay === todayDay) cell.addClass('is-today');
         }
         for (let column = 0; column < grid.columns; column++) {
@@ -210,24 +247,24 @@ export class TimelineCalendarPanel {
                 gridColumn: `${segment.startColumn + 1} / ${segment.endColumn + 2}`,
                 gridRow: String(segment.lane + 2),
             });
-            chip.setCssProps({ '--storyteller-timeline-calendar-chip-color': this.host.colorOf(item) });
             chip.toggleClass('is-continued-before', segment.continuesBefore);
             chip.toggleClass('is-continued-after', segment.continuesAfter);
             chip.toggleClass('is-selected', this.host.isSelected(item));
             this.bindChip(chip, item, week);
-            this.appendIcon(chip, item);
-            chip.createSpan({ cls: 'storyteller-timeline-calendar-chip-label', text: item.event.name });
+            this.fillChip(chip, item, spans.get(item.id));
             if (item.event.dateTime) chip.setAttribute('title', `${item.event.name} (${item.event.dateTime})`);
             else chip.setAttribute('title', item.event.name);
         }
 
+        // With overflow the last lane row is the "+N more" row.
+        const moreRow = layout.lanes + 1;
         for (const overflow of layout.overflow) {
             const more = week.createEl('button', {
                 cls: 'storyteller-timeline-calendar-more',
                 text: `+${overflow.hidden} more`,
                 attr: { 'aria-label': `Show ${overflow.hidden} more events` }
             });
-            more.setCssStyles({ gridColumn: String(overflow.column + 1), gridRow: String(VISIBLE_LANES + 2) });
+            more.setCssStyles({ gridColumn: String(overflow.column + 1), gridRow: String(moreRow) });
             more.addEventListener('click', event => {
                 const menu = new Menu();
                 for (const key of overflow.keys) {
@@ -328,27 +365,49 @@ export class TimelineCalendarPanel {
         this.el.querySelector(`[data-day="${day}"]`)?.addClass('is-drop-target');
     }
 
-    private appendIcon(parent: HTMLElement, item: NativeItem): void {
+    /**
+     * A chip's contents. An event over several days is a tinted bar; a one-day
+     * event is its icon (or a dot in its colour), its start time and its name.
+     * Grid chips and agenda rows both come through here.
+     */
+    private fillChip(chip: HTMLElement, item: NativeItem, span: CalendarDaySpan | undefined): void {
+        const multiDay = !!span && span.lastDay > span.firstDay;
+        chip.addClass(multiDay ? 'is-span' : 'is-single');
+        chip.toggleClass('is-milestone', !!item.event.isMilestone);
+        chip.setCssProps({
+            '--storyteller-timeline-calendar-chip-color': this.host.colorOf(item),
+            '--storyteller-timeline-calendar-chip-alpha': String(this.host.alphaOf(item)),
+        });
+        if (!this.appendIcon(chip, item)) chip.createSpan('storyteller-timeline-calendar-chip-dot');
+        const time = multiDay ? null : this.host.timeOf(item);
+        if (time) chip.createSpan({ cls: 'storyteller-timeline-calendar-chip-time', text: time });
+        chip.createSpan({ cls: 'storyteller-timeline-calendar-chip-label', text: item.event.name });
+    }
+
+    /** The event's photo or icon, if it has one. False when nothing was added. */
+    private appendIcon(parent: HTMLElement, item: NativeItem): boolean {
         const source = this.host.iconSourceFor(item.event);
-        if (!source) return;
+        if (!source) return false;
         const url = this.host.photoUrl(source);
         if (url) {
             const image = parent.createEl('img', { cls: 'storyteller-timeline-calendar-icon is-image', attr: { alt: '' } });
             image.src = url;
-            return;
+            return true;
         }
-        if (source.kind !== 'icon') return;
+        if (source.kind !== 'icon') return false;
         const holder = parent.createSpan({ cls: 'storyteller-timeline-calendar-icon' });
         renderIconPreview(holder, source.icon.raw, source.color ?? null, this.host.app);
+        return true;
     }
 
     /** A month as a list of days with something on them. Taps open the event directly. */
-    private renderAgenda(cal: CalendarSystem, grid: CalendarMonthGrid, items: NativeItem[]): void {
+    private renderAgenda(cal: CalendarSystem, grid: CalendarMonthGrid, items: NativeItem[], spans: Map<string, CalendarDaySpan>): void {
         const list = this.el.createDiv('storyteller-timeline-calendar-agenda');
         const todayDay = this.host.todayDay();
         const byDay = new Map<number, NativeItem[]>();
         for (const item of items) {
-            const span = daySpanOf(this.host.dayOfTime(item.start), this.host.dayOfTime(item.end));
+            const span = spans.get(item.id);
+            if (!span) continue;
             for (let day = Math.max(span.firstDay, grid.firstDay); day <= Math.min(span.lastDay, grid.lastDay); day++) {
                 const bucket = byDay.get(day) ?? [];
                 bucket.push(item);
@@ -361,19 +420,32 @@ export class TimelineCalendarPanel {
             const section = list.createDiv('storyteller-timeline-calendar-agenda-day');
             section.toggleClass('is-today', day.absoluteDay === todayDay);
             const weekday = grid.weekdays[weekdayIndex(cal, day.absoluteDay)] ?? '';
-            section.createDiv({ cls: 'storyteller-timeline-calendar-agenda-heading', text: `${weekday}, ${grid.monthName} ${day.day}` });
+            const date = section.createDiv({ cls: 'storyteller-timeline-calendar-agenda-date', attr: { 'aria-label': `${weekday}, ${grid.monthName} ${day.day}` } });
+            date.createSpan({ cls: 'storyteller-timeline-calendar-agenda-weekday', text: weekday.slice(0, 3) });
+            date.createSpan({ cls: 'storyteller-timeline-calendar-agenda-daynum', text: String(day.day) });
+            const entries = section.createDiv('storyteller-timeline-calendar-agenda-items');
             for (const holiday of day.holidays) {
-                const tag = section.createDiv({ cls: 'storyteller-timeline-calendar-holiday', text: holiday.name });
+                const tag = entries.createDiv({ cls: 'storyteller-timeline-calendar-holiday', text: holiday.name });
                 if (holiday.color) tag.setCssProps({ '--storyteller-timeline-calendar-holiday-color': holiday.color });
             }
             for (const item of dayItems) {
-                const row = section.createEl('button', { cls: 'storyteller-timeline-calendar-agenda-item' });
-                row.setCssProps({ '--storyteller-timeline-calendar-chip-color': this.host.colorOf(item) });
-                this.appendIcon(row, item);
-                row.createSpan({ cls: 'storyteller-timeline-calendar-chip-label', text: item.event.name });
+                const row = entries.createEl('button', { cls: 'storyteller-timeline-calendar-agenda-item' });
+                row.toggleClass('is-selected', this.host.isSelected(item));
+                this.fillChip(row, item, spans.get(item.id));
                 row.addEventListener('click', () => this.host.openItem(item));
             }
         }
         if (!list.hasChildNodes()) list.createDiv({ cls: 'storyteller-timeline-calendar-empty', text: 'No dated events this month.' });
     }
+}
+
+/** One chip row's height for the theme's event height: the chip plus a little air. */
+export function calendarLaneHeight(eventHeight: number): number {
+    return Math.round(Math.min(32, Math.max(18, eventHeight)));
+}
+
+/** Chip rows that fit in a week of the given height, within the floor and ceiling the grid keeps. */
+export function calendarLanesFor(weekHeight: number, laneHeight: number): number {
+    if (!Number.isFinite(weekHeight) || laneHeight <= 0) return MIN_LANES;
+    return Math.min(MAX_LANES, Math.max(MIN_LANES, Math.floor((weekHeight - DAY_LABEL_PX - 4) / laneHeight)));
 }

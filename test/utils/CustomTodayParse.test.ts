@@ -40,3 +40,35 @@ describe('getReferenceTodayDate reads a custom today with the event date parser'
     expect(Math.abs(date.getTime() - before)).toBeLessThan(5_000);
   }, 60_000);
 });
+
+describe('getReferenceTodayDate per story and per timeline', () => {
+  const plugin = {
+    settings: {
+      customTodayISO: '1300-01-01',
+      activeStoryId: 'b',
+      stories: [
+        { id: 'a', name: 'A', created: '', customToday: '1420-06-01' },
+        { id: 'b', name: 'B', created: '', customToday: '1066-10-14' },
+        { id: 'c', name: 'C', created: '' },
+      ],
+    },
+  } as any;
+  const today = (override?: string) => (StorytellerSuitePlugin.prototype as any).getReferenceTodayDate.call(plugin, override) as Date;
+
+  it('uses the active story\'s today over the plugin-wide one', () => {
+    plugin.settings.activeStoryId = 'b';
+    expect(today().toISOString().slice(0, 10)).toBe('1066-10-14');
+    plugin.settings.activeStoryId = 'a';
+    expect(today().toISOString().slice(0, 10)).toBe('1420-06-01');
+  }, 60_000);
+
+  it('inherits the plugin-wide today when the story has none', () => {
+    plugin.settings.activeStoryId = 'c';
+    expect(today().toISOString().slice(0, 10)).toBe('1300-01-01');
+  }, 60_000);
+
+  it('lets a timeline block override the story', () => {
+    plugin.settings.activeStoryId = 'a';
+    expect(today('1500-03-01').toISOString().slice(0, 10)).toBe('1500-03-01');
+  }, 60_000);
+});

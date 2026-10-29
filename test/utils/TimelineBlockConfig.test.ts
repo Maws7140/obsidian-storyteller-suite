@@ -75,6 +75,12 @@ describe('parseTimelineBlock', () => {
         expect(config.errors).toEqual([]);
     });
 
+    it('reads the block\'s own today', () => {
+        expect(parseTimelineBlock('today: 1420-06-01').today).toBe('1420-06-01');
+        expect(parseTimelineBlock('today: 1420-06-01').errors).toEqual([]);
+        expect(parseTimelineBlock('').today).toBeUndefined();
+    });
+
     it('reads a theme to draw the block with', () => {
         expect(parseTimelineBlock('theme: Parchment').theme).toBe('Parchment');
         expect(parseTimelineBlock('theme: Parchment').errors).toEqual([]);

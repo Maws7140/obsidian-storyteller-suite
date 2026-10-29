@@ -1,5 +1,6 @@
 import type StorytellerSuitePlugin from '../main';
 import type { CalendarSystem } from './types';
+import type { Story } from '../types';
 import { GREGORIAN_CALENDAR } from './builtins';
 import { PRESET_CALENDARS } from './presets';
 import { BUILTIN_TIMELINE_THEMES } from './themes';
@@ -55,7 +56,12 @@ export class CalendarRegistry {
   }
 
   getActiveCalendar(): CalendarSystem {
-    const id = this.plugin.getActiveStory()?.activeCalendarId;
+    return this.calendarFor(this.plugin.getActiveStory());
+  }
+
+  /** The calendar a story's dates are read in, Gregorian when it has none. */
+  calendarFor(story: Pick<Story, 'activeCalendarId'> | undefined): CalendarSystem {
+    const id = story?.activeCalendarId;
     return this.listCalendars().find(calendar => calendar.id === id) || GREGORIAN_CALENDAR;
   }
 
