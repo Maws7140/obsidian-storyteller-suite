@@ -58,6 +58,8 @@ export interface CalendarDaySpan {
   key: string;
   firstDay: number;
   lastDay: number;
+  /** Breaks ties between spans that start the same day: lower first. Usually the start instant. */
+  order?: number;
 }
 
 /** One event's chip within a single week row. Columns are 0-based and inclusive. */
@@ -241,7 +243,9 @@ export function layoutCalendarWeek(
   const from = Math.max(weekStart, monthFirst);
   const to = Math.min(weekStart + columns - 1, monthLast);
   const placed: CalendarWeekSegment[] = [];
+  const order = new Map<string, number>();
   for (const span of spans) {
+    if (span.order !== undefined) order.set(span.key, span.order);
     const first = Math.max(span.firstDay, from);
     const last = Math.min(span.lastDay, to);
     if (first > last) continue;
@@ -256,6 +260,7 @@ export function layoutCalendarWeek(
   }
   placed.sort((a, b) => a.startColumn - b.startColumn
     || (b.endColumn - b.startColumn) - (a.endColumn - a.startColumn)
+    || (order.get(a.key) ?? 0) - (order.get(b.key) ?? 0)
     || a.key.localeCompare(b.key));
 
   // The last column each lane is occupied up to.

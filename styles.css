@@ -11757,47 +11757,105 @@ body.mod-rtl .storyteller-group-members {
 
 /* Calendar view: one month of the story's calendar as a week grid, or an
    agenda on narrow panes. Each week is a CSS grid, so a multi-day chip spans
-   its columns, with the day numbers in row one and the chips in the rows below. */
+   its columns, with the day numbers in row one and the chips in the rows below.
+   The weeks share the pane's height, so the month fills it. Colours and font
+   are the timeline theme's --sts-timeline-* variables, and the panel is
+   transparent: the canvas underneath paints the theme background and image.
+   The renderer sets the lane height, radius and minimum week height from the
+   theme's event metrics. */
 .storyteller-timeline-calendar {
-  --storyteller-timeline-calendar-lane-height: 20px;
+  --storyteller-timeline-calendar-lane-height: 24px;
+  --storyteller-timeline-calendar-daynum-height: 30px;
+  --storyteller-timeline-calendar-week-min: 84px;
+  --storyteller-timeline-calendar-radius: 5px;
+  --storyteller-timeline-calendar-hover: color-mix(in srgb, var(--sts-timeline-text) 7%, transparent);
   position: absolute;
   inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
   overflow: auto;
-  padding: 8px 12px 16px;
-  background: var(--background-primary);
-  color: var(--text-normal);
+  padding: 14px 18px 18px;
+  background: transparent;
+  color: var(--sts-timeline-text);
+  font-family: var(--sts-timeline-font);
   font-size: var(--font-ui-small);
+  touch-action: pan-x pan-y;
 }
 
 .storyteller-timeline-calendar-header {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .storyteller-timeline-calendar-title {
+  display: flex;
   flex: 1 1 auto;
+  align-items: baseline;
+  gap: 8px;
   min-width: 0;
   overflow: hidden;
-  text-align: center;
-  text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--font-ui-medium);
-  font-weight: 600;
+}
+
+.storyteller-timeline-calendar-title-month {
+  font-size: 1.6em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.storyteller-timeline-calendar-title-year {
+  color: var(--sts-timeline-text-muted);
+  font-size: 1.6em;
+  font-weight: 400;
+}
+
+.storyteller-timeline-calendar-title-count {
+  overflow: hidden;
+  margin-left: 4px;
+  color: var(--sts-timeline-text-muted);
+  font-size: var(--font-ui-smaller);
+  text-overflow: ellipsis;
+}
+
+.storyteller-timeline-calendar-nav-group {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.storyteller-timeline-calendar-nav {
+  color: var(--sts-timeline-text-muted);
 }
 
 .storyteller-timeline-calendar-today {
-  padding: 2px 10px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  background: var(--background-secondary);
-  color: var(--text-normal);
+  margin-right: 6px;
+  padding: 4px 14px;
+  border: 1px solid var(--sts-timeline-grid);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sts-timeline-surface) 70%, transparent);
+  box-shadow: none;
+  color: var(--sts-timeline-text);
+  font-weight: 500;
   cursor: pointer;
 }
 
+.storyteller-timeline-calendar-today:hover {
+  background: var(--sts-timeline-surface);
+}
+
 .storyteller-timeline-calendar-board {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
   min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--sts-timeline-grid);
+  border-radius: 12px;
 }
 
 .storyteller-timeline-calendar-weekdays,
@@ -11806,105 +11864,169 @@ body.mod-rtl .storyteller-group-members {
   grid-template-columns: repeat(var(--storyteller-timeline-calendar-columns, 7), minmax(0, 1fr));
 }
 
+.storyteller-timeline-calendar-weekdays {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--sts-timeline-grid);
+  background: color-mix(in srgb, var(--sts-timeline-surface) 55%, transparent);
+}
+
 .storyteller-timeline-calendar-weekday {
   min-width: 0;
-  padding: 4px 2px;
+  padding: 8px 10px;
   overflow: hidden;
-  border-bottom: 1px solid var(--background-modifier-border);
-  color: var(--text-muted);
+  color: var(--sts-timeline-text-muted);
   font-size: var(--font-ui-smaller);
-  text-align: center;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-overflow: ellipsis;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
+/* Row one holds the day numbers, then one row per chip lane, then whatever
+   height is left, so the day cells (which span every row) reach the bottom. */
 .storyteller-timeline-calendar-week {
-  grid-template-rows: auto repeat(var(--storyteller-timeline-calendar-lanes, 1), var(--storyteller-timeline-calendar-lane-height));
+  flex: 1 1 0;
+  min-height: var(--storyteller-timeline-calendar-week-min);
+  grid-template-rows:
+    var(--storyteller-timeline-calendar-daynum-height)
+    repeat(var(--storyteller-timeline-calendar-lanes, 1), var(--storyteller-timeline-calendar-lane-height))
+    minmax(0, 1fr);
+  border-bottom: 1px solid var(--sts-timeline-grid);
+}
+
+.storyteller-timeline-calendar-week:last-child {
+  border-bottom: none;
 }
 
 .storyteller-timeline-calendar-day {
   min-width: 0;
-  border-right: 1px solid var(--background-modifier-border);
-  border-bottom: 1px solid var(--background-modifier-border);
-  background: var(--background-primary);
+  border-right: 1px solid var(--sts-timeline-grid);
+  background: transparent;
+  transition: background-color 120ms ease;
+}
+
+.storyteller-timeline-calendar-day.is-last-column {
+  border-right: none;
+}
+
+.storyteller-timeline-calendar-day:hover {
+  background: var(--storyteller-timeline-calendar-hover);
 }
 
 .storyteller-timeline-calendar-day.is-outside {
-  background: var(--background-secondary);
-  opacity: 0.55;
+  background: color-mix(in srgb, var(--sts-timeline-surface) 45%, transparent);
 }
 
 .storyteller-timeline-calendar-day.is-today {
-  background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
+  background: color-mix(in srgb, var(--sts-timeline-accent) 10%, transparent);
 }
 
 .storyteller-timeline-calendar-day.is-drop-target {
-  box-shadow: inset 0 0 0 2px var(--interactive-accent);
+  background: color-mix(in srgb, var(--sts-timeline-accent) 16%, transparent);
+  box-shadow: inset 0 0 0 2px var(--sts-timeline-accent);
 }
 
 /* Day number and holidays sit in row one and let clicks through to the day. */
 .storyteller-timeline-calendar-daynum {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
-  padding: 2px 4px;
-  color: var(--text-muted);
+  padding: 4px 6px 0;
+  color: var(--sts-timeline-text);
   font-size: var(--font-ui-smaller);
+  font-weight: 500;
   pointer-events: none;
 }
 
 .storyteller-timeline-calendar-daynum-value {
-  display: inline-block;
-  min-width: 1.4em;
-  text-align: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
 }
 
 .storyteller-timeline-calendar-daynum.is-today .storyteller-timeline-calendar-daynum-value {
-  border-radius: 999px;
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-  font-weight: 600;
+  background: var(--sts-timeline-accent);
+  color: var(--sts-timeline-text-on-accent);
+  font-weight: 700;
 }
 
 .storyteller-timeline-calendar-holiday {
+  min-width: 0;
+  padding: 1px 8px;
   overflow: hidden;
-  color: var(--storyteller-timeline-calendar-holiday-color, var(--interactive-accent));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--storyteller-timeline-calendar-holiday-color, var(--sts-timeline-holiday)) 16%, transparent);
+  color: var(--storyteller-timeline-calendar-holiday-color, var(--sts-timeline-holiday));
+  font-size: var(--font-ui-smaller);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* An event over several days is a tinted bar; a one-day event is its icon or a
+   dot in its colour, then its time and name, with no fill until hovered. */
 .storyteller-timeline-calendar-chip {
   position: relative;
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
-  margin: 1px 2px;
-  padding: 0 6px;
+  margin: 2px 4px;
+  padding: 0 8px;
   overflow: hidden;
-  border-left: 3px solid var(--storyteller-timeline-calendar-chip-color, var(--interactive-accent));
-  border-radius: var(--radius-s);
-  background: color-mix(in srgb, var(--storyteller-timeline-calendar-chip-color, var(--interactive-accent)) 22%, transparent);
-  color: var(--text-normal);
+  border-radius: var(--storyteller-timeline-calendar-radius);
+  color: var(--sts-timeline-text);
   font-size: var(--font-ui-smaller);
+  line-height: 1;
   white-space: nowrap;
+  opacity: var(--storyteller-timeline-calendar-chip-alpha, 1);
   cursor: pointer;
   user-select: none;
+  transition: background-color 120ms ease, box-shadow 120ms ease;
 }
 
+.storyteller-timeline-calendar-chip.is-single {
+  padding: 0 6px;
+}
+
+.storyteller-timeline-calendar-chip.is-single:hover {
+  background: var(--storyteller-timeline-calendar-hover);
+}
+
+.storyteller-timeline-calendar-chip.is-span {
+  background: color-mix(in srgb, var(--storyteller-timeline-calendar-chip-color, var(--sts-timeline-accent)) 30%, transparent);
+  font-weight: 500;
+}
+
+.storyteller-timeline-calendar-chip.is-span:hover {
+  background: color-mix(in srgb, var(--storyteller-timeline-calendar-chip-color, var(--sts-timeline-accent)) 42%, transparent);
+}
+
+/* A bar that carries on into the next or previous week runs to the cell edge. */
 .storyteller-timeline-calendar-chip.is-continued-before {
-  border-left-width: 0;
+  margin-left: 0;
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
 }
 
 .storyteller-timeline-calendar-chip.is-continued-after {
+  margin-right: 0;
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
 }
 
-.storyteller-timeline-calendar-chip.is-selected {
-  box-shadow: inset 0 0 0 1px var(--interactive-accent);
-  font-weight: 600;
+.storyteller-timeline-calendar-chip.is-selected,
+.storyteller-timeline-calendar-agenda-item.is-selected {
+  box-shadow: inset 0 0 0 2px var(--sts-timeline-accent);
 }
 
 .storyteller-timeline-calendar-chip.is-draggable {
@@ -11914,9 +12036,29 @@ body.mod-rtl .storyteller-group-members {
 
 .storyteller-timeline-calendar-chip.is-dragging {
   z-index: 3;
-  opacity: 0.85;
+  background: var(--sts-timeline-surface);
+  opacity: 0.9;
   pointer-events: none;
   box-shadow: var(--shadow-s);
+}
+
+.storyteller-timeline-calendar-chip-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--storyteller-timeline-calendar-chip-color, var(--sts-timeline-accent));
+}
+
+.is-milestone > .storyteller-timeline-calendar-chip-dot {
+  border-radius: 1px;
+  transform: rotate(45deg) scale(0.9);
+}
+
+.storyteller-timeline-calendar-chip-time {
+  flex: 0 0 auto;
+  color: var(--sts-timeline-text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .storyteller-timeline-calendar-chip-label {
@@ -11930,6 +12072,7 @@ body.mod-rtl .storyteller-group-members {
   flex: 0 0 auto;
   width: 14px;
   height: 14px;
+  color: var(--storyteller-timeline-calendar-chip-color, var(--sts-timeline-accent));
 }
 
 .storyteller-timeline-calendar-icon svg {
@@ -11939,63 +12082,127 @@ body.mod-rtl .storyteller-group-members {
 
 img.storyteller-timeline-calendar-icon {
   object-fit: cover;
-  border-radius: 2px;
+  border-radius: 50%;
 }
 
 .storyteller-timeline-calendar-more {
   z-index: 1;
-  margin: 1px 2px;
-  padding: 0 4px;
+  height: auto;
+  margin: 2px 4px;
+  padding: 0 6px;
   border: none;
+  border-radius: var(--storyteller-timeline-calendar-radius);
   background: transparent;
-  color: var(--text-muted);
+  box-shadow: none;
+  color: var(--sts-timeline-text-muted);
   font-size: var(--font-ui-smaller);
+  font-weight: 600;
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
 }
 
-/* Narrow panes: the month as a list of the days that have something on them. */
+.storyteller-timeline-calendar-more:hover {
+  background: var(--storyteller-timeline-calendar-hover);
+  color: var(--sts-timeline-text);
+}
+
+/* Narrow panes: the month as a list of the days that have something on them,
+   a date badge on the left and that day's events beside it. */
 .storyteller-timeline-calendar-agenda {
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
 
 .storyteller-timeline-calendar-agenda-day {
-  padding-top: 6px;
-  border-top: 1px solid var(--background-modifier-border);
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 2px;
+  border-top: 1px solid var(--sts-timeline-grid);
 }
 
-.storyteller-timeline-calendar-agenda-heading {
-  color: var(--text-muted);
+.storyteller-timeline-calendar-agenda-day:first-child {
+  border-top: none;
+}
+
+.storyteller-timeline-calendar-agenda-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.storyteller-timeline-calendar-agenda-weekday {
+  color: var(--sts-timeline-text-muted);
+  font-size: var(--font-ui-smaller);
   font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.storyteller-timeline-calendar-agenda-day.is-today .storyteller-timeline-calendar-agenda-heading {
-  color: var(--interactive-accent);
+.storyteller-timeline-calendar-agenda-daynum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 1.25em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.storyteller-timeline-calendar-agenda-day.is-today .storyteller-timeline-calendar-agenda-daynum {
+  background: var(--sts-timeline-accent);
+  color: var(--sts-timeline-text-on-accent);
+}
+
+.storyteller-timeline-calendar-agenda-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.storyteller-timeline-calendar-agenda-items .storyteller-timeline-calendar-holiday {
+  align-self: flex-start;
+  margin-bottom: 2px;
 }
 
 .storyteller-timeline-calendar-agenda-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
+  height: auto;
   min-width: 0;
-  margin-top: 4px;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border: none;
-  border-left: 3px solid var(--storyteller-timeline-calendar-chip-color, var(--interactive-accent));
-  border-radius: var(--radius-s);
-  background: color-mix(in srgb, var(--storyteller-timeline-calendar-chip-color, var(--interactive-accent)) 22%, transparent);
-  color: var(--text-normal);
+  border-radius: var(--storyteller-timeline-calendar-radius);
+  background: transparent;
+  box-shadow: none;
+  color: var(--sts-timeline-text);
+  font-size: var(--font-ui-small);
   text-align: left;
+  white-space: nowrap;
+  opacity: var(--storyteller-timeline-calendar-chip-alpha, 1);
   cursor: pointer;
 }
 
+.storyteller-timeline-calendar-agenda-item:hover {
+  background: var(--storyteller-timeline-calendar-hover);
+}
+
+.storyteller-timeline-calendar-agenda-item.is-span {
+  background: color-mix(in srgb, var(--storyteller-timeline-calendar-chip-color, var(--sts-timeline-accent)) 22%, transparent);
+}
+
 .storyteller-timeline-calendar-empty {
-  padding: 16px 0;
-  color: var(--text-muted);
+  padding: 32px 0;
+  color: var(--sts-timeline-text-muted);
+  text-align: center;
 }
 
 /* Hover card for a timeline item. Canvas has no per-region title attribute, so

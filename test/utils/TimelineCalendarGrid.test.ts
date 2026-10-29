@@ -197,3 +197,15 @@ describe('TimelineCalendarGrid: first weekday setting', () => {
     expect(weekdayIndex(wrapped, origin)).toBe(2);
   });
 });
+
+describe('TimelineCalendarGrid: order within a day', () => {
+  it('puts the earlier event of a day above the later one, whatever their keys', () => {
+    const spans = [
+      { key: 'a-evening', firstDay: 10, lastDay: 10, order: 2000 },
+      { key: 'b-morning', firstDay: 10, lastDay: 10, order: 1000 },
+    ];
+    const layout = layoutCalendarWeek(spans, 7, 7, 1, 31, 3);
+    expect(layout.segments.find(s => s.key === 'b-morning')?.lane).toBe(0);
+    expect(layout.segments.find(s => s.key === 'a-evening')?.lane).toBe(1);
+  });
+});

@@ -163,15 +163,21 @@ function paintMonth(
             const x = PAD + segment.startColumn * column + 3;
             const width = (segment.endColumn - segment.startColumn + 1) * column - 6;
             const chipY = y + DAY_LABEL_HEIGHT + segment.lane * LANE_HEIGHT + 2;
-            ctx.globalAlpha = 0.22;
+            const middle = chipY + (LANE_HEIGHT - 4) / 2;
+            // As on screen: an event over several days is a tinted bar, a one-day event a dot and its name.
             ctx.fillStyle = chip.color;
-            roundedRect(ctx, x, chipY, width, LANE_HEIGHT - 4, 4);
+            if (chip.lastDay > chip.firstDay) {
+                ctx.globalAlpha = 0.3;
+                roundedRect(ctx, x, chipY, width, LANE_HEIGHT - 4, 5);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+            ctx.beginPath();
+            ctx.arc(x + 10, middle, 4, 0, Math.PI * 2);
             ctx.fill();
-            ctx.globalAlpha = 1;
-            ctx.fillRect(x, chipY, 3, LANE_HEIGHT - 4);
             ctx.fillStyle = theme.text;
             ctx.font = `12px ${theme.font}`;
-            ctx.fillText(truncate(ctx, chip.label, width - 12), x + 8, chipY + (LANE_HEIGHT - 4) / 2);
+            ctx.fillText(truncate(ctx, chip.label, width - 26), x + 20, middle);
         }
         y += rowHeight;
     }

@@ -494,8 +494,9 @@ export class NativeTimelineRenderer {
     setGanttMode(value: boolean): void { this.options.ganttMode = value; this.rebuild(false); }
     setTimelineLayout(value: 'chronology' | 'timeline'): void { this.options.timelineLayout = value; this.rebuild(false); }
     /**
-     * The month grid replaces the canvas. The canvas is hidden rather than torn
-     * down, so switching back keeps the same mount and view window.
+     * The month grid sits over the canvas. The canvas stays mounted and paints
+     * only the theme's background colour and image under it, so switching back
+     * keeps the same mount and view window and the calendar wears the same theme.
      */
     setCalendarMode(value: boolean): void {
         this.options.calendarMode = value;
@@ -587,13 +588,8 @@ export class NativeTimelineRenderer {
     }
 
     private setCalendarVisibility(calendar: boolean): void {
-        if (calendar) {
-            this.canvas?.hide();
-            this.calendarPanel?.show();
-        } else {
-            this.calendarPanel?.hide();
-            this.canvas?.show();
-        }
+        if (calendar) this.calendarPanel?.show();
+        else this.calendarPanel?.hide();
     }
 
     /** An absolute day for an instant on this renderer's clock (ms since the Unix epoch). */
@@ -613,6 +609,12 @@ export class NativeTimelineRenderer {
             dayOfTime: time => this.dayOfTime(time),
             items: () => this.calendarItems(),
             colorOf: item => this.markerColor(item),
+            alphaOf: item => this.itemAlpha(item),
+            timeOf: item => {
+                const calendar = this.calendarRegistry.getActiveCalendar();
+                return this.clockLabel(fromAbsolute(calendar, { absoluteDay: item.start / DAY_MS + this.unixEpochAbsoluteDay() }), calendar);
+            },
+            metrics: () => this.style.metrics,
             iconSourceFor: event => this.iconSourceFor(event),
             photoUrl: source => this.photoUrl(source),
             isDraggable: item => this.isDraggable(item),
@@ -1556,11 +1558,26 @@ export class NativeTimelineRenderer {
         this.styleCache = { computed: new Map(), values: new Map() };
         try {
             this.refreshStyle();
-            if (this.options.calendarMode) this.calendarPanel?.render(this.calendarMonth());
-            else this.paintFrame();
+            if (this.options.calendarMode) {
+                this.paintCalendarBackdrop();
+                this.calendarPanel?.render(this.calendarMonth());
+            } else {
+                this.paintFrame();
+            }
         } finally {
             this.styleCache = null;
         }
+    }
+
+    /** Under the month grid: the theme's background colour and image, nothing else. */
+    private paintCalendarBackdrop(): void {
+        if (!this.ctx) return;
+        const width = this.viewportWidth();
+        const height = this.viewportHeight();
+        this.ctx.clearRect(0, 0, width, height);
+        this.ctx.fillStyle = this.color('background');
+        this.ctx.fillRect(0, 0, width, height);
+        this.drawBackgroundImage(this.ctx, width, height);
     }
 
     private paintFrame(): void {
@@ -2722,12 +2739,16 @@ export class NativeTimelineRenderer {
         const absoluteDay = time / DAY_MS + this.unixEpochAbsoluteDay();
         const date = fromAbsolute(calendar, { absoluteDay });
         const month = monthsInYear(calendar, date.year)[date.month]?.name || `Month ${date.month + 1}`;
-        let label = `${month} ${date.day}, ${this.calendarYearLabel(calendar, date.year)}`;
-        if ((date.unitOfDay || 0) > 0 && calendar.unitsPerDay === 1440) {
-            const units = Math.round(date.unitOfDay || 0);
-            label += ` ${String(Math.floor(units / 60)).padStart(2, '0')}:${String(units % 60).padStart(2, '0')}`;
-        }
-        return label;
+        const label = `${month} ${date.day}, ${this.calendarYearLabel(calendar, date.year)}`;
+        const clock = this.clockLabel(date, calendar);
+        return clock ? `${label} ${clock}` : label;
+    }
+
+    /** `HH:MM` for a date with a time of day on a 24-hour calendar, else null. */
+    private clockLabel(date: ReturnType<typeof fromAbsolute>, calendar: CalendarSystem): string | null {
+        if ((date.unitOfDay || 0) <= 0 || calendar.unitsPerDay !== 1440) return null;
+        const units = Math.round(date.unitOfDay || 0);
+        return `${String(Math.floor(units / 60)).padStart(2, '0')}:${String(units % 60).padStart(2, '0')}`;
     }
 
     private calendarYearLabel(calendar: ReturnType<CalendarRegistry['getActiveCalendar']>, year: number): string {
