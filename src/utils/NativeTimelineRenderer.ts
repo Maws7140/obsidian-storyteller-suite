@@ -139,6 +139,13 @@ type TimelineEvent = Event & { _sceneLocations?: string[] };
 
 export interface NativeItem {
     id: string;
+    /**
+     * The chip label last measured for this item, the font it was measured in,
+     * and its width. Row packing and arrows ask for every item's chip width on
+     * every frame; setting `ctx.font` makes the browser parse the font string
+     * each time, which made measuring a large share of a Gantt frame.
+     */
+    measuredLabel?: { text: string; font: string; width: number };
     event: Event;
     eventIndex: number;
     start: number;
@@ -1325,9 +1332,16 @@ export class NativeTimelineRenderer {
      * of its neighbour, so both paths read the answer from here.
      */
     private chipWidth(ctx: CanvasRenderingContext2D, item: NativeItem, minimum: number): number {
-        ctx.font = this.font(11);
+        const font = this.font(11);
+        const text = this.itemLabel(item);
+        let measured = item.measuredLabel;
+        if (!measured || measured.text !== text || measured.font !== font) {
+            ctx.font = font;
+            measured = { text, font, width: this.text.measure(ctx, text, font) };
+            item.measuredLabel = measured;
+        }
         const narrativeIconWidth = narrativeDirectionOf(item.event) ? 18 : 0;
-        return Math.max(minimum, Math.min(MAX_CHIP_WIDTH, this.text.measure(ctx, this.itemLabel(item)) + 34 + narrativeIconWidth));
+        return Math.max(minimum, Math.min(MAX_CHIP_WIDTH, measured.width + 34 + narrativeIconWidth));
     }
 
     /**
@@ -3584,6 +3598,7 @@ export class NativeTimelineRenderer {
         // A theme that names an arrow style wins; one that leaves it out
         // defers to the arrow style setting.
         ctx.setLineDash(dashFor(this.style.metrics.dependencyStyle ?? this.options.dependencyArrowStyle));
+        const mayShow = this.connectorCuller(width, height);
         const endsOf = (target: NativeItem, ref: string): { from: DOMRect; to: DOMRect; source: NativeItem } | null => {
             const targetEntry = (byKey.get(this.eventKey(target.event)) || []).find(entry => entry.item === target);
             if (!targetEntry) return null;
@@ -3593,6 +3608,9 @@ export class NativeTimelineRenderer {
             // arrow could leave a lane that has nothing to do with either end.
             const source = sources.find(entry => entry.lane === targetEntry.lane) || sources[0];
             if (!source) return null;
+            // Rects cost a label measurement each, so an arrow that cannot
+            // reach the screen is dropped before they are computed.
+            if (!mayShow(source, targetEntry)) return null;
             return {
                 from: this.itemRect(source.item, source.lane, width),
                 to: this.itemRect(target, targetEntry.lane, width),
@@ -3630,6 +3648,34 @@ export class NativeTimelineRenderer {
             }));
         }
         ctx.restore();
+    }
+
+    /**
+     * A cheap test for whether an arrow between two items could touch the
+     * screen, from times and lane positions alone.
+     *
+     * Every dependency in the story used to be measured and laid out on every
+     * frame, including ones far off screen, which roughly doubled the cost of a
+     * Gantt frame. An arrow is only skipped when both ends sit beyond the same
+     * edge, with slack for the chip that extends right of an event's start and
+     * for the curve that bows below a row, so a line crossing the view from one
+     * off-screen end to the other is still drawn.
+     */
+    private connectorCuller(width: number, height: number): (a: { item: NativeItem; lane: Lane }, b: { item: NativeItem; lane: Lane }) => boolean {
+        if (!this.isChronology() && !this.options.ganttMode) return () => true;
+        const plotWidth = Math.max(1, width - this.sidebarWidth(width));
+        const msPerPx = (this.viewEnd - this.viewStart) / plotWidth;
+        const before = this.viewStart - 80 * msPerPx - MAX_CHIP_WIDTH * msPerPx;
+        const after = this.viewEnd + 80 * msPerPx;
+        const top = this.axisHeight() - this.rowHeight();
+        const bottom = height + this.rowHeight();
+        return (a, b) => {
+            if (Math.max(a.item.end, b.item.end) < before) return false;
+            if (Math.min(a.item.start, b.item.start) > after) return false;
+            const above = Math.max(a.lane.top + a.lane.height, b.lane.top + b.lane.height) - this.scrollTop < top;
+            const below = Math.min(a.lane.top, b.lane.top) - this.scrollTop > bottom;
+            return !above && !below;
+        };
     }
 
     /** True when either end of an arrow is the event under the pointer or the selected one. */
@@ -4693,7 +4739,12 @@ export class NativeTimelineRenderer {
         return value;
     }
     private truncate(ctx: CanvasRenderingContext2D, value: string, width: number): string { return this.text.truncate(ctx, value, width); }
-    private clearTextCaches(): void { this.text.clear(); this.dateLabels.clear(); }
+    private clearTextCaches(): void {
+        this.text.clear();
+        this.dateLabels.clear();
+        // Per-item label widths too: a web font arriving changes widths under the same font string.
+        this.lanes.forEach(lane => lane.items.forEach(item => { item.measuredLabel = undefined; }));
+    }
     private lowerBound(items: NativeItem[], target: number): number { let low = 0, high = items.length; while (low < high) { const mid = (low + high) >>> 1; if (items[mid].start < target) low = mid + 1; else high = mid; } return low; }
 
     /**
@@ -4766,16 +4817,18 @@ export class NativeTimelineRenderer {
      * stray mark beside the line rather than as its direction.
      */
     private arrowHead(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number): void {
-        ctx.save();
-        ctx.setLineDash([]);
-        ctx.translate(x, y);
-        ctx.rotate(angle);
+        // Rotated by hand rather than with save/translate/rotate/restore: a
+        // state save per arrow was a tenth of a Gantt frame with many arrows.
+        const dash = ctx.getLineDash();
+        if (dash.length) ctx.setLineDash([]);
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
         ctx.beginPath();
-        ctx.moveTo(-7, -4);
-        ctx.lineTo(0, 0);
-        ctx.lineTo(-7, 4);
+        ctx.moveTo(x - 7 * cos + 4 * sin, y - 7 * sin - 4 * cos);
+        ctx.lineTo(x, y);
+        ctx.lineTo(x - 7 * cos - 4 * sin, y - 7 * sin + 4 * cos);
         ctx.stroke();
-        ctx.restore();
+        if (dash.length) ctx.setLineDash(dash);
     }
 
     /** An arrow between two bars, entering on whichever side the source is. */
