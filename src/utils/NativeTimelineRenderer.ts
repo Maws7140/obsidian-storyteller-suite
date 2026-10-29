@@ -12,7 +12,7 @@ import { GREGORIAN_CALENDAR } from '../calendar/builtins';
 import { parseToAbsoluteDay, formatAbsoluteDay, formatCalendarYear } from '../calendar/CalendarDateText';
 import { daysInYear, fromAbsolute, monthsInYear, normalYearLength, toAbsolute } from '../calendar/CalendarEngine';
 import type { CalendarSystem } from '../calendar/types';
-import { chooseSnapResolution, generateTicks, snapDay, snapSlots, stepDay } from '../calendar/TimelineAxis';
+import { chooseSnapResolution, contextualTickLabel, generateTicks, snapDay, snapSlots, stepDay, thinTicks } from '../calendar/TimelineAxis';
 import type { AxisView, SnapResolution } from '../calendar/TimelineAxis';
 import { isEventInFork, isEventLinkedToFork, isEventOnMain, orderForksByParent } from './ForkVisibility';
 import { chooseConnectorEnds } from './ConnectorGeometry';
@@ -1038,19 +1038,7 @@ export class NativeTimelineRenderer {
         ctx.font = this.font(11);
         const labelCandidates = ticks.map((tick, index) => {
             const x = left + tick.x;
-            const tickDate = fromAbsolute(calendar, { absoluteDay: tick.absoluteDay });
-            const year = this.calendarYearLabel(calendar, tickDate.year);
-            // Preserve calendar context without stamping a long year suffix on
-            // every daily/hourly tick. generateTicks guarantees the first day
-            // label carries its month; the first time label gets the full date.
-            let label = tick.label;
-            if (tick.level === 'month' && !label.includes(year)) label = `${label} ${year}`;
-            else if (tick.level === 'day' && index === 0 && !label.includes(year)) label = `${label}, ${year}`;
-            else if ((tick.level === 'hour' || tick.level === 'minute') && index === 0) {
-                const monthDef = monthsInYear(calendar, tickDate.year)[tickDate.month];
-                const month = monthDef?.abbr || monthDef?.name || '';
-                label = `${month} ${tickDate.day}, ${year} ${label}`.trim();
-            }
+            const label = contextualTickLabel(calendar, tick, index);
             const displayLabel = this.truncate(ctx, label, 132);
             return { value: { tick, label: displayLabel }, x, width: ctx.measureText(displayLabel).width };
         });
@@ -1208,39 +1196,45 @@ export class NativeTimelineRenderer {
         ctx.restore();
     }
 
+    /**
+     * The date axis over the lane views, with a full-height gridline per tick.
+     *
+     * Every calendar goes through the same calendar-aware ticks, Gregorian
+     * included. Gregorian used to have its own path that stepped by a fixed
+     * 365.2425-day year counted from 1970, so gridlines drifted off 1 January
+     * and one could land on 31 December, labelled with the year it was about
+     * to leave: "1420, 1420, 1422". Ticks from the calendar sit on real
+     * boundaries, and pre-epoch years read as BCE instead of negative numbers.
+     */
     private drawAxis(ctx: CanvasRenderingContext2D, width: number, _height: number): void {
         const axisHeight = this.axisHeight();
         ctx.fillStyle = this.color('surface');
         ctx.fillRect(0, 0, width, axisHeight);
         ctx.fillStyle = this.color('mutedText');
         ctx.font = this.font(12);
-        const plotWidth = Math.max(1, width - this.sidebarWidth());
-        const span = this.viewEnd - this.viewStart;
+        const sidebar = this.sidebarWidth();
+        const plotWidth = Math.max(1, width - sidebar);
         const calendar = this.calendarRegistry.getActiveCalendar();
-        if (calendar.id !== GREGORIAN_CALENDAR.id) {
-            const startDay = this.viewStart / DAY_MS + this.unixEpochAbsoluteDay();
-            const endDay = this.viewEnd / DAY_MS + this.unixEpochAbsoluteDay();
-            const ticks = generateTicks(calendar, { startDay, endDay, widthPx: plotWidth }, Math.max(2, Math.floor(plotWidth / this.axisSpacing(120))));
-            ctx.strokeStyle = this.color('grid');
-            ticks.forEach(tick => {
-                const x = this.sidebarWidth() + tick.x;
-                ctx.beginPath(); ctx.moveTo(x, axisHeight); ctx.lineTo(x, this.viewportHeight()); ctx.stroke();
-                ctx.fillText(tick.label, x + 5, 25);
-            });
-            ctx.strokeRect(0, 0, width, axisHeight);
-            return;
-        }
-        const desired = Math.max(2, Math.floor(plotWidth / this.axisSpacing(120)));
-        const rawStep = span / desired;
-        const step = this.niceTimeStep(rawStep);
-        const first = Math.ceil(this.viewStart / step) * step;
+        const epoch = this.unixEpochAbsoluteDay();
+        const view = { startDay: this.viewStart / DAY_MS + epoch, endDay: this.viewEnd / DAY_MS + epoch, widthPx: plotWidth };
+        const maxTicks = Math.max(2, Math.floor(plotWidth / this.axisSpacing(120)));
+        const ticks = thinTicks(calendar, generateTicks(calendar, view, maxTicks), maxTicks);
         ctx.strokeStyle = this.color('grid');
         ctx.lineWidth = 1;
-        for (let time = first; time < this.viewEnd; time += step) {
-            const x = this.timeToX(time, width);
+        let previousRight = Number.NEGATIVE_INFINITY;
+        ticks.forEach((tick, index) => {
+            const x = sidebar + tick.x;
             ctx.beginPath(); ctx.moveTo(x, axisHeight); ctx.lineTo(x, this.viewportHeight()); ctx.stroke();
-            ctx.fillText(this.formatTick(time, step), x + 5, 25);
-        }
+            // A label gets the room up to the next gridline, and is left out
+            // rather than printed over its neighbour when there is none.
+            const nextX = index + 1 < ticks.length ? sidebar + ticks[index + 1].x : width;
+            const left = x + 5;
+            if (left < previousRight + 6) return;
+            const label = this.truncate(ctx, contextualTickLabel(calendar, tick, index), Math.max(0, nextX - left - 6));
+            if (!label || label === '…') return;
+            ctx.fillText(label, left, 25);
+            previousRight = left + ctx.measureText(label).width;
+        });
         ctx.strokeRect(0, 0, width, axisHeight);
     }
 
@@ -3004,8 +2998,6 @@ export class NativeTimelineRenderer {
         }
         return low;
     }
-    private niceTimeStep(raw: number): number { const units = [60_000, 5 * 60_000, 15 * 60_000, 3_600_000, 6 * 3_600_000, DAY_MS, 7 * DAY_MS, 30 * DAY_MS, 90 * DAY_MS, YEAR_MS, 5 * YEAR_MS, 10 * YEAR_MS, 100 * YEAR_MS, 1000 * YEAR_MS]; return units.find(unit => unit >= raw) || Math.ceil(raw / (1000 * YEAR_MS)) * 1000 * YEAR_MS; }
-    private formatTick(value: number, step: number): string { const date = new Date(value); if (step >= YEAR_MS) return String(date.getUTCFullYear()); if (step >= DAY_MS) return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: step < 30 * DAY_MS ? 'numeric' : undefined, timeZone: 'UTC' }); return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }); }
     private searchScore(event: Event, query: string): number { const name = event.name.toLowerCase(); const all = [event.name, event.description, event.location, event.status, ...(event.characters || []), ...(event.groups || []), ...(event.tags || [])].filter(Boolean).join(' ').toLowerCase(); if (!all.includes(query)) return -1; if (name === query) return 1000; if (name.startsWith(query)) return 800; if (name.includes(query)) return 500; return 100; }
     /**
      * Dependency arrow from one item to another.

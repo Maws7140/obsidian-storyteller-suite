@@ -153,6 +153,15 @@ export class Setting {
         assert.equal(await pixel(...PLOT), '#1e1e1e', 'native theme follows the Obsidian background');
         await shot('native');
 
+        // Zoomed in, the axis walks months and then days on real boundaries.
+        for (const [name, from, to] of [['months', [1420, 0, 1], [1421, 5, 1]], ['days', [1420, 2, 1], [1420, 4, 1]]]) {
+            await page.evaluate(([a, b]) => renderer.setVisibleRange(new Date(Date.UTC(...a)), new Date(Date.UTC(...b))), [from, to]);
+            await settle();
+            await shot(name);
+        }
+        await page.evaluate(() => renderer.fitToView());
+        await settle();
+
         // A CSS snippet reaches the canvas, and a css-change event repaints live.
         await page.addStyleTag({ content: '.sts-native-timeline { --sts-timeline-background: #ff00ff; }' });
         await page.evaluate(() => window.cssChange.forEach(callback => callback()));

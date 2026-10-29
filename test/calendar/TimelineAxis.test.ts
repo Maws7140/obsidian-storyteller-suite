@@ -3,9 +3,11 @@ import {
   projectDay,
   unprojectPx,
   generateTicks,
+  thinTicks,
+  contextualTickLabel,
   type AxisView,
 } from '../../src/calendar/TimelineAxis';
-import { toAbsolute } from '../../src/calendar/CalendarEngine';
+import { fromAbsolute, toAbsolute } from '../../src/calendar/CalendarEngine';
 import { GREGORIAN_CALENDAR } from '../../src/calendar/builtins';
 import type { CalendarSystem } from '../../src/calendar/types';
 import { CALENDAR_SCHEMA_VERSION } from '../../src/calendar/types';
@@ -178,6 +180,83 @@ describe('TimelineAxis — custom-calendar ticks', () => {
     const ticks = generateTicks(FANTASY, view);
     expect(ticks[0].label).toBe('Frost 7');
     expect(ticks.find(tick => tick.label === 'Bloom 1')).toBeDefined();
+  });
+});
+
+describe('TimelineAxis — lane axis ticks (thinned, with context)', () => {
+  const dayOf = (y: number, m: number, d: number) =>
+    toAbsolute(G, { year: y, month: m - 1, day: d }).absoluteDay;
+  /** What the Chronology and Gantt header draws: generate, thin, label. */
+  const axis = (cal: CalendarSystem, view: AxisView, maxTicks: number) =>
+    thinTicks(cal, generateTicks(cal, view, maxTicks), maxTicks)
+      .map((tick, index) => ({ ...tick, text: contextualTickLabel(cal, tick, index) }));
+
+  it('labels each Gregorian year once, on 1 January (the "1420, 1420, 1422" bug)', () => {
+    // The view that reproduced it: two months before 1420 to mid-1423, 826px.
+    const ticks = axis(G, { startDay: dayOf(1419, 11, 2), endDay: dayOf(1423, 7, 1), widthPx: 826 }, 6);
+    expect(ticks.map(tick => tick.text)).toEqual(['1420', '1421', '1422', '1423']);
+    ticks.forEach(tick => {
+      const date = fromAbsolute(G, { absoluteDay: tick.absoluteDay });
+      expect([date.month, date.day]).toEqual([0, 1]);
+    });
+  });
+
+  it('never repeats a year label across many spans and widths', () => {
+    for (const [from, to] of [[1, 30], [1420, 1424], [1899, 1911], [2000, 2100], [-500, 400], [1066, 1067]]) {
+      for (const width of [300, 826, 1600]) {
+        const maxTicks = Math.max(2, Math.floor(width / 120));
+        const ticks = axis(G, { startDay: dayOf(from, 1, 1) - 17, endDay: dayOf(to, 1, 1) + 40, widthPx: width }, maxTicks);
+        const labels = ticks.map(tick => tick.text);
+        expect(new Set(labels).size).toBe(labels.length);
+        expect(ticks.length).toBeLessThanOrEqual(maxTicks + 1);
+      }
+    }
+  });
+
+  it('reads years before 1 CE as BCE, not as negative numbers', () => {
+    const ticks = axis(G, { startDay: dayOf(-10, 1, 1), endDay: dayOf(10, 1, 1), widthPx: 800 }, 6);
+    expect(ticks.map(tick => tick.text)).toContain('1 BCE');
+    expect(ticks.some(tick => tick.text.startsWith('-'))).toBe(false);
+  });
+
+  it('thins months to whole steps that keep January', () => {
+    const ticks = axis(G, { startDay: dayOf(2024, 1, 1), endDay: dayOf(2026, 11, 1), widthPx: 826 }, 6);
+    expect(ticks.length).toBeLessThanOrEqual(6);
+    expect(ticks.every(tick => fromAbsolute(G, { absoluteDay: tick.absoluteDay }).month % 6 === 0)).toBe(true);
+    expect(ticks[0].text).toBe('January 2024');
+    expect(ticks.map(tick => tick.text)).toContain('July 2025');
+  });
+
+  it('thins days to month-aligned steps without crowding a month end', () => {
+    const ticks = axis(G, { startDay: dayOf(2024, 3, 1), endDay: dayOf(2024, 5, 1), widthPx: 826 }, 6);
+    const days = ticks.map(tick => fromAbsolute(G, { absoluteDay: tick.absoluteDay }).day);
+    // Steps of 10 fit six ticks; day 31 would sit on top of the next 1st.
+    expect(days).toEqual([1, 11, 21, 1, 11, 21]);
+    expect(ticks[0].text).toBe('Mar 1, 2024');
+  });
+
+  it('gives the first thinned day tick its month and year', () => {
+    const ticks = axis(G, { startDay: dayOf(2024, 3, 12), endDay: dayOf(2024, 5, 20), widthPx: 826 }, 6);
+    const first = fromAbsolute(G, { absoluteDay: ticks[0].absoluteDay });
+    expect(ticks[0].text).toBe(`${G.months[first.month].abbr} ${first.day}, 2024`);
+  });
+
+  it('leaves ticks alone when they already fit', () => {
+    const view: AxisView = { startDay: dayOf(2024, 3, 1), endDay: dayOf(2024, 3, 8), widthPx: 900 };
+    const ticks = generateTicks(G, view, 12);
+    expect(thinTicks(G, ticks, 12)).toBe(ticks);
+  });
+
+  it('thins a custom calendar by its own months', () => {
+    const SEASONS: CalendarSystem = {
+      schemaVersion: CALENDAR_SCHEMA_VERSION, id: 'seasons', name: 'Seasons', baseUnit: 'day', unitsPerDay: 1,
+      epochAbsoluteDay: 0, epochLabel: 'S',
+      months: [{ name: 'Thaw', days: 20 }, { name: 'Bloom', days: 20 }, { name: 'Ash', days: 20 }, { name: 'Rime', days: 20 }],
+    };
+    const start = toAbsolute(SEASONS, { year: 3, month: 0, day: 1 }).absoluteDay;
+    const ticks = axis(SEASONS, { startDay: start, endDay: start + 80 * 2.5, widthPx: 500 }, 4);
+    expect(ticks.length).toBeLessThanOrEqual(4);
+    expect(ticks[0].text).toBe('Thaw 3 S');
   });
 });
 

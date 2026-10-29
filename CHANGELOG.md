@@ -13,6 +13,7 @@
 - Timeline theme files declared event size, corner radius and opacity, lane label width, height and gap, axis label density, and connector width and style, but the timeline ignored them. Every field now applies.
 - Changing the timeline theme, switching Obsidian between light and dark, or editing a CSS snippet now repaints open timelines straight away instead of after they are reopened.
 - The conflict colour no longer changes with the "today" line colour; each has its own role.
+- Gregorian year labels on the Chronology and Gantt axis no longer repeat or skip (for example "1420, 1420, 1422"). The axis stepped by a fixed 365.2425-day year from 1970, so gridlines drifted off 1 January. It now uses the same calendar-aware ticks as custom calendars and the Timeline view. Months and days thin to whole steps (every 3 or 6 months, days 1/11/21, ...), each month label carries its year, and years before 1 CE read as BCE instead of negative numbers. Gregorian month labels now use the calendar's month names rather than the system locale's.
 
 ### Changed
 - Theme files are checked field by field on import. A malformed colour, number, or image source is dropped instead of reaching the canvas, and the rest of the theme still imports. Background images accept vault paths, `https` links, and inline `data:image` URIs only.

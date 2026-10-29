@@ -360,3 +360,79 @@ export function generateTicks(
   }
   return ticks;
 }
+
+/** Month steps that tile a year evenly, so January always keeps its label. */
+const MONTH_STEPS = [1, 2, 3, 4, 6];
+/** Day-of-month steps; each run restarts on the 1st of every month. */
+const DAY_STEPS = [2, 5, 10, 15];
+
+/**
+ * Thin month and day ticks down to at most `maxTicks`, on regular calendar
+ * boundaries.
+ *
+ * {@link generateTicks} already respects `maxTicks` for years, hours and
+ * minutes, but emits every month and every day, which is right for a ruler of
+ * short tick marks and wrong for full-height gridlines with a label on each.
+ * Thinning keeps whole steps of the calendar's own units: every third month
+ * rather than every third tick, and days 1, 6, 11, ... of each month rather
+ * than a sequence that drifts across month ends.
+ */
+export function thinTicks(cal: CalendarSystem, ticks: AxisTick[], maxTicks: number): AxisTick[] {
+  if (ticks.length <= maxTicks || !ticks.length) return ticks;
+  const level = ticks[0].level;
+  if (level === 'month') {
+    const perYear = cal.months.length;
+    const steps = [...MONTH_STEPS.filter(step => step < perYear), perYear];
+    let kept = ticks;
+    for (const step of steps) {
+      kept = ticks.filter(tick => fromAbsolute(cal, { absoluteDay: tick.absoluteDay }).month % step === 0);
+      if (kept.length <= maxTicks) return kept;
+    }
+    return everyNth(kept, maxTicks);
+  }
+  if (level === 'day') {
+    let kept = ticks;
+    for (const step of DAY_STEPS) {
+      kept = ticks.filter(tick => {
+        const date = fromAbsolute(cal, { absoluteDay: tick.absoluteDay });
+        if (date.day === 1) return true;
+        // Skip a step that would land right before the next month's 1st.
+        const remaining = monthLength(cal, date.year, date.month) - date.day;
+        return (date.day - 1) % step === 0 && remaining >= step / 2;
+      });
+      if (kept.length <= maxTicks) return kept;
+    }
+    return everyNth(kept.filter(tick => fromAbsolute(cal, { absoluteDay: tick.absoluteDay }).day === 1), maxTicks);
+  }
+  return everyNth(ticks, maxTicks);
+}
+
+function everyNth(ticks: AxisTick[], maxTicks: number): AxisTick[] {
+  const stride = Math.max(1, Math.ceil(ticks.length / Math.max(1, maxTicks)));
+  return ticks.filter((_, index) => index % stride === 0);
+}
+
+/**
+ * A tick's label with enough calendar context to stand on its own.
+ *
+ * {@link generateTicks} labels months by name and days by number, which reads
+ * fine while the neighbouring ticks carry the year. On a thinned axis they may
+ * not, so a month tick gains its year, the first day tick gains its month and
+ * year, and the first time tick gains the full date.
+ *
+ * @param index the tick's position among the ticks being drawn.
+ */
+export function contextualTickLabel(cal: CalendarSystem, tick: AxisTick, index: number): string {
+  if (tick.level === 'year') return tick.label;
+  const date = fromAbsolute(cal, { absoluteDay: tick.absoluteDay });
+  const year = yearLabel(cal, date.year);
+  const monthDef = monthsInYear(cal, date.year)[date.month];
+  const month = monthDef?.abbr || monthDef?.name || '';
+  if (tick.level === 'month') return tick.label.includes(year) ? tick.label : `${tick.label} ${year}`;
+  if (tick.level === 'day') {
+    if (index !== 0) return tick.label;
+    const withMonth = /^\d+$/.test(tick.label) ? `${month} ${tick.label}` : tick.label;
+    return withMonth.includes(year) ? withMonth : `${withMonth}, ${year}`;
+  }
+  return index === 0 ? `${month} ${date.day}, ${year} ${tick.label}`.trim() : tick.label;
+}
