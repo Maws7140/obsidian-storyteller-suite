@@ -4,22 +4,30 @@ Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, run
 
 ## Highlights
 
-### Timeline redesign in beta
+### Timeline
 
-- Reworked timeline modal and persistent panel view
-- Standard timeline and Gantt modes
-- Group by character, location, group, or custom track
-- Dependency arrows, progress overlays, milestone filtering, and event search
-- Timeline tracks, eras, forks, and conflict detection
-- Watch regular notes on the timeline through a property or tag
+- Native timeline engine with Chronology (horizontal or vertical), Gantt, and Calendar views
+- Custom calendars per story, with their own months, leap rules, epochs, and holidays
+- Timeline themes with a live editor, background images, and `--sts-timeline-*` CSS variables
+- Event icons, cover images, and a Minimal icon-node mode
+- Group lanes by character, location, item, culture, magic system, group, or track
+- Eras, tracks, and branches stored as notes, with branches that inherit their history
+- Dependency arrows, conflict detection, a per-story "today", and live `timeline` blocks in any note
 
 ### Campaign play and D&D tools
 
-- Dedicated Campaign view with session notes stored in your story
-- Party tracker with HP controls, active actor selection, and conditions
-- Shared inventory with item ownership and use effects
-- Scene running with branch-aware progression and scene graph support
-- Lore surfacing, session log, and campaign commands in the command palette
+- Virtual tabletop campaign view: the map is the board, with floating party, scene, combat, and log panels
+- Player screen with fog of war for a second monitor
+- Partylog session logging with a quick entry bar, session headers, interludes, and import/export
+- Clocks, threads, party resources, loot, factions, and advancement tracked during play
+- Encounter rolls, branching scenes, and campaigns recorded on their own timeline track
+- Lorelog world logs for worldbuilding decisions and open questions
+
+### Maps
+
+- Map Ink drawing layer: stamps, lines, areas, shapes, text, and hand-inked brushes in layers with a legend
+- Entity tokens on image and real-world maps, child locations, and child maps
+- GeoJSON and GPX overlays, and PNG export of image maps
 
 ### Compile workflows
 
@@ -33,7 +41,8 @@ Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, run
 - Groups are saved as real notes and populate like the rest of the entity system
 - Relationship properties write note-linkable names instead of opaque IDs where possible
 - Better graph view compatibility and cleaner frontmatter behavior
-- Shared custom-field editing patterns across entity modals
+- Typed custom fields per entity type, and any modal field or section can be switched off
+- Import existing notes as entities
 
 ### Worldbuilding and story structure
 

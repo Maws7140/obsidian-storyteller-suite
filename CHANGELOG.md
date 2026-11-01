@@ -1,28 +1,77 @@
 # Changelog
 
-## Unreleased
+## 2.0.0
 
-### Added
-- **Timeline theme editor**: create and edit timeline themes with a live preview of the active story. Open it from the new **Theme** field in the timeline toolbar (*Edit theme…*, *Manage themes…*), from Settings → Timeline → Timeline theme, or with the *Edit timeline theme* and *Manage timeline themes* commands. Editing a built-in theme saves a copy and switches the story to it.
-- **See-through and hidden theme colours**: every colour row in the theme editor has an opacity slider (0–100%) and a *Visible* toggle beside the colour picker. Lane palette colours have an opacity slider too. Hiding a colour sets it to 0% and remembers the previous opacity, so turning it back on restores it. Colours are saved as `#rrggbbaa`, so themes and share codes carry the opacity.
-- **Timeline background images**: a theme can draw an image behind the timeline, from the vault or an `https` link, with cover, contain, stretch, or tile fit, an anchor edge, opacity, and blur. The image is included in image exports.
-- **Bundled themes**: High contrast, Parchment, and Quiet, alongside Obsidian native.
-- **Theme for a timeline block**: a fenced `timeline` block accepts `theme: <name or id>` to draw with a theme other than the story's.
-- **Today per story**: each story can set its own "today" (where the now marker sits, what *Jump to today* shows, and what relative dates count from), typed as an ISO date, a BCE year, or a date in the story's own calendar. Set it from the timeline's zoom menu (*Set today for this story…*, *Use the default today*) or Settings → Timeline → Today for this story. A story without one uses the plugin-wide custom today, then the system date.
-- **Today for a timeline block**: a fenced `timeline` block accepts `today: <date>` to draw against a today of its own.
-- **Documented CSS variables**: every colour on the timeline canvas, the lane palette (`--sts-timeline-lane-1` … `--sts-timeline-lane-24`, `--sts-timeline-lane-count`), and the label font (`--sts-timeline-font`) are `--sts-timeline-*` variables. A CSS snippet can override any of them, and a theme sets them for its story.
+Storyteller Suite 2.0 rebuilds the timeline from scratch, turns campaign play into a virtual tabletop, replaces map pins with a drawing layer, and lets every entity modal be shaped to your own fields. Everything since 1.8.19 is listed below, including the work from the two 2.0 betas.
+
+### Upgrading from 1.8
+- Your notes are not rewritten on upgrade. Event, character, location and map notes keep their current frontmatter.
+- Eras, tracks and branches used to live in the plugin settings. The first time you open the timeline, a dialog offers to move them into notes in your story folders and asks which story should adopt any that predate story folders. *Undo timeline notes migration* reverses it.
+- The timeline no longer uses vis-timeline. Plain mouse wheel now scrolls the timeline and Shift + wheel zooms (it was the other way round); trackpad pinch also zooms.
+- Maps drawn with the Maplog marks from the betas open in Map Ink automatically. The old keys are read, not deleted.
+
+### Timeline
+- **New timeline engine.** The timeline is drawn on a canvas of its own, with Chronology (horizontal and vertical), Gantt and Calendar views, calendar-aware axes from centuries down to minutes, drag editing, empty date slots, snapping that follows your calendar, and a full-canvas image export.
+- **Custom calendars.** Each story can have its own dating system with any month lengths, leap rules, epochs, cycles and holidays, built in a calendar designer. Gregorian, 13 Moons and Japanese kō calendars are bundled. Calendars travel as `.storycal.json` files or share codes.
+- **Calendar view.** A full-pane month calendar next to Chronology and Gantt, with a weekday start setting and image export.
+- **Icons and covers.** Pick an icon for any event or scene, show cover images on every view, and switch on *Minimal* to draw events as icon nodes.
+- **Timeline themes.** Choose a theme from the toolbar or build your own in the theme editor with a live preview: colours with opacity, the lane palette, label font, chip and lane sizes, connector style, and a background image. High contrast, Parchment and Quiet are bundled alongside Obsidian native, and every colour is also a `--sts-timeline-*` CSS variable for snippets.
+- **Today per story.** Each story can set its own "today", in its own calendar, for the now marker, *Jump to today* and relative dates.
+- **Timeline blocks.** A fenced `timeline` code block embeds a live timeline in any note, with optional `theme:` and `today:` lines.
+- **Eras, tracks and branches as notes.** They are scoped to their story, can be linked and searched, and a branch carries the history it forked from. *Detect from event gaps* suggests eras from large gaps between events.
+- **Grouped lanes.** Group the timeline by character, location, item, culture or magic system, or show where each character was over time. Conflicts, such as a character in two places at once, get a corner badge.
+- **Cause and effect on events.** Events record their branch, causes and effects, and the session that created them.
+- Two-row toolbar with a *New event* button on every timeline surface, and timeline filters now apply to scenes.
+
+### Campaign play
+- **The map is the board.** Campaign play is a virtual tabletop: the full map fills the stage and the party, scene, combat and log live in floating panels.
+- **Player screen.** A second view to show your players the board, the party and votes, with three-state fog of war and drifting clouds over unseen country.
+- **Partylog notation.** A quick entry bar writes the session log in Partylog, with scene numbering, session header, end-of-session and interlude dialogs, and export and import of sessions.
+- **Campaign state.** Clocks, threads and quests, party resources, loot, factions and advancement are tracked and shown during play.
+- **Encounters and choices.** Encounter rolls are part of play, and encounter rows can carry choice outcomes and set flags.
+- **Campaigns on the timeline.** A campaign can record onto its own track or fork of the main timeline, in in-world time.
+- **Read panel and World Log.** A Read panel in the DM sidebar, and Lorelog world logs (*New world log*, *Add build session*) for worldbuilding decisions, open questions and tensions.
+
+### Maps
+- **Map Ink.** Draw on any map with stamps from a symbol library, lines, freehand strokes, areas, shapes, text and hand-inked brushes (including barrier brushes and a water fill), each with its own colour. Select, move, rotate and edit with the keyboard; organise drawings in layers with a legend. Entity tokens replace the teardrop pins and thin out as you zoom. Drawings are included in image export and presets can be saved in settings.
+- GeoJSON and GPX overlays on maps.
+- Export image maps as PNG from the map menu.
+- *Create child location* and *Zoom to child map* on location markers, and a placement grid for laying out child locations.
+- Maps no longer flicker or go blank when a sidebar opens, and switching maps quickly always lands on the last one picked.
+
+### Entities and modals
+- Every entity modal is laid out in collapsible sections.
+- **Defined fields.** Add your own typed fields (text, long text, number, list, and links to other entities) per entity type in Settings, Modals. They are written as top-level frontmatter.
+- Any field or section of any entity modal can be switched off, and a description can be stored as a frontmatter property instead of a body section.
+- Items can have several owners, a creator and a quantity.
+- Folder layout can be set per story.
+
+### Templates and import
+- **Import existing notes as entities.** A wizard turns notes you already have into characters, locations, events and six other types, moving them into the entity folders and keeping every frontmatter key.
+- Templates can be edited, imported from `.json` files, and customised before they are applied, including which entities to create and their file names.
+
+### Network graph
+- The relationship graph follows the R-Map conventions: relationship direction, broken and severed links, groups, and suggested links.
+- The graph uses the story's timeline theme, can colour nodes by type, group, location, culture, status or connections, and has a *Show* menu and a legend that updates with what is on screen.
+
+### Interface
+- Dashboard tabs switch at once and show an error in place if one fails.
+- Settings tabs can be hidden, and the Help tab gathers the guide, contact and support links.
+
+### Removed
+- The vis-timeline and timeline-arrows libraries.
+- The `storyteller-map` code block, which never rendered. Use the Map view or a map embed.
+- The *Replace current story* template option, which did not do what it said.
 
 ### Fixed
-- The Gantt view was slow with many dependencies. Every frame measured and laid out every dependency arrow in the story, including ones far off screen, and set the canvas font once per event to measure its label. Arrows that cannot reach the screen are now skipped before any measuring, label widths are remembered per event until the label or font changes, and arrowheads no longer save and restore canvas state. In a 1,500-event benchmark a Gantt frame went from about 10 ms to about 3.5 ms; the drawn result is pixel-identical.
-- Timeline theme files declared event size, corner radius and opacity, lane label width, height and gap, axis label density, and connector width and style, but the timeline ignored them. Every field now applies.
-- Changing the timeline theme, switching Obsidian between light and dark, or editing a CSS snippet now repaints open timelines straight away instead of after they are reopened.
-- In a story with a custom calendar, the custom today is now read in that calendar, so it lands on the same day as an event with the same date. It used to be read as a Gregorian date only.
-- The conflict colour no longer changes with the "today" line colour; each has its own role.
-- Gregorian year labels on the Chronology and Gantt axis no longer repeat or skip (for example "1420, 1420, 1422"). The axis stepped by a fixed 365.2425-day year from 1970, so gridlines drifted off 1 January. It now uses the same calendar-aware ticks as custom calendars and the Timeline view. Months and days thin to whole steps (every 3 or 6 months, days 1/11/21, ...), each month label carries its year, and years before 1 CE read as BCE instead of negative numbers. Gregorian month labels now use the calendar's month names rather than the system locale's.
-
-### Changed
-- Theme files are checked field by field on import. A malformed colour, number, or image source is dropped instead of reaching the canvas, and the rest of the theme still imports. Background images accept vault paths, `https` links, and inline `data:image` URIs only.
-- The Obsidian native theme no longer fixes the dependency arrow style, so the arrow style setting applies unless a theme chooses one.
+- Hundreds of fixes from the beta test and two rounds of bug hunting. The ones you are most likely to have hit:
+  - Map drawings were emptied on save, so marks seemed not to stick.
+  - Timeline edits could be written from a stale copy of the story, and three code paths could write an empty timeline store.
+  - Save and Create buttons, Partylog import and Lorelog actions could run twice on a double click or double tap.
+  - Saving a group note could drop keys and sections the plugin did not know about. Saving now keeps them, along with legacy connection formats.
+  - BCE dates written by dragging could not be read back.
+  - The Gantt view slowed down with many dependencies. It now draws about three times faster on large stories.
+  - Gregorian year labels on the axis repeated or skipped years.
 
 ## 2.0.0-beta.2
 

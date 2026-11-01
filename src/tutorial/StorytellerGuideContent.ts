@@ -134,52 +134,67 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p><strong>Storyteller Suite ${version}</strong> closes gaps and brings the timeline closer to my final vision.</p>
+            <p><strong>Storyteller Suite ${version}</strong> rebuilds the timeline, turns campaign play into a virtual tabletop, adds a drawing layer to maps, and lets you shape every entity modal around your own fields.</p>
+            <p>Your notes are not rewritten on upgrade. The full list of changes is in the changelog on GitHub.</p>
         `,
         sections: [
             {
-                title: 'Native Timeline Engine & Custom Calendars',
+                title: 'Coming from 1.8',
                 bodyHtml: `
                     <ul>
-                        <li><strong>Native Canvas Engine.</strong> The timeline rendering engine has been rewritten onto a custom canvas renderer.</li>
-                        <li><strong>Custom Dating Systems.</strong> Open Settings → Storyteller Suite → Timeline → <em>Manage calendars</em>, or run <code>Storyteller: Manage custom calendars</code>, to create calendars with user-defined month lengths, years, and epoch rules.</li>
-                        <li><strong>Inline Note Embedding.</strong> Embed interactive timeline blocks inside any note using a fenced <code>timeline</code> code block.</li>
-                        <li><strong>Trackpad Pinch Zoom & Canvas Export.</strong> Pinch to zoom on laptop trackpads and export the entire timeline canvas.</li>
-                        <li><strong>Smart Gantt Bars.</strong> Short Gantt events automatically render as readable chips with shading for duration.</li>
-                        <li><strong>Timeline Themes.</strong> Pick a theme from the <em>Theme</em> field in the timeline toolbar, or choose <em>Edit theme…</em> to change colours, the lane palette, the label font, chip and lane sizes, connector lines and a background image, with a live preview. Themes are shared as codes or <code>.storytl.json</code> files, and every colour is also a <code>--sts-timeline-*</code> CSS variable for snippets.</li>
+                        <li><strong>Timeline data moves into notes.</strong> The first time you open the timeline, a dialog offers to move your eras, tracks and branches out of the plugin settings and into your story folders. <code>Storyteller: Undo timeline notes migration</code> reverses it.</li>
+                        <li><strong>Wheel and zoom.</strong> The mouse wheel now scrolls the timeline and Shift + wheel zooms. Trackpad pinch also zooms.</li>
+                        <li><strong>Map pins.</strong> Entity markers on maps are now Map Ink tokens. Existing markers stay where they were.</li>
                     </ul>
                 `
             },
             {
-                title: 'Eras & Alternate Timelines',
+                title: 'Timeline',
                 bodyHtml: `
                     <ul>
-                        <li><strong>Scoped Eras & Tracks.</strong> Eras and tracks are scoped to their parent story notes.</li>
-                        <li><strong>Era suggestions.</strong> In <em>Manage timeline eras & periods</em>, choose <em>Detect from event gaps</em> to have Storyteller fill editable era ranges from unusually large gaps between dated events. Existing eras are never overwritten.</li>
-                        <li><strong>Markdown frontmatter.</strong> Timeline notes accept <code>entityType: era</code>, <code>entityType: branch</code>, or <code>entityType: fork</code>. Era notes can include an optional <code>abbreviation</code>.</li>
-                        <li><strong>Branch History Inheritance.</strong> Alternate timeline branches inherit historical events up to their divergence point.</li>
+                        <li><strong>New engine.</strong> Chronology (horizontal or vertical), Gantt and a full-pane Calendar view, drawn natively, with drag editing and image export of the whole canvas.</li>
+                        <li><strong>Custom calendars.</strong> Open Settings → Storyteller Suite → Timeline → <em>Manage calendars</em>, or run <code>Storyteller: Manage custom calendars</code>, to design a calendar with its own months, leap rules, epochs and holidays.</li>
+                        <li><strong>Themes.</strong> Pick a theme from the <em>Theme</em> field in the toolbar, or choose <em>Edit theme…</em> to change colours, the lane palette, font, sizes, connectors and a background image with a live preview. Every colour is also a <code>--sts-timeline-*</code> CSS variable.</li>
+                        <li><strong>Icons and Minimal.</strong> Give events and scenes an icon, show cover images, and switch on <em>Minimal</em> to draw events as icon nodes.</li>
+                        <li><strong>Today per story.</strong> Set a story's own "today" from the zoom menu with <em>Set today for this story…</em>.</li>
+                        <li><strong>Timeline blocks.</strong> Run <code>Storyteller: Insert timeline block</code> to embed a live timeline in any note.</li>
+                        <li><strong>Eras, tracks and branches.</strong> Scoped to their story. Branches inherit the history they forked from, and <em>Detect from event gaps</em> in <em>Manage timeline eras & periods</em> suggests eras for you.</li>
                     </ul>
                 `
             },
             {
-                title: 'Fixes & Stability',
+                title: 'Campaign play',
                 bodyHtml: `
                     <ul>
-                        <li><strong>Story Switching.</strong> Changing active stories reloads open timeline views and resets tracks, branches, and filters.</li>
-                        <li><strong>Scroll & Arrow Fixes.</strong> Dependency arrows stay anchored while scrolling, and event markers align to calendar days.</li>
-                        <li><strong>Per-Project Custom Folders.</strong> Custom folder templates with <code>{storyName}</code>, <code>{storySlug}</code>, or <code>{storyId}</code> resolve per active story to prevent path collisions.</li>
-                        <li><strong>Modal Customization.</strong> Modal fields can be toggled on or off per entity type in settings, with default custom frontmatter fields.</li>
-                        <li><strong>Compile Step Scrolling.</strong> The compile tab layout scrolls to display all workflow steps.</li>
-                        <li><strong>Item Owners and Quantities.</strong> Plot items support multiple current owners and quantity tracking.</li>
-                        <li><strong>Template Variable Creation.</strong> Variable creation in templates is easier, with support for note-based templates and default template assignments.</li>
+                        <li><strong>The map is the board.</strong> <code>Storyteller: Open campaign view</code> puts the whole map on the stage, with the party, scene, combat and log in floating panels.</li>
+                        <li><strong>Player screen.</strong> <code>Storyteller: Open player screen</code> shows your players the board, the party and votes, with fog of war over what they have not seen.</li>
+                        <li><strong>Partylog.</strong> The quick entry bar writes your session log in Partylog notation, with session header, end-of-session and interlude dialogs, and import and export of sessions.</li>
+                        <li><strong>Campaign state.</strong> Clocks, threads, party resources, loot, factions and advancement are tracked during play, and encounter rolls can carry choices and flags.</li>
+                        <li><strong>Campaigns on the timeline.</strong> A campaign can record onto its own track or fork of the main timeline, in in-world time.</li>
+                        <li><strong>World Log.</strong> <code>Storyteller: New world log</code> starts a Lorelog log for worldbuilding decisions, open questions and tensions.</li>
                     </ul>
                 `
             },
             {
-                title: 'Development Status & Next Steps',
+                title: 'Maps',
                 bodyHtml: `
-                    <p>Apologies for the delay between updates due to recent life changes and work starting on a new plugin project.</p>
-                    <p>The next release will likely be the final beta update. It will include full project exporting, allowing you to export your entire story and vault data beyond timeline images.</p>
+                    <ul>
+                        <li><strong>Map Ink.</strong> Press <em>Draw on map</em> in the map toolbar to add stamps, lines, areas, shapes, text and hand-inked brushes, organised in layers with a legend.</li>
+                        <li><strong>Overlays and export.</strong> Add GeoJSON or GPX overlays, and export image maps as PNG from the map menu.</li>
+                        <li><strong>Child maps.</strong> Location markers offer <em>Create child location</em> and <em>Zoom to child map</em>.</li>
+                    </ul>
+                `
+            },
+            {
+                title: 'Entities, templates and import',
+                bodyHtml: `
+                    <ul>
+                        <li><strong>Sectioned modals.</strong> Every entity modal is laid out in collapsible sections.</li>
+                        <li><strong>Defined fields.</strong> Settings → Storyteller Suite → Modals lets you add typed fields per entity type, and switch off any field or section you do not use.</li>
+                        <li><strong>Import existing notes.</strong> <code>Storyteller: Import existing notes as entities</code> turns notes you already have into characters, locations, events and more.</li>
+                        <li><strong>Templates.</strong> Edit templates, import them from <code>.json</code> files, and choose what to create before applying one.</li>
+                        <li><strong>Network graph.</strong> The graph follows the story's timeline theme, can colour nodes by type, group, location or culture, and has a legend that follows what is on screen.</li>
+                    </ul>
                 `
             }
         ]
