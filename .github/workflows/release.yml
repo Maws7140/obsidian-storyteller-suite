@@ -35,7 +35,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18.x'
+          node-version: '22.x'
           cache: 'npm'
 
       - name: Resolve release metadata
@@ -164,6 +164,9 @@ jobs:
 
       - name: Type check
         run: npx tsc -p tsconfig.json --noEmit
+
+      - name: Unit tests
+        run: npx vitest run
 
       - name: Build plugin
         run: node esbuild.config.mjs production

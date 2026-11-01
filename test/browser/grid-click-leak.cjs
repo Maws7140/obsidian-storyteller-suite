@@ -15,7 +15,7 @@ export async function confirmWithModal(){return true}
 `;
 const entry="export { GridController } from './src/leaflet/grid/GridController'; export { InkEditor } from './src/leaflet/ink/InkEditor'; export { defaultInkDoc } from './src/leaflet/ink/model';";
 const bundle=await esbuild.build({stdin:{contents:entry,resolveDir:ROOT,loader:'ts'},bundle:true,write:false,format:'iife',globalName:'Bundle',plugins:[{name:'host',setup(b){b.onResolve({filter:/^(leaflet|obsidian)$|LocationSuggestModal|LocationModal|ConfirmModal|MapMembershipService/},args=>({path:args.path,namespace:'host'}));b.onLoad({filter:/.*/,namespace:'host'},args=>({contents:args.path==='leaflet'?'module.exports=window.L':args.path==='obsidian'?stub:'export class MapMembershipService{}; export function detachFromMaps(){}; export function confirmWithModal(){return Promise.resolve(true)}; export class LocationModal{open(){}}; export class LocationSuggestModal{constructor(a,p,fn){this.fn=fn}open(){this.fn(window.locations[0])}}',loader:'js'}));}}]});
-const b=await chromium.launch({headless:true,executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome'});
+const b=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH||undefined});
 try{const p=await b.newPage({viewport:{width:1200,height:900}});const errors=[];p.on('pageerror',e=>errors.push(e.message));
 await p.route('http://grid.test/',r=>r.fulfill({contentType:'text/html',body:'<div id="toolbar" style="position:relative;display:flex"></div><div id="map" style="width:1000px;height:760px"></div>'}));
 await p.goto('http://grid.test/');

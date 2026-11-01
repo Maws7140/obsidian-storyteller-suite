@@ -14,7 +14,7 @@ const fs = require('fs'); const assert = require('assert');
 			b.onLoad({ filter: /.*/, namespace: 'host' }, a => ({ contents: a.path === 'leaflet' ? 'module.exports=window.L' : stub, loader: a.path === 'leaflet' ? 'js' : 'ts' }));
 		} }],
 	});
-	const browser = await chromium.launch({ headless: true, executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+	const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH || undefined });
 	try {
 		const page = await browser.newPage({ viewport: { width: 900, height: 600 } });
 		await page.setContent('<div id="map" style="width:800px;height:400px"></div>');

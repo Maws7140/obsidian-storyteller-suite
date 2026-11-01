@@ -90,7 +90,7 @@ const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: expe
 
 	const br = await chromium.launch({
 		headless: true,
-		executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+		executablePath: process.env.CHROMIUM_PATH || undefined,
 	});
 	const page = await br.newPage({ viewport: { width: 1200, height: 800 } });
 	const errors = [];

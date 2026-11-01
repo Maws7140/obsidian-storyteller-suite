@@ -75,6 +75,8 @@ const SIZE = { width: 1280, height: 800 };
     const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH || undefined });
     try {
         const page = await browser.newPage({ viewport: SIZE, deviceScaleFactor: 1 });
+        // The fixture events sit on 2026-10-29 and the test checks the today cell, so pin the clock to that day.
+        await page.clock.setFixedTime(new Date('2026-10-29T12:00:00'));
         const errors = [];
         page.on('pageerror', error => errors.push(error.message));
         page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
