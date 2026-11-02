@@ -17,7 +17,7 @@ import * as L from 'leaflet';
 // import 'leaflet.markercluster/dist/leaflet.markercluster';
 
 import { Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf, debounce } from 'obsidian';
-import { parseEventDate, toMillis } from './utils/DateParsing';
+import { frontmatterDateText, parseEventDate, toMillis } from './utils/DateParsing';
 import { CalendarRegistry } from './calendar/CalendarRegistry';
 import { resolveReferenceToday } from './calendar/ReferenceToday';
 import {
@@ -6103,6 +6103,7 @@ export default class StorytellerSuitePlugin extends Plugin {
             let eventData = await this.parseFile<Event>(file, { name: '' }, 'event');
             if (eventData) eventData = this.normalizeEntityCustomFields('event', eventData);
             if (eventData) {
+                eventData.dateTime = frontmatterDateText(eventData.dateTime as unknown) as string | undefined;
                 events.push(eventData);
 			}
 		}

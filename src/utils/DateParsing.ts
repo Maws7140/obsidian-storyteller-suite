@@ -45,6 +45,15 @@ function inferPrecisionFromLuxon(dt: DateTime): ParsedPrecision {
   return 'year';
 }
 
+/**
+ * A frontmatter date as text. Obsidian reads `dateTime: 342` as the number 342, while
+ * the timeline handles dates as strings, so a bare year would otherwise break it.
+ * Any other value is returned unchanged.
+ */
+export function frontmatterDateText<T>(value: T): T | string {
+  return typeof value === 'number' && Number.isFinite(value) ? String(value) : value;
+}
+
 function coerceDateInput(input: unknown): string | undefined {
   if (input == null) return undefined;
   if (typeof input === 'string') return input.trim();

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseEventDate, toMillis, toDisplay } from '../../src/utils/DateParsing';
+import { frontmatterDateText, parseEventDate, toMillis, toDisplay } from '../../src/utils/DateParsing';
 
 describe('DateParsing', () => {
   it('parses ISO date', () => {
@@ -448,5 +448,18 @@ describe('BCE and negative years with a time of day', () => {
     expect(r.isBCE).toBe(true);
     expect(r.originalYear).toBe(44);
     expect(parseEventDate('44 BCE', { timezone: 'utc' }).start?.toMillis()).toBe(Date.UTC(-43, 0, 1));
+  });
+});
+
+describe('frontmatterDateText', () => {
+  it('turns a bare year that YAML read as a number back into text', () => {
+    expect(frontmatterDateText(2941)).toBe('2941');
+    expect(frontmatterDateText(342)).toBe('342');
+  });
+
+  it('leaves strings and missing values alone', () => {
+    expect(frontmatterDateText('3018-09-22')).toBe('3018-09-22');
+    expect(frontmatterDateText(undefined)).toBeUndefined();
+    expect(frontmatterDateText(Number.NaN)).toBeNaN();
   });
 });
