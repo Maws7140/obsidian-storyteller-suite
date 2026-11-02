@@ -59,3 +59,35 @@ describe('presence-span conflict detection', () => {
         expect(conflicts.some(conflict => conflict.id.startsWith('conflict-presence-'))).toBe(true);
     });
 });
+
+describe('presence spans and the location tree', () => {
+    const tree: Location[] = [
+        { id: 'loc-shire', name: 'The Shire' },
+        { id: 'loc-hobbiton', name: 'Hobbiton', parentLocationId: '[[The Shire]]' },
+        { id: 'loc-bag-end', name: 'Bag End', parentLocationId: 'loc-hobbiton' },
+        { id: 'loc-bree', name: 'Bree' },
+    ];
+    const frodo: Character = {
+        id: 'char-frodo',
+        name: 'Frodo Baggins',
+        locationHistory: [{ locationId: 'loc-shire', relationship: 'resident', timeRange: { start: '3018-01-01', end: '3018-09-22' } }],
+    };
+    const at = (location: string): Event => ({ id: `e-${location}`, name: `At ${location}`, dateTime: '3018-04-13', characters: ['Frodo Baggins'], location });
+
+    it('accepts an event in a place inside the recorded stay, by id or by name', () => {
+        expect(ConflictDetector.detectPresenceConflicts([at('Bag End'), at('loc-hobbiton')], [frodo], tree)).toHaveLength(0);
+    });
+
+    it('still reports an event outside the recorded stay', () => {
+        expect(ConflictDetector.detectPresenceConflicts([at('Bree')], [frodo], tree)).toHaveLength(1);
+    });
+
+    it('stops on a cycle in the parent links', () => {
+        const loop: Location[] = [
+            { id: 'a', name: 'A', parentLocationId: 'b' },
+            { id: 'b', name: 'B', parentLocationId: 'a' },
+            { id: 'loc-shire', name: 'The Shire' },
+        ];
+        expect(ConflictDetector.detectPresenceConflicts([at('A')], [frodo], loop)).toHaveLength(1);
+    });
+});

@@ -121,6 +121,20 @@ export class ConflictDetector {
             if (location.id) locationNames.set(clean(location.id), location.name);
         }
         const locationName = (value: string): string => locationNames.get(clean(value)) ?? value;
+        // A stay covers the places inside it: living in the Shire puts you in Bag End too.
+        const parentOf = new Map<string, string>();
+        for (const location of locations) {
+            const parent = location.parentLocationId || location.parentLocation;
+            if (parent) parentOf.set(clean(location.name), clean(locationName(parent)));
+        }
+        const isWithin = (place: string, stay: string): boolean => {
+            const seen = new Set<string>();
+            for (let current: string | undefined = clean(locationName(place)); current && !seen.has(current); current = parentOf.get(current)) {
+                if (current === stay) return true;
+                seen.add(current);
+            }
+            return false;
+        };
         const { parse } = createDateCache(referenceDate);
 
         for (const character of characters) {
@@ -145,7 +159,7 @@ export class ConflictDetector {
             stays.forEach((stay, index) => {
                 const spanEnd = stay.end ?? stays[index + 1]?.start;
                 for (const event of characterEvents) {
-                    if (clean(locationName(event.location!)) === clean(stay.location)) continue;
+                    if (isWithin(event.location!, clean(stay.location))) continue;
                     const parsed = parse(event.dateTime!);
                     if (!parsed.start) continue;
                     const eventEnd = parsed.end ?? parsed.start;
