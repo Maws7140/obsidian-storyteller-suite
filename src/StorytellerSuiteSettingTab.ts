@@ -3,6 +3,7 @@ import {
     PluginSettingTab,
     Setting,
     Notice,
+    Platform,
     TFolder,
     setIcon,
     SettingPage,
@@ -43,6 +44,7 @@ import { encodeShareCode, makeCalendarDocument, makeThemeDocument } from './cale
 import { CalendarManagerModal } from './modals/CalendarManagerModal';
 import { TimelineThemeManagerModal, openActiveTimelineThemeEditor } from './modals/TimelineThemeModal';
 import { PlatformUtils } from './utils/PlatformUtils';
+import { useDeclarativeSettings } from './utils/SettingsRendering';
 import { importPortableFile } from './utils/PortableImport';
 
 type TabId = 'stories' | 'dashboard' | 'modals' | 'folders' | 'timeline' | 'maps' | 'templates' | 'gallery' | 'help';
@@ -167,6 +169,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
     private declarativeContainer: HTMLElement | null = null;
 
     getSettingDefinitions(): SettingDefinitionItem[] {
+        // An empty list makes Obsidian call display() instead (see SettingsRendering).
+        if (!useDeclarativeSettings(Platform)) return [];
         return this.TABS.map(tab => ({
             type: 'page',
             name: tab.label,
@@ -272,6 +276,15 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         if (!nav.style.width) nav.style.width = '160px';
         content.style.flex = '1';
         content.style.minWidth = '0';
+        if (Platform.isMobile) {
+            // No room for a side column on a phone: tab buttons wrap in a row above the content.
+            wrapper.style.flexDirection = 'column';
+            wrapper.style.alignItems = 'stretch';
+            nav.style.flexDirection = 'row';
+            nav.style.flexWrap = 'wrap';
+            nav.style.width = '100%';
+            content.style.padding = '12px 0';
+        }
         /* eslint-enable obsidianmd/no-static-styles-assignment */
 
         const tabBtns: HTMLElement[] = [];

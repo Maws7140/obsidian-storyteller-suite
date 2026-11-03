@@ -6590,6 +6590,11 @@ body.mod-rtl .storyteller-group-members {
     flex-shrink: 0;
 }
 
+/* Mobile renders this tab imperatively, with the tab buttons in a wrapping row. */
+.is-mobile .sts-settings-nav .sts-settings-tab-btn {
+    width: auto;
+}
+
 .sts-settings-content {
     flex: 1;
     min-width: 0;
