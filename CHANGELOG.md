@@ -16,6 +16,7 @@ Storyteller Suite 2.0 rebuilds the timeline from scratch, turns campaign play in
 - **Calendar view.** A full-pane month calendar next to Chronology and Gantt, with a weekday start setting and image export.
 - **Icons and covers.** Pick an icon for any event or scene, show cover images on every view, and switch on *Minimal* to draw events as icon nodes.
 - **Timeline themes.** Choose a theme from the toolbar or build your own in the theme editor with a live preview: colours with opacity, the lane palette, label font, chip and lane sizes, connector style, and a background image. High contrast, Parchment and Quiet are bundled alongside Obsidian native, and every colour is also a `--sts-timeline-*` CSS variable for snippets.
+- **Import themes and calendars from a file.** *Import from file…* in Settings → Timeline, and *Import file…* in *Manage timeline themes*, install a `.storytl.json` or `.storycal.json` without pasting it.
 - **Today per story.** Each story can set its own "today", in its own calendar, for the now marker, *Jump to today* and relative dates.
 - **Timeline blocks.** A fenced `timeline` code block embeds a live timeline in any note, with optional `theme:` and `today:` lines.
 - **Eras, tracks and branches as notes.** They are scoped to their story, can be linked and searched, and a branch carries the history it forked from. *Detect from event gaps* suggests eras from large gaps between events.

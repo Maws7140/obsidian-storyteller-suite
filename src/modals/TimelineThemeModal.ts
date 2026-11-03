@@ -25,6 +25,7 @@ import {
     type TimelineColorRole,
 } from '../utils/TimelineStyle';
 import { ImageSuggestModal } from './GalleryModal';
+import { importPortableFile } from '../utils/PortableImport';
 
 type Done = () => void;
 
@@ -85,6 +86,16 @@ export class TimelineThemeManagerModal extends Modal {
                 theme.name = 'New theme';
                 this.openEditor(theme, true);
             }));
+
+        new Setting(contentEl)
+            .setName('Import theme')
+            .setDesc('Add a theme from a .storytl.json file. A theme with the same id is kept and the import is added as a copy.')
+            .addButton(button => button.setButtonText('Import file…').onClick(() => { void (async () => {
+                const imported = await importPortableFile(this.registry);
+                if (!imported) return;
+                this.onChange?.();
+                this.render();
+            })(); }));
 
         const activeId = this.registry.getActiveTheme().id;
         for (const theme of this.registry.listThemes()) {

@@ -43,6 +43,7 @@ import { encodeShareCode, makeCalendarDocument, makeThemeDocument } from './cale
 import { CalendarManagerModal } from './modals/CalendarManagerModal';
 import { TimelineThemeManagerModal, openActiveTimelineThemeEditor } from './modals/TimelineThemeModal';
 import { PlatformUtils } from './utils/PlatformUtils';
+import { importPortableFile } from './utils/PortableImport';
 
 type TabId = 'stories' | 'dashboard' | 'modals' | 'folders' | 'timeline' | 'maps' | 'templates' | 'gallery' | 'help';
 
@@ -1327,7 +1328,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         let portableImport = '';
         new Setting(container)
             .setName('Import dating system or timeline theme')
-            .setDesc('Paste a .storycal.json/.storytl.json document or Storyteller share code.')
+            .setDesc('Paste a .storycal.json/.storytl.json document or Storyteller share code, or import the file directly.')
             .addTextArea(text => text.setPlaceholder('Storyteller:cal:1:...').onChange(value => { portableImport = value; }))
             .addButton(button => button.setButtonText('Import').setCta().onClick(async () => {
                 try {
@@ -1337,6 +1338,9 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 } catch (error) {
                     new Notice(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
                 }
+            }))
+            .addButton(button => button.setButtonText('Import from file…').setTooltip('Choose a .storytl.json or .storycal.json file').onClick(async () => {
+                if (await importPortableFile(calendarRegistry)) this.refreshSettingsView();
             }));
 
         const cfSetting = new Setting(container)
