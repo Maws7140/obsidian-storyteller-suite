@@ -73,6 +73,7 @@ Storyteller Suite 2.0 rebuilds the timeline from scratch, turns campaign play in
   - BCE dates written by dragging could not be read back.
   - The Gantt view slowed down with many dependencies. It now draws about three times faster on large stories.
   - Gregorian year labels on the axis repeated or skipped years.
+  - Saving a character with a dated location history (`3018-01-01 – 3018-09-22`) split the start date at its first hyphen and wrote back `3018 – 01-01 – 3018-09-22`, so every event after it was flagged as a conflict. Ranges now keep whole dates, and histories already written the broken way are read correctly and fixed on the next save.
   - A bare year such as `dateTime: 342` stopped the whole timeline from drawing, because Obsidian reads it as a number.
   - A character recorded as living in a region (the Shire) was flagged as in two places when an event put them somewhere inside it (Bag End). Recorded stays now cover the places within them.
 

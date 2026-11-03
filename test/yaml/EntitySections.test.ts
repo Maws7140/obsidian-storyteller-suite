@@ -587,6 +587,41 @@ status: active
         { locationId: 'Glass Harbor', relationship: 'returned before', timeRange: { end: '1215' } }
       ]);
     });
+
+    it('keeps full dates whole when reading a range back', () => {
+      const parsed = parseLocationHistory([
+        'resident: [[The Shire]] (3018-01-01 – 3018-09-22)',
+        'guest: [[Rivendell]] (3018-10-20 to 3018-12-25)',
+        'hid in: [[Bree]] (3018-09 - 3018-10)',
+        'ruled: [[Angmar]] (-1300 – -1975)',
+        'crossed: [[Anduin]] (1200–1210)'
+      ]);
+      expect(parsed).toEqual([
+        { locationId: 'The Shire', relationship: 'resident', timeRange: { start: '3018-01-01', end: '3018-09-22' } },
+        { locationId: 'Rivendell', relationship: 'guest', timeRange: { start: '3018-10-20', end: '3018-12-25' } },
+        { locationId: 'Bree', relationship: 'hid in', timeRange: { start: '3018-09', end: '3018-10' } },
+        { locationId: 'Angmar', relationship: 'ruled', timeRange: { start: '-1300', end: '-1975' } },
+        { locationId: 'Anduin', relationship: 'crossed', timeRange: { start: '1200', end: '1210' } }
+      ]);
+    });
+
+    it('repairs ranges an older reader split inside the start date', () => {
+      expect(parseLocationHistory([
+        'resident: [[The Shire]] (3018 – 01-01 – 3018-09-22)',
+        'guest: [[Rivendell]] (3018 – 10 – 3018-12)'
+      ])).toEqual([
+        { locationId: 'The Shire', relationship: 'resident', timeRange: { start: '3018-01-01', end: '3018-09-22' } },
+        { locationId: 'Rivendell', relationship: 'guest', timeRange: { start: '3018-10', end: '3018-12' } }
+      ]);
+    });
+
+    it('writes a dated history that reads back unchanged', () => {
+      const history = [{ locationId: 'The Shire', relationship: 'resident', timeRange: { start: '3018-01-01', end: '3018-09-22' } }];
+      const written = buildFrontmatter('character', { id: '1', name: 'Frodo', locationHistory: history } as any).locationHistory as unknown[];
+      expect(written).toEqual(['resident: [[The Shire]] (3018-01-01 – 3018-09-22)']);
+      const again = buildFrontmatter('character', { id: '1', name: 'Frodo', locationHistory: parseLocationHistory(written) } as any).locationHistory;
+      expect(again).toEqual(written);
+    });
   });
 
   describe('customFields flatten with original frontmatter', () => {

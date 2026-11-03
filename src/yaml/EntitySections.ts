@@ -474,6 +474,22 @@ export function serializeLocationHistory(value: unknown[]): unknown[] {
 const LOCATION_HISTORY_PATTERN = /^\s*(.+?)\s*:\s*(?:\[\[([^\]]+)\]\]|([^(]+?))\s*(?:\((.*)\))?\s*$/;
 
 /** Parse locationHistory strings back to objects; legacy object entries pass through. */
+/**
+ * Splits a location-history range such as "3018-01-01 – 3018-09-22" into its ends.
+ * Only a spaced dash, an unspaced en or em dash, or "to" separates the ends: the
+ * hyphens inside a date never do. An older reader split at the first hyphen and
+ * wrote back "3018 – 01-01 – 3018-09-22"; that form is repaired here.
+ */
+function splitHistoryRange(raw: string): { start: string; end: string } | undefined {
+  const parts = raw.split(/\s+(?:[–—-]|to)\s+/i).map(part => part.trim()).filter(Boolean);
+  if (parts.length === 3 && /^-?\d+$/.test(parts[0]) && /^\d{1,2}(?:-\d{1,2})?$/.test(parts[1])) {
+    return { start: `${parts[0]}-${parts[1]}`, end: parts[2] };
+  }
+  if (parts.length >= 2) return { start: parts[0], end: parts.slice(1).join(' – ') };
+  const tight = raw.match(/^(.+?)[–—](.+)$/);
+  return tight ? { start: tight[1].trim(), end: tight[2].trim() } : undefined;
+}
+
 export function parseLocationHistory(value: unknown[]): unknown[] {
   return value.map(entry => {
     if (typeof entry !== 'string' || !entry.trim()) return entry;
@@ -489,10 +505,10 @@ export function parseLocationHistory(value: unknown[]): unknown[] {
     if (rawRange) {
       const fromMatch = rawRange.match(/^from\s+(.+)$/i);
       const untilMatch = rawRange.match(/^until\s+(.+)$/i);
-      const spanMatch = rawRange.match(/^(.+?)\s*[–—-]\s*(.+)$/);
+      const span = splitHistoryRange(rawRange);
       if (fromMatch) out.timeRange = { start: fromMatch[1].trim() };
       else if (untilMatch) out.timeRange = { end: untilMatch[1].trim() };
-      else if (spanMatch) out.timeRange = { start: spanMatch[1].trim(), end: spanMatch[2].trim() };
+      else if (span) out.timeRange = span;
     }
     return out;
   });
