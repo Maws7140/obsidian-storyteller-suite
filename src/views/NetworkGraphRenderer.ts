@@ -39,6 +39,11 @@ import type { CytoscapeElement } from '../utils/GraphUtils';
 /** Display options whose change means the elements themselves must be rebuilt. */
 const DATA_OPTIONS: Array<keyof GraphDisplayOptions> = ['showImages', 'showEnded', 'showImplied', 'showMembership', 'showIsolated'];
 
+/** Default zoom floor; lowered per graph when every node would not otherwise fit. */
+const GRAPH_MIN_ZOOM = 0.2;
+/** Space kept around the nodes when the graph is fitted to the view. */
+const GRAPH_FIT_PADDING = 80;
+
 export class NetworkGraphRenderer {
     private containerEl: HTMLElement;
     private plugin: StorytellerSuitePlugin;
@@ -409,10 +414,12 @@ export class NetworkGraphRenderer {
             elements: elements,
             style: this.getCytoscapeStyle() as unknown as cytoscape.StylesheetStyle[],
             layout: this.getLayoutOptions(this.display.layout),
-            minZoom: 0.2,
+            minZoom: GRAPH_MIN_ZOOM,
             maxZoom: 4,
             userZoomingEnabled: this.allowWheelZoom
         });
+        // Registered before the one-off initial-zoom handler below, so it runs first.
+        this.cy.on('layoutstop', () => this.allowZoomToFitAll());
 
         if (!this.allowWheelZoom) {
             this.cy.userZoomingEnabled(false);
@@ -580,7 +587,7 @@ export class NetworkGraphRenderer {
             animate: true,
             animationDuration: 500,
             fit: true,
-            padding: 80 // Increased from 50 for better initial zoom
+            padding: GRAPH_FIT_PADDING
         };
 
         switch (layoutName) {
@@ -1628,9 +1635,31 @@ export class NetworkGraphRenderer {
         this.saveViewportState(); // Save after zoom
     }
 
+    /**
+     * Lower the zoom floor far enough to show every node at once. A circle of a
+     * hundred entities is several thousand pixels across, and Cytoscape's fit
+     * stops at minZoom, so with a fixed floor the edge of the circle could not
+     * be reached. Refits when the layout's own fit was held back by the floor.
+     */
+    private allowZoomToFitAll(): void {
+        if (!this.cy) return;
+        const elements = this.cy.nodes();
+        if (elements.empty()) return;
+        const box = elements.boundingBox();
+        const width = this.cy.width() - 2 * GRAPH_FIT_PADDING;
+        const height = this.cy.height() - 2 * GRAPH_FIT_PADDING;
+        if (width <= 0 || height <= 0 || box.w <= 0 || box.h <= 0) return;
+        const fitZoom = Math.min(width / box.w, height / box.h);
+        if (!Number.isFinite(fitZoom) || fitZoom <= 0) return;
+        const floor = this.cy.minZoom();
+        this.cy.minZoom(Math.min(GRAPH_MIN_ZOOM, fitZoom * 0.8));
+        if (fitZoom < floor && this.cy.zoom() <= floor + 1e-6) this.cy.fit(elements, GRAPH_FIT_PADDING);
+    }
+
     fitToView(): void {
         if (!this.cy) return;
-        this.cy.fit(undefined, 80); // Increased from 50 to match layout padding
+        this.allowZoomToFitAll();
+        this.cy.fit(undefined, GRAPH_FIT_PADDING);
         this.saveViewportState(); // Save after fit
     }
 
