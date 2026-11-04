@@ -193,7 +193,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         containerEl.addClass('sts-settings-root');
         this.ensureSettingsCollections();
         try {
-            this.renderTab(tabId, containerEl);
+            this.renderSection(tabId, containerEl);
         } catch (error) {
             this.renderFailure(containerEl, error);
         }
@@ -286,14 +286,14 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 btn.addClass('is-active');
                 this.activeTab = tab.id;
                 content.empty();
-                this.renderTab(tab.id, content);
+                this.renderSection(tab.id, content);
             });
         });
 
-        this.renderTab(this.activeTab, content);
+        this.renderSection(this.activeTab, content);
     }
 
-    private renderTab(tabId: TabId, container: HTMLElement): void {
+    private renderSection(tabId: TabId, container: HTMLElement): void {
         try {
             switch (tabId) {
                 case 'stories':   this.renderStoriesTab(container);   break;

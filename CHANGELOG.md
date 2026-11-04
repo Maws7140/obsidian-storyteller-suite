@@ -74,6 +74,7 @@ Storyteller Suite 2.0 rebuilds the timeline from scratch, turns campaign play in
   - The Gantt view slowed down with many dependencies. It now draws about three times faster on large stories.
   - Gregorian year labels on the axis repeated or skipped years.
   - Saving a character with a dated location history (`3018-01-01 – 3018-09-22`) split the start date at its first hyphen and wrote back `3018 – 01-01 – 3018-09-22`, so every event after it was flagged as a conflict. Ranges now keep whole dates, and histories already written the broken way are read correctly and fixed on the next save.
+  - Plugin settings opened blank on Android and iPad with Obsidian 1.13 and later. Obsidian added a `renderTab()` step to every settings tab, and a private method of ours with the same name replaced it, so the tab drew nothing; desktop only worked by accident. The method is renamed and settings render on phones, tablets and desktop.
   - In circle layout a large graph could not be zoomed out far enough to see every node, and Fit to view stopped short, because the zoom floor was fixed at 20%. The floor now drops to whatever shows the whole graph.
   - A bare year such as `dateTime: 342` stopped the whole timeline from drawing, because Obsidian reads it as a number.
   - A character recorded as living in a region (the Shire) was flagged as in two places when an event put them somewhere inside it (Bag End). Recorded stays now cover the places within them.
