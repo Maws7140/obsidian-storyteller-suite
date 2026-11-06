@@ -1,6 +1,7 @@
 import { App, ButtonComponent, TFile, setIcon } from 'obsidian';
 import type StorytellerSuitePlugin from '../../../main';
 import type { Chapter, Scene } from '../../../types';
+import { sceneMatchesFilter, scenePreview } from '../../../utils/ScenePreview';
 
 interface WritingListRendererContext {
     app: App;
@@ -36,8 +37,8 @@ export async function renderWritingChapterSceneList(container: HTMLElement, cont
 
     const listContainer = container.createDiv('storyteller-list-container');
     if (chapters.length === 0) {
+        // Keep going: scenes that are not in a chapter yet are listed below under "Unassigned".
         listContainer.createEl('p', { text: `No chapters found.${context.currentFilter ? ' Matching current filter.' : ''}` });
-        return;
     }
 
     chapters.sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
@@ -167,8 +168,7 @@ export async function renderWritingChapterSceneList(container: HTMLElement, cont
     const unassignedScenes = allScenes
         .filter(scene => !scene.chapterId && !scene.chapterName)
         .filter(scene =>
-            scene.name.toLowerCase().includes(context.currentFilter) ||
-            (scene.content || '').toLowerCase().includes(context.currentFilter)
+            sceneMatchesFilter(scene, context.currentFilter)
         );
 
     if (unassignedScenes.length > 0) {
@@ -267,9 +267,10 @@ function renderWritingSceneItem(
         fill.title = `Intensity: ${scene.intensity}`;
     }
 
-    if (scene.content) {
-        const preview = scene.content.length > 80 ? `${scene.content.substring(0, 80)}...` : scene.content;
-        infoEl.createEl('p', { cls: 'storyteller-scene-preview', text: preview });
+    const preview = scenePreview(scene);
+    if (preview) {
+        const previewEl = infoEl.createEl('p', { cls: 'storyteller-scene-preview', text: preview.text });
+        if (preview.fromSynopsis) previewEl.addClass('is-synopsis');
     }
 
     const actionsEl = itemEl.createDiv('storyteller-list-item-actions');

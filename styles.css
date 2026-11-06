@@ -4222,6 +4222,14 @@ body.mod-rtl .storyteller-group-members {
   overflow: hidden;
 }
 
+/* A synopsis says more than the first line of prose, so it gets two lines (#145). */
+.storyteller-scene-preview.is-synopsis {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
 .mobile-dashboard.storyteller-dashboard-simplified .storyteller-gallery-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: minmax(156px, auto);
@@ -9189,6 +9197,17 @@ body.mod-rtl .storyteller-group-members {
 .storyteller-kanban-card-title:hover {
     color: var(--interactive-accent);
     text-decoration: underline;
+}
+/* A scene's synopsis on a Board card (#145). */
+.storyteller-kanban-card-synopsis {
+    margin: 0 0 0.25rem;
+    font-size: var(--font-ui-smaller);
+    line-height: 1.35;
+    color: var(--text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 .storyteller-kanban-card-meta {
     display: flex;
