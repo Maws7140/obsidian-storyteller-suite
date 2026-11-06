@@ -18,6 +18,7 @@ import * as L from 'leaflet';
 
 import { Notice, Plugin, TFile, TFolder, normalizePath, stringifyYaml, WorkspaceLeaf, debounce } from 'obsidian';
 import { frontmatterDateText, parseEventDate, toMillis } from './utils/DateParsing';
+import { ConflictNoticeBatcher } from './utils/ConflictNoticeBatcher';
 import { CalendarRegistry } from './calendar/CalendarRegistry';
 import { resolveReferenceToday } from './calendar/ReferenceToday';
 import {
@@ -651,6 +652,11 @@ const FRONTMATTER_LINK_ONLY_SCALAR_FIELDS = new Set([
  * a unified dashboard interface for story management
  */
 export default class StorytellerSuitePlugin extends Plugin {
+	/** Shows "event saved with conflicts" once per burst of saves (see ConflictNoticeBatcher). */
+	private readonly conflictNotices = new ConflictNoticeBatcher(
+		(message, duration) => { new Notice(message, duration); },
+		{ set: (fn, ms) => window.setTimeout(fn, ms), clear: handle => window.clearTimeout(handle) },
+	);
     /** What the DM has pushed to the player screen this run. */
     playerScreen = new PlayerScreenBus();
     /** Quick guard to ensure an active story exists before creation actions. */
@@ -6000,20 +6006,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 				);
 
 				if (eventConflicts.length > 0) {
-					const errorCount = eventConflicts.filter(c => c.severity === 'error').length;
-					const warningCount = eventConflicts.filter(c => c.severity === 'warning').length;
-
-					if (errorCount > 0) {
-						new Notice(
-							`⚠️ Event saved with ${errorCount} conflict(s). Use "Detect timeline conflicts" to review.`,
-							5000
-						);
-					} else if (warningCount > 0) {
-						new Notice(
-							`⚠ Event saved with ${warningCount} warning(s)`,
-							3000
-						);
-					}
+					// Batched: a burst of saves shows one summary, not one notice per event.
+					this.conflictNotices.report({
+						errors: eventConflicts.filter(c => c.severity === 'error').length,
+						warnings: eventConflicts.filter(c => c.severity === 'warning').length,
+					});
 				}
 			} catch {
 				// Don't fail save if conflict detection fails
@@ -8175,6 +8172,7 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         for (const event of touched) {
             (event as WithSyncFlags<Event>)._skipSync = true;
+            (event as WithSyncFlags<Event>)._skipConflictDetection = true;
             await this.saveEvent(event);
         }
         return touched.size;
@@ -8848,7 +8846,9 @@ export default class StorytellerSuitePlugin extends Plugin {
 
         for (const event of touched) {
             // Sync runs here on purpose: it writes the causedBy side onto the
-            // other event, which is the half the old rows never had.
+            // other event, which is the half the old rows never had. A migration
+            // is not the user saving an event, so no conflict check per event.
+            (event as WithSyncFlags<Event>)._skipConflictDetection = true;
             await this.saveEvent(event);
         }
 

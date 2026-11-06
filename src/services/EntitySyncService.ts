@@ -20,7 +20,7 @@ import { causalityRefTarget, invertCausalityRef } from '../utils/CausalityRefs';
 import type { Character, Location, Event, PlotItem, Scene, EntityRef, Culture, Economy, MagicSystem, TypedRelationship, Chapter, CompendiumEntry, TimelineFork } from '../types';
 
 type EntityType = 'character' | 'location' | 'event' | 'item' | 'scene' | 'culture' | 'economy' | 'magicsystem' | 'chapter' | 'compendiumentry' | 'timelinebranch';
-type SyncEntity = (Character | Location | Event | PlotItem | Scene | Culture | Economy | MagicSystem | Chapter | CompendiumEntry | TimelineFork) & { _skipSync?: boolean };
+type SyncEntity = (Character | Location | Event | PlotItem | Scene | Culture | Economy | MagicSystem | Chapter | CompendiumEntry | TimelineFork) & { _skipSync?: boolean; _skipConflictDetection?: boolean };
 type SyncEntityExtended = SyncEntity & {
     entityRefs?: EntityRef[];
     parentLocationId?: string;
@@ -1584,8 +1584,10 @@ export class EntitySyncService {
         entity: SyncEntity
     ): Promise<void> {
         try {
-            // Use a flag to prevent recursive syncing
+            // Use a flag to prevent recursive syncing. A related entity updated in
+            // the background is not the user's save, so it gets no conflict notice.
             entity._skipSync = true;
+            entity._skipConflictDetection = true;
 
             switch (entityType) {
                 case 'character':
@@ -1626,6 +1628,7 @@ export class EntitySyncService {
             // Ignore errors during save
         } finally {
             delete entity._skipSync;
+            delete entity._skipConflictDetection;
         }
     }
 
