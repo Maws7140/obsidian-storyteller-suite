@@ -1,6 +1,14 @@
+/** A screenshot shown under a guide section. Loaded from the web, so it is skipped quietly offline. */
+export interface StorytellerGuideImage {
+    src: string;
+    alt: string;
+    caption?: string;
+}
+
 export interface StorytellerGuideSection {
     title: string;
     bodyHtml: string;
+    images?: StorytellerGuideImage[];
 }
 
 export interface StorytellerGuideDocument {
@@ -134,17 +142,18 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p><strong>Storyteller Suite ${version}</strong> rebuilds the timeline, turns campaign play into a virtual tabletop, adds a drawing layer to maps, and lets you shape every entity modal around your own fields.</p>
-            <p>Your notes are not rewritten on upgrade. The full list of changes is in the changelog on GitHub.</p>
+            <p><strong>Storyteller Suite ${version}</strong> is the biggest update yet. The timeline is rebuilt from the ground up, you can design your own calendars, maps get a drawing layer, campaigns run from your story's map, and every entity modal can be shaped around the fields you actually use.</p>
+            <p>Your notes are not rewritten when you update.</p>
         `,
         sections: [
             {
                 title: 'Coming from 1.8',
                 bodyHtml: `
                     <ul>
-                        <li><strong>Timeline data moves into notes.</strong> The first time you open the timeline, a dialog offers to move your eras, tracks and branches out of the plugin settings and into your story folders. <code>Storyteller: Undo timeline notes migration</code> reverses it.</li>
-                        <li><strong>Wheel and zoom.</strong> The mouse wheel now scrolls the timeline and Shift + wheel zooms. Trackpad pinch also zooms.</li>
-                        <li><strong>Map pins.</strong> Entity markers on maps are now Map Ink tokens. Existing markers stay where they were.</li>
+                        <li><strong>Timeline data moves into notes.</strong> The first time you open the timeline, a dialog offers to move your eras, tracks and branches out of the plugin settings and into your story folders. <code>Storyteller: Undo timeline notes migration</code> puts them back.</li>
+                        <li><strong>Scrolling and zooming.</strong> The mouse wheel now scrolls the timeline and Shift + wheel zooms. Trackpad pinch zooms too.</li>
+                        <li><strong>Map markers.</strong> Entity markers on maps are now Map Ink tokens, in the same places as before.</li>
+                        <li><strong>Settings on phones and tablets.</strong> Storyteller's settings open again on Android and iPad, as a list of sections you tap into.</li>
                     </ul>
                 `
             },
@@ -152,50 +161,73 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                 title: 'Timeline',
                 bodyHtml: `
                     <ul>
-                        <li><strong>New engine.</strong> Chronology (horizontal or vertical), Gantt and a full-pane Calendar view, drawn natively, with drag editing and image export of the whole canvas.</li>
-                        <li><strong>Custom calendars.</strong> Open Settings → Storyteller Suite → Timeline → <em>Manage calendars</em>, or run <code>Storyteller: Manage custom calendars</code>, to design a calendar with its own months, leap rules, epochs and holidays.</li>
-                        <li><strong>Themes.</strong> Pick a theme from the <em>Theme</em> field in the toolbar, or choose <em>Edit theme…</em> to change colours, the lane palette, font, sizes, connectors and a background image with a live preview. Every colour is also a <code>--sts-timeline-*</code> CSS variable.</li>
-                        <li><strong>Icons and Minimal.</strong> Give events and scenes an icon, show cover images, and switch on <em>Minimal</em> to draw events as icon nodes.</li>
-                        <li><strong>Today per story.</strong> Set a story's own "today" from the zoom menu with <em>Set today for this story…</em>.</li>
-                        <li><strong>Timeline blocks.</strong> Run <code>Storyteller: Insert timeline block</code> to embed a live timeline in any note.</li>
-                        <li><strong>Eras, tracks and branches.</strong> Scoped to their story. Branches inherit the history they forked from, and <em>Detect from event gaps</em> in <em>Manage timeline eras & periods</em> suggests eras for you.</li>
+                        <li><strong>A new timeline engine.</strong> Chronology (horizontal or vertical), Gantt and a full-page Calendar view, with drag-to-edit and image export of the whole timeline.</li>
+                        <li><strong>Your own calendars.</strong> Settings → Storyteller Suite → Timeline → <em>Manage calendars</em> lets you design a calendar with its own months, leap years, epochs and holidays.</li>
+                        <li><strong>Themes.</strong> Pick a theme from the toolbar, or <em>Edit theme…</em> to change colours, fonts, sizes, connectors and a background image with a live preview. Share themes as files and bring them in with <em>Import from file…</em>.</li>
+                        <li><strong>Icons.</strong> Give events and scenes an icon, show cover images, or switch on <em>Minimal</em> to draw events as icon nodes.</li>
+                        <li><strong>Today per story.</strong> Each story can have its own "today": <em>Set today for this story…</em> in the zoom menu.</li>
+                        <li><strong>Timelines in your notes.</strong> <code>Storyteller: Insert timeline block</code> embeds a live timeline in any note.</li>
+                        <li><strong>Eras, tracks and branches</strong> belong to their story, branches carry the history they split from, and <em>Detect from event gaps</em> suggests eras for you.</li>
                     </ul>
                 `
+            },
+            {
+                title: 'Writing',
+                bodyHtml: `
+                    <ul>
+                        <li><strong>Scene synopses.</strong> The Writing list shows each scene's synopsis instead of its first line, Board cards show it too, and the search looks inside it.</li>
+                        <li>Scenes that are not in a chapter yet now show up in the list under <em>Unassigned scenes</em>.</li>
+                    </ul>
+                `,
+                images: [
+                    { src: 'https://i.ibb.co/CK23v8B4/851fd3ed9ec5.png', alt: 'Story board writing view', caption: 'Organise scenes on the story board while the Writing dashboard stays in sync.' },
+                ]
             },
             {
                 title: 'Campaign play',
                 bodyHtml: `
                     <ul>
-                        <li><strong>The map is the board.</strong> <code>Storyteller: Open campaign view</code> puts the whole map on the stage, with the party, scene, combat and log in floating panels.</li>
-                        <li><strong>Player screen.</strong> <code>Storyteller: Open player screen</code> shows your players the board, the party and votes, with fog of war over what they have not seen.</li>
-                        <li><strong>Partylog.</strong> The quick entry bar writes your session log in Partylog notation, with session header, end-of-session and interlude dialogs, and import and export of sessions.</li>
-                        <li><strong>Campaign state.</strong> Clocks, threads, party resources, loot, factions and advancement are tracked during play, and encounter rolls can carry choices and flags.</li>
-                        <li><strong>Campaigns on the timeline.</strong> A campaign can record onto its own track or fork of the main timeline, in in-world time.</li>
-                        <li><strong>World Log.</strong> <code>Storyteller: New world log</code> starts a Lorelog log for worldbuilding decisions, open questions and tensions.</li>
+                        <li><strong>Run sessions from your map.</strong> <code>Storyteller: Open campaign view</code> opens on your story's map, with the party, current scene, combat and session log close at hand.</li>
+                        <li><strong>Player screen.</strong> <code>Storyteller: Open player screen</code> shows your players the map, the party and votes, and hides the places they have not found yet.</li>
+                        <li><strong>Session logs in Partylog.</strong> A quick entry line writes the log for you, with session header, end-of-session and interlude dialogs, and import and export.</li>
+                        <li><strong>Campaign state.</strong> Clocks, threads, party resources, loot, factions and advancement are tracked as you play, and encounters can carry choices and flags.</li>
+                        <li><strong>Campaigns on the timeline.</strong> A campaign can record onto its own track of the timeline, in in-world time.</li>
+                        <li><strong>World Log.</strong> <code>Storyteller: New world log</code> keeps worldbuilding decisions, open questions and tensions in one place.</li>
                     </ul>
-                `
+                `,
+                images: [
+                    { src: 'https://i.ibb.co/Fb3QVNgd/a086488103f6.png', alt: 'Campaign session view', caption: 'Run scenes, track the party, share inventory and keep a live session log in one place.' },
+                    { src: 'https://i.ibb.co/cSB4h426/9a6e271d6622.png', alt: 'Scene graph and campaign tools', caption: 'Move through branching scenes on the scene graph and jump straight into play.' },
+                ]
             },
             {
                 title: 'Maps',
                 bodyHtml: `
                     <ul>
-                        <li><strong>Map Ink.</strong> Press <em>Draw on map</em> in the map toolbar to add stamps, lines, areas, shapes, text and hand-inked brushes, organised in layers with a legend.</li>
-                        <li><strong>Overlays and export.</strong> Add GeoJSON or GPX overlays, and export image maps as PNG from the map menu.</li>
+                        <li><strong>Map Ink.</strong> <em>Draw on map</em> adds stamps, lines, areas, shapes, text and hand-inked brushes, in layers with a legend.</li>
+                        <li><strong>Overlays and export.</strong> GeoJSON and GPX overlays, and PNG export of image maps.</li>
                         <li><strong>Child maps.</strong> Location markers offer <em>Create child location</em> and <em>Zoom to child map</em>.</li>
                     </ul>
-                `
+                `,
+                images: [
+                    { src: 'https://i.ibb.co/5hcxV2rv/04c0d160200a.png', alt: 'Fantasy world map with entity markers', caption: 'Place characters, locations, events and items straight onto your maps.' },
+                    { src: 'https://i.ibb.co/0yz8jPQ0/2b8aae06203f.png', alt: 'Map hierarchy from world to room', caption: 'Build a map hierarchy from world to city to room, with breadcrumbs to find your way back.' },
+                ]
             },
             {
-                title: 'Entities, templates and import',
+                title: 'Characters, places and your own fields',
                 bodyHtml: `
                     <ul>
-                        <li><strong>Sectioned modals.</strong> Every entity modal is laid out in collapsible sections.</li>
-                        <li><strong>Defined fields.</strong> Settings → Storyteller Suite → Modals lets you add typed fields per entity type, and switch off any field or section you do not use.</li>
-                        <li><strong>Import existing notes.</strong> <code>Storyteller: Import existing notes as entities</code> turns notes you already have into characters, locations, events and more.</li>
-                        <li><strong>Templates.</strong> Edit templates, import them from <code>.json</code> files, and choose what to create before applying one.</li>
-                        <li><strong>Network graph.</strong> The graph follows the story's timeline theme, can colour nodes by type, group, location or culture, and has a legend that follows what is on screen.</li>
+                        <li><strong>Your own fields.</strong> Settings → Storyteller Suite → Modals: add typed fields per entity type, and switch off any field or section you do not use.</li>
+                        <li><strong>Tidier modals.</strong> Every entity modal is laid out in collapsible sections.</li>
+                        <li><strong>Bring in notes you already have.</strong> <code>Storyteller: Import existing notes as entities</code> turns them into characters, locations, events and more, without deleting anything.</li>
+                        <li><strong>Templates</strong> can be edited, imported from files, and adjusted before you apply them.</li>
+                        <li><strong>Network graph.</strong> It follows the story's theme, colours by type, group, location or culture, has a legend that matches the screen, and zooms out to fit any layout.</li>
                     </ul>
-                `
+                `,
+                images: [
+                    { src: 'https://i.ibb.co/qFCQwY2h/073c396b6682.png', alt: 'Groups and the network graph', caption: 'Groups are notes of their own and connect into the network graph with the rest of your story.' },
+                ]
             }
         ]
     };
@@ -234,6 +266,7 @@ export function renderGuideDocument(
 
             const bodyEl = detailsEl.createDiv('storyteller-guide-section-body');
             renderGuideHtml(bodyEl, section.bodyHtml);
+            renderGuideImages(bodyEl, section.images);
             return;
         }
 
@@ -244,7 +277,19 @@ export function renderGuideDocument(
         });
         const bodyEl = sectionEl.createDiv('storyteller-guide-section-body');
         renderGuideHtml(bodyEl, section.bodyHtml);
+        renderGuideImages(bodyEl, section.images);
     });
+}
+
+function renderGuideImages(containerEl: HTMLElement, images: StorytellerGuideImage[] | undefined): void {
+    for (const image of images ?? []) {
+        if (!/^https:\/\//.test(image.src)) continue;
+        const figure = containerEl.createEl('figure', { cls: 'storyteller-guide-figure' });
+        const img = figure.createEl('img', { attr: { src: image.src, alt: image.alt, loading: 'lazy' } });
+        // Offline, or the host is down: drop the figure rather than show a broken image.
+        img.addEventListener('error', () => figure.remove());
+        if (image.caption) figure.createEl('figcaption', { text: image.caption });
+    }
 }
 
 function renderGuideHtml(containerEl: HTMLElement, html: string): void {
@@ -270,7 +315,7 @@ function appendGuideNode(parentEl: HTMLElement, node: Node): void {
     if (!(node.instanceOf(Element))) return;
 
     const tagName = node.tagName.toLowerCase();
-    const allowedTags = new Set(['p', 'strong', 'code', 'ol', 'ul', 'li']);
+    const allowedTags = new Set(['p', 'strong', 'em', 'code', 'ol', 'ul', 'li']);
     if (!allowedTags.has(tagName)) {
         Array.from(node.childNodes).forEach((child) => appendGuideNode(parentEl, child));
         return;

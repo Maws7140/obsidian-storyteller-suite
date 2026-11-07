@@ -10707,6 +10707,25 @@ body.mod-rtl .storyteller-group-members {
   background: var(--background-secondary);
 }
 
+/* Screenshots under an update-highlights section. */
+.storyteller-guide-figure {
+    margin: 12px 0 4px;
+}
+
+.storyteller-guide-figure img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    border: 1px solid var(--background-modifier-border);
+}
+
+.storyteller-guide-figure figcaption {
+    margin-top: 6px;
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+}
+
 .storyteller-guide-section-body {
   padding: 0.9rem 1rem 1rem;
   line-height: 1.55;

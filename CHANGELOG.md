@@ -2,7 +2,7 @@
 
 ## 2.0.0
 
-Storyteller Suite 2.0 rebuilds the timeline from scratch, turns campaign play into a virtual tabletop, replaces map pins with a drawing layer, and lets every entity modal be shaped to your own fields. Everything since 1.8.19 is listed below, including the work from the two 2.0 betas.
+Storyteller Suite 2.0 rebuilds the timeline from scratch, lets you run campaigns from your story's map, replaces map pins with a drawing layer, and lets every entity modal be shaped to your own fields. Everything since 1.8.19 is listed below, including the work from the two 2.0 betas.
 
 ### Upgrading from 1.8
 - Your notes are not rewritten on upgrade. Event, character, location and map notes keep their current frontmatter.
@@ -25,7 +25,7 @@ Storyteller Suite 2.0 rebuilds the timeline from scratch, turns campaign play in
 - Two-row toolbar with a *New event* button on every timeline surface, and timeline filters now apply to scenes.
 
 ### Campaign play
-- **The map is the board.** Campaign play is a virtual tabletop: the full map fills the stage and the party, scene, combat and log live in floating panels.
+- **Run sessions from your map.** The campaign view opens on your story's map, with the party, current scene, combat and session log close at hand.
 - **Player screen.** A second view to show your players the board, the party and votes, with three-state fog of war and drifting clouds over unseen country.
 - **Partylog notation.** A quick entry bar writes the session log in Partylog, with scene numbering, session header, end-of-session and interlude dialogs, and export and import of sessions.
 - **Campaign state.** Clocks, threads and quests, party resources, loot, factions and advancement are tracked and shown during play.
