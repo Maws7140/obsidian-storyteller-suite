@@ -3,6 +3,7 @@ import {
     PluginSettingTab,
     Setting,
     Notice,
+    Platform,
     TFolder,
     setIcon,
     SettingPage,
@@ -167,6 +168,11 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
     private declarativeContainer: HTMLElement | null = null;
 
     getSettingDefinitions(): SettingDefinitionItem[] {
+        // Desktop keeps the two-column layout (sidebar of sections, settings beside
+        // it): an empty list makes Obsidian call display() instead. Phones and
+        // tablets have no room for the sidebar, so they get Obsidian's native list
+        // of section pages built from the definitions below.
+        if (!Platform.isMobile) return [];
         return this.TABS.map(tab => ({
             type: 'page',
             name: tab.label,
