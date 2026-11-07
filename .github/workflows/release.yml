@@ -28,12 +28,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22.x'
           cache: 'npm'
@@ -53,22 +53,20 @@ jobs:
       - name: Resolve release notes
         id: release_notes
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_NOTES: ${{ inputs.release_notes }}
+          VERSION: ${{ steps.release_meta.outputs.version }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.release_notes }}" ]; then
-            {
-              echo "body<<EOF"
-              echo "${{ inputs.release_notes }}"
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$INPUT_NOTES" ]; then
+            NOTES="$INPUT_NOTES"
+          else
+            NOTES="$(awk -v version="$VERSION" '
+              $0 ~ "^## " version "$" { capture=1; next }
+              capture && $0 ~ "^## " { exit }
+              capture { print }
+            ' CHANGELOG.md)"
           fi
-
-          VERSION="${{ steps.release_meta.outputs.version }}"
-          NOTES="$(awk -v version="$VERSION" '
-            $0 ~ "^## " version "$" { capture=1; next }
-            capture && $0 ~ "^## " { exit }
-            capture { print }
-          ' CHANGELOG.md)"
 
           if [ -z "$NOTES" ]; then
             NOTES="See CHANGELOG.md for details."
@@ -85,59 +83,37 @@ jobs:
 
       - name: Update version files
         if: github.event_name == 'workflow_dispatch'
+        env:
+          VERSION: ${{ steps.release_meta.outputs.version }}
+          INPUT_NOTES: ${{ inputs.release_notes }}
         run: |
-          VERSION="${{ steps.release_meta.outputs.version }}"
-          
-          # Read current minAppVersion from manifest.json
-          CURRENT_MIN_APP=$(node -e "const m=require('./manifest.json'); console.log(m.minAppVersion)")
-          
-          # Keep the current minAppVersion unless it is changed intentionally in manifest.json
-          NEW_MIN_APP="$CURRENT_MIN_APP"
-          
-          # Update package.json version
-          npm version $VERSION --no-git-tag-version
-          
-          # Update manifest.json version and minAppVersion
-          node -e "
-            const fs = require('fs');
-            const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
-            manifest.version = '$VERSION';
-            manifest.minAppVersion = '$NEW_MIN_APP';
-            fs.writeFileSync('manifest.json', JSON.stringify(manifest, null, '\t') + '\n');
-          "
-          
-          # Update versions.json with new version
-          node -e "
-            const fs = require('fs');
-            const versions = JSON.parse(fs.readFileSync('versions.json', 'utf8'));
-            versions['$VERSION'] = '$NEW_MIN_APP';
-            fs.writeFileSync('versions.json', JSON.stringify(versions, null, '\t') + '\n');
-          "
-          
-          # Update CHANGELOG.md
-          if [ -n "${{ inputs.release_notes }}" ]; then
-            node -e "
-              const fs = require('fs');
-              const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
-              const notes = \`${{ inputs.release_notes }}\`.replace(/\`/g, '\\`');
-              const newEntry = \`## $VERSION\n\n\${notes}\n\n\`;
-              const updated = changelog.replace(/^# Changelog\n\n/, \`# Changelog\n\n\${newEntry}\`);
-              fs.writeFileSync('CHANGELOG.md', updated);
-            "
-          else
-            node -e "
-              const fs = require('fs');
-              const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
-              const newEntry = \`## $VERSION\n\n_Release notes to be added_\n\n\`;
-              const updated = changelog.replace(/^# Changelog\n\n/, \`# Changelog\n\n\${newEntry}\`);
-              fs.writeFileSync('CHANGELOG.md', updated);
-            "
-          fi
-          
-          # Display updated files for verification
+          # package.json and package-lock.json (allow a re-run at the same version)
+          npm version "$VERSION" --no-git-tag-version --allow-same-version --ignore-scripts
+
+          # manifest.json, versions.json and CHANGELOG.md. The version and notes come in
+          # through the environment, so quotes or backticks in them cannot break the script.
+          node <<'NODE'
+          const fs = require('fs');
+          const version = process.env.VERSION;
+          const notes = (process.env.INPUT_NOTES || '').trim() || '_Release notes to be added_';
+
+          const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+          manifest.version = version; // minAppVersion stays as it is in manifest.json
+          fs.writeFileSync('manifest.json', JSON.stringify(manifest, null, '\t') + '\n');
+
+          const versions = JSON.parse(fs.readFileSync('versions.json', 'utf8'));
+          versions[version] = manifest.minAppVersion;
+          fs.writeFileSync('versions.json', JSON.stringify(versions, null, '\t') + '\n');
+
+          const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+          if (!changelog.includes('\n## ' + version + '\n')) {
+            const entry = '## ' + version + '\n\n' + notes + '\n\n';
+            fs.writeFileSync('CHANGELOG.md', changelog.replace(/^# Changelog\n\n/, '# Changelog\n\n' + entry));
+          }
+          NODE
+
           echo "Updated files:"
-          cat package.json | grep '"version"'
-          cat manifest.json | grep '"version"'
+          grep '"version"' package.json manifest.json
           tail -3 versions.json
 
       - name: Verify version matches tag
