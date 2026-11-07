@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.0-beta.4
+
+_Release notes to be added_
+
 ## 2.0.0-beta.3
 
 _Release notes to be added_
