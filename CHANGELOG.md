@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.0-beta.3
+
+_Release notes to be added_
+
 ## 2.0.0
 
 Storyteller Suite 2.0 rebuilds the timeline from scratch, turns campaign play into a virtual tabletop, replaces map pins with a drawing layer, and lets every entity modal be shaped to your own fields. Everything since 1.8.19 is listed below, including the work from the two 2.0 betas.
