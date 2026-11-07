@@ -16,7 +16,7 @@ Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, run
 
 ### Campaign play and D&D tools
 
-- Virtual tabletop campaign view: the map is the board, with floating party, scene, combat, and log panels
+- Run campaign sessions from your story's map, with the party, current scene, combat, and session log close at hand
 - Player screen with fog of war for a second monitor
 - Partylog session logging with a quick entry bar, session headers, interludes, and import/export
 - Clocks, threads, party resources, loot, factions, and advancement tracked during play
@@ -84,6 +84,10 @@ Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, run
 ![Drill-down map hierarchy](https://i.ibb.co/0yz8jPQ0/2b8aae06203f.png)
 
 *Build a full map hierarchy from world to city to district to room using portal markers and breadcrumbs.*
+
+## Network use
+
+The update highlights shown after an update load their screenshots from `i.ibb.co`, the same images as in this README. Nothing from your vault is sent. Without a connection the screenshots are simply left out.
 
 ## Feature Breakdown
 
