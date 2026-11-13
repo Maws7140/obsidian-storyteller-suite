@@ -7,6 +7,10 @@ export type DashboardWritingViewMode = 'list' | 'board' | 'arc' | 'heatmap' | 'h
 export interface DashboardControllerContext {
     app: App;
     plugin: StorytellerSuitePlugin;
+    /** False after another render, tab switch, or view close supersedes this context. */
+    isCurrentRender(): boolean;
+    /** Commit a pending render only if no newer request has superseded it. */
+    commitRender(): boolean;
     getCurrentFilter(): string;
     setCurrentFilter(filter: string): void;
     isSimplifiedMobileDashboard(): boolean;

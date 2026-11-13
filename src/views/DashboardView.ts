@@ -29,6 +29,7 @@ import { EconomyDetailModal } from '../modals/EconomyDetailModal';
 import { WritingViewRenderers } from './WritingViewRenderers';
 import type { CompileEngine as CompileEngineType } from '../compile';
 import { confirmWithModal } from '../modals/ui/ConfirmModal';
+import { DashboardRenderOwnership } from './dashboard/DashboardRenderOwnership';
 import { DashboardRefreshCoordinator } from './dashboard/DashboardRefreshCoordinator';
 import { DashboardMutationRunner } from './dashboard/DashboardMutationRunner';
 import { createDashboardControllerRegistry } from './dashboard/controllers/DashboardControllerRegistry';
@@ -124,6 +125,7 @@ export class DashboardView extends ItemView {
     /** Serialize active-tab refreshes so repeated events cannot append duplicate content */
     private isRefreshingActiveTab = false;
     private pendingActiveTabRefresh = false;
+    private readonly controllerRenderOwnership = new DashboardRenderOwnership();
 
     /** Template library filter state */
     private templateFilter: TemplateFilter = {
@@ -390,8 +392,12 @@ export class DashboardView extends ItemView {
             try {
                 this.isRefreshingActiveTab = true;
                 this._suppressScrollCapture = true;
-                await activeTab.renderFn(this.tabContentContainer);
+                const render = activeTab.renderFn(this.tabContentContainer);
+                const generation = this.controllerRenderOwnership.generation;
+                await render;
+                if (generation !== this.controllerRenderOwnership.generation || this.activeTabId !== currentTabId) return;
                 await this.restoreTabScroll(currentTabId);
+                if (generation !== this.controllerRenderOwnership.generation || this.activeTabId !== currentTabId) return;
                 
                 restoreDashboardStateSnapshot(
                     snapshot,
@@ -423,10 +429,12 @@ export class DashboardView extends ItemView {
         this.mutationRunner.requestRefresh('immediate', detail);
     }
 
-    private getDashboardControllerContext(): DashboardControllerContext {
+    private getDashboardControllerContext(isCurrentRender: () => boolean, commitRender: () => boolean): DashboardControllerContext {
         return {
             app: this.app,
             plugin: this.plugin,
+            isCurrentRender,
+            commitRender,
             getCurrentFilter: () => this.currentFilter,
             setCurrentFilter: (filter: string) => {
                 this.currentFilter = filter.toLowerCase();
@@ -488,7 +496,11 @@ export class DashboardView extends ItemView {
             await fallback();
             return;
         }
-        await controller.render(container, this.getDashboardControllerContext());
+        const ownership = this.controllerRenderOwnership.begin();
+        await controller.render(container, this.getDashboardControllerContext(
+            () => ownership.isCurrent() && this.activeTabId === tabId,
+            () => this.activeTabId === tabId && ownership.commit()
+        ));
     }
 
     private async persistChapterFromDashboard(chapter: import('../types').Chapter, successNotice: string, detail: string): Promise<void> {
@@ -928,11 +940,12 @@ export class DashboardView extends ItemView {
 
     private async restoreTabScroll(tabId: string): Promise<void> {
         if (!this.tabContentContainer) return;
+        const generation = this.controllerRenderOwnership.generation;
         const saved = this._tabScrollPositions.get(tabId);
         const target = saved?.top ?? 0;
         await new Promise<void>((resolve) => {
             window.requestAnimationFrame(() => {
-                if (!this.tabContentContainer) {
+                if (!this.tabContentContainer || generation !== this.controllerRenderOwnership.generation || this.activeTabId !== tabId) {
                     resolve();
                     return;
                 }
@@ -960,21 +973,25 @@ export class DashboardView extends ItemView {
             this.captureTabScrollState(previousTabId);
         }
         // Update state
+        this.controllerRenderOwnership.invalidate();
         this.activeTabId = tabId;
         this.currentFilter = '';
         this.currentSearchInput = null;
         // Mark tab context for CSS entity card accent colors
         this.tabContentContainer.setAttr('data-tab', tabId);
+        // Selection belongs to navigation, not to an asynchronous render.
+        this.syncActiveTabStyles();
         // Render content and restore scroll without capturing intermediate resets
         this._suppressScrollCapture = true;
         try {
-            await tab.renderFn(this.tabContentContainer);
+            const render = tab.renderFn(this.tabContentContainer);
+            const generation = this.controllerRenderOwnership.generation;
+            await render;
+            if (generation !== this.controllerRenderOwnership.generation || this.activeTabId !== tabId) return;
             await this.restoreTabScroll(tabId);
         } finally {
             this._suppressScrollCapture = false;
         }
-        // Update styles
-        this.syncActiveTabStyles();
     }
 
     private syncActiveTabStyles() {
@@ -5347,6 +5364,7 @@ export class DashboardView extends ItemView {
     }
 
     async onClose() {
+        this.controllerRenderOwnership.invalidate();
         // Clean up file input if it exists
         this.fileInput?.remove();
         this.fileInput = null;
