@@ -124,6 +124,7 @@ export class DashboardView extends ItemView {
     /** Serialize active-tab refreshes so repeated events cannot append duplicate content */
     private isRefreshingActiveTab = false;
     private pendingActiveTabRefresh = false;
+    private controllerRenderGeneration = 0;
 
     /** Template library filter state */
     private templateFilter: TemplateFilter = {
@@ -390,8 +391,12 @@ export class DashboardView extends ItemView {
             try {
                 this.isRefreshingActiveTab = true;
                 this._suppressScrollCapture = true;
-                await activeTab.renderFn(this.tabContentContainer);
+                const render = activeTab.renderFn(this.tabContentContainer);
+                const generation = this.controllerRenderGeneration;
+                await render;
+                if (generation !== this.controllerRenderGeneration || this.activeTabId !== currentTabId) return;
                 await this.restoreTabScroll(currentTabId);
+                if (generation !== this.controllerRenderGeneration || this.activeTabId !== currentTabId) return;
                 
                 restoreDashboardStateSnapshot(
                     snapshot,
@@ -423,10 +428,11 @@ export class DashboardView extends ItemView {
         this.mutationRunner.requestRefresh('immediate', detail);
     }
 
-    private getDashboardControllerContext(): DashboardControllerContext {
+    private getDashboardControllerContext(isCurrentRender: () => boolean): DashboardControllerContext {
         return {
             app: this.app,
             plugin: this.plugin,
+            isCurrentRender,
             getCurrentFilter: () => this.currentFilter,
             setCurrentFilter: (filter: string) => {
                 this.currentFilter = filter.toLowerCase();
@@ -488,7 +494,10 @@ export class DashboardView extends ItemView {
             await fallback();
             return;
         }
-        await controller.render(container, this.getDashboardControllerContext());
+        const generation = ++this.controllerRenderGeneration;
+        await controller.render(container, this.getDashboardControllerContext(
+            () => generation === this.controllerRenderGeneration && this.activeTabId === tabId
+        ));
     }
 
     private async persistChapterFromDashboard(chapter: import('../types').Chapter, successNotice: string, detail: string): Promise<void> {
@@ -928,11 +937,12 @@ export class DashboardView extends ItemView {
 
     private async restoreTabScroll(tabId: string): Promise<void> {
         if (!this.tabContentContainer) return;
+        const generation = this.controllerRenderGeneration;
         const saved = this._tabScrollPositions.get(tabId);
         const target = saved?.top ?? 0;
         await new Promise<void>((resolve) => {
             window.requestAnimationFrame(() => {
-                if (!this.tabContentContainer) {
+                if (!this.tabContentContainer || generation !== this.controllerRenderGeneration || this.activeTabId !== tabId) {
                     resolve();
                     return;
                 }
@@ -960,6 +970,7 @@ export class DashboardView extends ItemView {
             this.captureTabScrollState(previousTabId);
         }
         // Update state
+        ++this.controllerRenderGeneration;
         this.activeTabId = tabId;
         this.currentFilter = '';
         this.currentSearchInput = null;
@@ -968,7 +979,10 @@ export class DashboardView extends ItemView {
         // Render content and restore scroll without capturing intermediate resets
         this._suppressScrollCapture = true;
         try {
-            await tab.renderFn(this.tabContentContainer);
+            const render = tab.renderFn(this.tabContentContainer);
+            const generation = this.controllerRenderGeneration;
+            await render;
+            if (generation !== this.controllerRenderGeneration || this.activeTabId !== tabId) return;
             await this.restoreTabScroll(tabId);
         } finally {
             this._suppressScrollCapture = false;
@@ -5347,6 +5361,7 @@ export class DashboardView extends ItemView {
     }
 
     async onClose() {
+        ++this.controllerRenderGeneration;
         // Clean up file input if it exists
         this.fileInput?.remove();
         this.fileInput = null;

@@ -7,6 +7,8 @@ export type DashboardWritingViewMode = 'list' | 'board' | 'arc' | 'heatmap' | 'h
 export interface DashboardControllerContext {
     app: App;
     plugin: StorytellerSuitePlugin;
+    /** False after another render, tab switch, or view close supersedes this context. */
+    isCurrentRender(): boolean;
     getCurrentFilter(): string;
     setCurrentFilter(filter: string): void;
     isSimplifiedMobileDashboard(): boolean;

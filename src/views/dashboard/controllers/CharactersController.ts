@@ -8,6 +8,7 @@ export const charactersController: DashboardTabController = {
     async render(container, context) {
         // Keep the current content visible while vault reads are in flight.
         const entities = await context.plugin.listCharacters();
+        if (!context.isCurrentRender()) return;
         container.empty();
         context.renderHeaderControls(container, t('characters'), async (filter: string) => {
             context.setCurrentFilter(filter);
@@ -31,6 +32,7 @@ export const charactersController: DashboardTabController = {
 
 async function renderCharactersList(container: HTMLElement, context: DashboardControllerContext, entities?: Character[]): Promise<void> {
     const loaded = entities ?? await context.plugin.listCharacters();
+    if (!context.isCurrentRender()) return;
     const filter = context.getCurrentFilter();
     const characters = loaded.filter(char =>
         char.name.toLowerCase().includes(filter) ||
