@@ -1,10 +1,13 @@
 import { LocationModal } from '../../../modals/LocationModal';
 import { t } from '../../../i18n/strings';
+import type { Location } from '../../../types';
 import type { DashboardControllerContext, DashboardTabController } from './types';
 
 export const locationsController: DashboardTabController = {
     id: 'locations',
     async render(container, context) {
+        // Keep the current content visible while vault reads are in flight.
+        const entities = await context.plugin.listLocations();
         container.empty();
         context.renderHeaderControls(container, t('locations'), async (filter: string) => {
             context.setCurrentFilter(filter);
@@ -22,20 +25,20 @@ export const locationsController: DashboardTabController = {
             }).open();
         }, t('createLocation'));
 
-        await renderLocationsList(container, context);
+        await renderLocationsList(container, context, entities);
     },
 };
 
-async function renderLocationsList(container: HTMLElement, context: DashboardControllerContext): Promise<void> {
-    const existingListContainer = container.querySelector('.storyteller-list-container');
-    if (existingListContainer) existingListContainer.remove();
-
+async function renderLocationsList(container: HTMLElement, context: DashboardControllerContext, entities?: Location[]): Promise<void> {
+    const loaded = entities ?? await context.plugin.listLocations();
     const filter = context.getCurrentFilter();
-    const locations = (await context.plugin.listLocations()).filter(location =>
+    const locations = loaded.filter(location =>
         location.name.toLowerCase().includes(filter) ||
         (location.description || '').toLowerCase().includes(filter)
     );
 
+    const existingListContainer = container.querySelector('.storyteller-list-container');
+    if (existingListContainer) existingListContainer.remove();
     const listContainer = container.createDiv('storyteller-list-container');
     if (locations.length === 0) {
         listContainer.createEl('p', { text: t('noLocationsFound') + (filter ? t('matchingFilter') : '') });

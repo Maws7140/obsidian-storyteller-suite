@@ -1,0 +1,52 @@
+import { describe, it, expect, vi } from 'vitest';
+vi.mock('../../src/modals/CharacterModal', () => ({ CharacterModal: class {} }));
+vi.mock('../../src/modals/LocationModal', () => ({ LocationModal: class {} }));
+vi.mock('../../src/i18n/strings', () => ({ t: (key: string) => key }));
+import { charactersController } from '../../src/views/dashboard/controllers/CharactersController';
+import { locationsController } from '../../src/views/dashboard/controllers/LocationsController';
+
+function deferred() {
+    let resolve!: (value: any[]) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<any[]>((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+}
+function fixture(method: string) {
+    const previous = { remove: vi.fn() };
+    const child = { createEl: vi.fn(() => ({ setCssStyles: vi.fn() })) };
+    const container = { empty: vi.fn(), querySelector: vi.fn(() => previous), createDiv: vi.fn(() => child) };
+    const read = vi.fn();
+    const context = { plugin: { [method]: read }, getCurrentFilter: () => '', setCurrentFilter: vi.fn(), renderHeaderControls: vi.fn() };
+    return { previous, container, context, read };
+}
+for (const [controller, method] of [[charactersController, 'listCharacters'], [locationsController, 'listLocations']] as const) {
+    describe(controller.id, () => {
+        it('keeps existing content until the entity read finishes, without a second read', async () => {
+            const f = fixture(method); const gate = deferred(); f.read.mockReturnValue(gate.promise);
+            const render = controller.render(f.container as any, f.context as any);
+            expect(f.container.empty).not.toHaveBeenCalled();
+            expect(f.previous.remove).not.toHaveBeenCalled();
+            gate.resolve([]); await render;
+            expect(f.container.empty).toHaveBeenCalledOnce();
+            expect(f.read).toHaveBeenCalledOnce();
+            expect(f.container.createDiv).toHaveBeenCalledOnce();
+        });
+        it('preserves the existing content if a vault read rejects', async () => {
+            const f = fixture(method); f.read.mockRejectedValue(new Error('synthetic read failure'));
+            await expect(controller.render(f.container as any, f.context as any)).rejects.toThrow('synthetic read failure');
+            expect(f.container.empty).not.toHaveBeenCalled();
+            expect(f.previous.remove).not.toHaveBeenCalled();
+        });
+        it('keeps the prior list visible while a search reads entities', async () => {
+            const f = fixture(method); f.read.mockResolvedValue([]);
+            await controller.render(f.container as any, f.context as any);
+            f.previous.remove.mockClear();
+            const gate = deferred(); f.read.mockReturnValue(gate.promise);
+            const search = f.context.renderHeaderControls.mock.calls[0][2];
+            const refresh = search('synthetic');
+            expect(f.previous.remove).not.toHaveBeenCalled();
+            gate.resolve([]); await refresh;
+            expect(f.previous.remove).toHaveBeenCalledOnce();
+        });
+    });
+}

@@ -6,6 +6,8 @@ import type { DashboardControllerContext, DashboardTabController } from './types
 export const charactersController: DashboardTabController = {
     id: 'characters',
     async render(container, context) {
+        // Keep the current content visible while vault reads are in flight.
+        const entities = await context.plugin.listCharacters();
         container.empty();
         context.renderHeaderControls(container, t('characters'), async (filter: string) => {
             context.setCurrentFilter(filter);
@@ -23,21 +25,21 @@ export const charactersController: DashboardTabController = {
             }).open();
         });
 
-        await renderCharactersList(container, context);
+        await renderCharactersList(container, context, entities);
     },
 };
 
-async function renderCharactersList(container: HTMLElement, context: DashboardControllerContext): Promise<void> {
-    const existingListContainer = container.querySelector('.storyteller-list-container');
-    if (existingListContainer) existingListContainer.remove();
-
+async function renderCharactersList(container: HTMLElement, context: DashboardControllerContext, entities?: Character[]): Promise<void> {
+    const loaded = entities ?? await context.plugin.listCharacters();
     const filter = context.getCurrentFilter();
-    const characters = (await context.plugin.listCharacters()).filter(char =>
+    const characters = loaded.filter(char =>
         char.name.toLowerCase().includes(filter) ||
         (char.description || '').toLowerCase().includes(filter) ||
         (char.traits || []).join(' ').toLowerCase().includes(filter)
     );
 
+    const existingListContainer = container.querySelector('.storyteller-list-container');
+    if (existingListContainer) existingListContainer.remove();
     const listContainer = container.createDiv('storyteller-list-container');
     if (characters.length === 0) {
         const emptyMsg = listContainer.createEl('p', { text: t('noCharactersFound'), cls: 'storyteller-empty-state' });
