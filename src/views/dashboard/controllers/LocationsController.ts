@@ -8,7 +8,7 @@ export const locationsController: DashboardTabController = {
     async render(container, context) {
         // Keep the current content visible while vault reads are in flight.
         const entities = await context.plugin.listLocations();
-        if (!context.isCurrentRender()) return;
+        if (!context.commitRender()) return;
         container.empty();
         context.renderHeaderControls(container, t('locations'), async (filter: string) => {
             context.setCurrentFilter(filter);
