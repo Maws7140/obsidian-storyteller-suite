@@ -1641,6 +1641,11 @@ export default class StorytellerSuitePlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
+		// Register the settings tab before any other startup work, so a failure
+		// later in onload (e.g. first-run setup on a fresh mobile vault) can't
+		// leave the options page blank (issue #146).
+		this.addSettingTab(new StorytellerSuiteSettingTab(this.app, this));
+
 		PlatformUtils.setLayoutOverride(this.settings.interfaceMode);
 
 		// Initialize word count tracker
@@ -1797,8 +1802,6 @@ export default class StorytellerSuitePlugin extends Plugin {
 		// Register command palette commands
 		this.registerCommands();
 
-		// Add settings tab for user configuration
-		this.addSettingTab(new StorytellerSuiteSettingTab(this.app, this));
 
 		// Register interactive widget for ```ledger fenced blocks
 		this.registerEditorExtension(createLedgerViewExtension(this.app));

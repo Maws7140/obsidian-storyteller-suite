@@ -155,14 +155,23 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         // the tab and its declarative definitions are registered correctly.
         // Use Obsidian's window-migration hook so recovery runs in the target
         // window after the move has completed.
-        const removeWindowMigrationListener = this.containerEl.onWindowMigrated(win => {
-            win.setTimeout(() => {
-                if (this.containerEl.isConnected && this.containerEl.childElementCount === 0) {
-                    this.display();
-                }
-            }, 0);
-        });
-        plugin.register(removeWindowMigrationListener);
+        // The hook is a desktop window helper; it may be missing on mobile builds
+        // (Android, Obsidian 1.15). A throw here would stop the settings tab from
+        // ever being registered, leaving a blank options page (issue #146).
+        try {
+            if (typeof this.containerEl.onWindowMigrated === 'function') {
+                const removeWindowMigrationListener = this.containerEl.onWindowMigrated(win => {
+                    win.setTimeout(() => {
+                        if (this.containerEl.isConnected && this.containerEl.childElementCount === 0) {
+                            this.display();
+                        }
+                    }, 0);
+                });
+                plugin.register(removeWindowMigrationListener);
+            }
+        } catch (error) {
+            console.error('[STS] settings window-migration hook unavailable:', error);
+        }
     }
 
     private declarativeContainer: HTMLElement | null = null;
