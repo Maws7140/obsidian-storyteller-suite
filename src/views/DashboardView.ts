@@ -51,6 +51,12 @@ const TAB_RENDER_TIME_LIMIT_MS = 8000;
  * This view integrates all storytelling entities (characters, locations, events, gallery)
  * into a single, unified interface within Obsidian's sidebar
  */
+/** Page a background refresh draws into; `display: contents`, so layout is unchanged. */
+const TAB_PAGE_CLASS = 'storyteller-dashboard-page';
+const TAB_PAGE_STAGING_CLASS = 'storyteller-dashboard-page-staging';
+/** Tabs that keep live widgets (timeline, graph, map) and so refresh in place. */
+const IN_PLACE_REFRESH_TABS = new Set(['events', 'network', 'maps']);
+
 export class DashboardView extends ItemView {
     /** Reference to the main plugin instance */
     plugin: StorytellerSuitePlugin;
@@ -401,7 +407,7 @@ export class DashboardView extends ItemView {
         if (activeTab) {
             try {
                 this.isRefreshingActiveTab = true;
-                await this.enqueueTabRender(activeTab, this.renderSeq, async () => {
+                await this.enqueueTabRender(activeTab, this.renderSeq, { offscreen: true }, async () => {
                     await this.restoreTabScroll(currentTabId);
                     restoreDashboardStateSnapshot(
                         snapshot,
@@ -428,20 +434,37 @@ export class DashboardView extends ItemView {
      * one before it, and is skipped when a newer tab switch has been asked for since (`seq`).
      * A render that fails shows its error in the content area; one that runs past the time limit
      * stops holding up the queue, so the next click still works.
+     *
+     * With `offscreen`, the tab draws into a hidden page that replaces the shown content only once
+     * it is ready. Background refreshes use this: a render empties its container and then loads,
+     * so drawing in place blanked the pane on every autosave while typing (issue #148). Tabs with
+     * live widgets (timeline, graph, map) still redraw in place.
      */
     private enqueueTabRender(
         tab: { id: string; renderFn: (container: HTMLElement) => Promise<void> },
         seq: number,
+        options: { offscreen?: boolean } = {},
         after?: () => Promise<void>,
     ): Promise<void> {
         const run = async () => {
             if (seq !== this.renderSeq || tab.id !== this.activeTabId) return;
             const container = this.tabContentContainer;
-            container.addClass('is-loading');
+            const offscreen = !!options.offscreen && !IN_PLACE_REFRESH_TABS.has(tab.id);
+            const target = offscreen
+                ? container.createDiv({ cls: [TAB_PAGE_CLASS, TAB_PAGE_STAGING_CLASS] })
+                : container;
+            const showStaged = () => {
+                if (!offscreen || !target.isConnected) return;
+                const scrollTop = container.scrollTop;
+                Array.from(container.children).forEach(el => { if (el !== target) el.remove(); });
+                target.removeClass(TAB_PAGE_STAGING_CLASS);
+                container.scrollTop = scrollTop;
+            };
+            if (!offscreen) container.addClass('is-loading');
             this._suppressScrollCapture = true;
             let timer: number | null = null;
             try {
-                const render = tab.renderFn(container);
+                const render = tab.renderFn(target);
                 const timedOut = new Promise<'timeout'>(resolve => {
                     timer = window.setTimeout(() => resolve('timeout'), TAB_RENDER_TIME_LIMIT_MS);
                 });
@@ -450,7 +473,9 @@ export class DashboardView extends ItemView {
                 const outcome = await Promise.race([render.then(() => 'done' as const), timedOut, superseded]);
                 this.supersedeRender = null;
                 if (outcome !== 'done') {
+                    if (outcome === 'superseded' && offscreen) target.remove();
                     if (outcome === 'timeout') {
+                        showStaged();
                         console.warn(`Storyteller Suite: the ${tab.id} tab is taking longer than ${TAB_RENDER_TIME_LIMIT_MS / 1000}s to draw.`);
                     }
                     // If the slow render finishes later it has drawn into the shared content area,
@@ -461,8 +486,10 @@ export class DashboardView extends ItemView {
                     );
                     return;
                 }
+                showStaged();
                 if (after) await after();
             } catch (error) {
+                if (offscreen) target.remove();
                 this.showTabRenderError(tab.id, error);
             } finally {
                 if (timer !== null) window.clearTimeout(timer);
@@ -1045,7 +1072,7 @@ export class DashboardView extends ItemView {
         this.syncActiveTabStyles();
         const seq = ++this.renderSeq;
         this.supersedeRender?.();
-        await this.enqueueTabRender(tab, seq, () => this.restoreTabScroll(tabId));
+        await this.enqueueTabRender(tab, seq, {}, () => this.restoreTabScroll(tabId));
     }
 
     private syncActiveTabStyles() {

@@ -15723,6 +15723,11 @@ img.storyteller-timeline-calendar-icon {
 .storyteller-dashboard-tab-error { margin: 1rem; padding: 0.9rem 1rem; border: 1px solid var(--color-red); border-radius: 8px; background: color-mix(in srgb, var(--color-red) 8%, transparent); }
 .storyteller-dashboard-tab-error p { margin: 0.4rem 0 0.7rem; color: var(--text-muted); font-family: var(--font-monospace); font-size: 0.85rem; white-space: pre-wrap; }
 
+/* Dashboard background refresh: drawn into a hidden page, then swapped in (see DashboardView.enqueueTabRender) */
+.storyteller-dashboard-page { display: contents; }
+.storyteller-dashboard-content > .storyteller-dashboard-page > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.storyteller-dashboard-page.storyteller-dashboard-page-staging { display: flex; flex-direction: column; position: absolute; inset: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
+
 /* Campaign view: drawn off-screen, then swapped in (see CampaignView.render) */
 .workspace-leaf-content .view-content.storyteller-campaign-host,
 .storyteller-campaign-host { position: relative; padding: 0; overflow: hidden; }
