@@ -104,6 +104,52 @@ function padIsoDate(s: string): string {
   return out;
 }
 
+const BCE_SUFFIX = String.raw`(?:BCE|BC|B\.C\.E\.?|B\.C\.?)`;
+const NUMERIC_PARTS = String.raw`(\d{1,6})(?:-(\d{1,2})(?:-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)?)?)?`;
+const SIGNED_ISO_RE = new RegExp(`^-${NUMERIC_PARTS}$`);
+const SUFFIXED_BCE_RE = new RegExp(`^${NUMERIC_PARTS}\\s*${BCE_SUFFIX}$`, 'i');
+
+/**
+ * Parse numeric dates that name a year before the common era.
+ *
+ * Writers mean "335 BCE" when they type `-335-01-02` or `-0335-01-02`, so a
+ * signed year of up to 4 digits is read as that historical BCE year, the same as
+ * "335 BCE". Strict ISO 8601 numbers years astronomically (-335 = 336 BCE);
+ * mixing the two conventions is what put these dates one year off (issue #150).
+ * Six-digit expanded years (`-000335-01-02`, as the timeline writes on drag)
+ * are machine-written, so they keep their strict astronomical meaning.
+ */
+function parseNumericBce(text: string, zone: ReturnType<typeof getLuxonZone>): ParsedEventDate | null {
+  const trimmed = text.trim();
+  const signed = trimmed.match(SIGNED_ISO_RE);
+  const suffixed = signed ? null : trimmed.match(SUFFIXED_BCE_RE);
+  const m = signed ?? suffixed;
+  if (!m) return null;
+
+  const [, yearStr, monthStr, dayStr, hourStr, minuteStr, secondStr] = m;
+  // Signed expanded years are strict ISO: let the regular ISO path handle them.
+  if (signed && yearStr.length > 4) return null;
+
+  const bceYear = parseInt(yearStr, 10);
+  if (!(bceYear > 0)) return null;
+
+  const dt = DateTime.fromObject(
+    {
+      year: 1 - bceYear,
+      month: monthStr ? parseInt(monthStr, 10) : 1,
+      day: dayStr ? parseInt(dayStr, 10) : 1,
+      hour: hourStr ? parseInt(hourStr, 10) : 0,
+      minute: minuteStr ? parseInt(minuteStr, 10) : 0,
+      second: secondStr ? parseInt(secondStr, 10) : 0,
+    },
+    { zone }
+  );
+  if (!dt.isValid) return null;
+
+  const precision: ParsedPrecision = hourStr ? 'time' : dayStr ? 'day' : monthStr ? 'month' : 'year';
+  return { start: dt, precision, isBCE: true, originalYear: bceYear };
+}
+
 /**
  * Split a date range into its two endpoints on an explicit separator.
  * Only splits on unambiguous separators (`to`, `through`, `until`, `thru`, `..`,
@@ -149,11 +195,16 @@ function splitRange(text: string): [string, string] | null {
   const approximate = APPROX_RE.test(text);
   const zone = getLuxonZone(opts.timezone);
 
-  // 0a) Negative ISO years ("-3000-01-01", "-0044-03-15"). Luxon's ISO parser
-  // rejects a leading minus, and chrono silently drops it, which is how a year
-  // of -3000 used to land at 3000 AD. Build the date from parts so the sign
-  // survives. Years are astronomical (matching formatCalendarYear), so -43 is
-  // 44 BCE, and the same BCE flags as the "44 BC" form are set.
+  // 0a) Numeric BCE dates written by hand: "-335-01-02", "-0335-01-02",
+  // "335-01-02 BCE" all mean the year 335 BCE, the same as "335 BCE".
+  const numericBce = parseNumericBce(text, zone);
+  if (numericBce) return { ...numericBce, approximate };
+
+  // 0b) Six-digit signed ISO years ("-000334-01-02"), as the timeline writes
+  // them when an event is dragged before year 1. Luxon's ISO parser rejects a
+  // leading minus, and chrono silently drops it, so build the date from parts.
+  // These are machine-written and astronomical (matching formatCalendarYear):
+  // -000334 is 335 BCE. Shorter signed years were handled as BCE above.
   const negIso = text.match(NEG_ISO_RE);
   if (negIso) {
     const year = -parseInt(negIso[1], 10);
@@ -172,7 +223,7 @@ function splitRange(text: string): [string, string] | null {
     }
   }
 
-  // 0b) CE date detection
+  // 0c) CE date detection
   const ceMatch = text.match(CE_RE);
 
   if (ceMatch) {

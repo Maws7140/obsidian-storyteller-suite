@@ -17,9 +17,9 @@ function todayFor(customTodayISO: string | undefined): Date {
 describe('getReferenceTodayDate reads a custom today with the event date parser', () => {
   it.each([
     ['44 BCE', -43, 0, 1],
-    ['-0044-03-15', -44, 2, 15],
+    ['-0044-03-15', -43, 2, 15],
     ['-000044-03-15', -44, 2, 15],
-    ['-44-03-15', -44, 2, 15],
+    ['-44-03-15', -43, 2, 15],
     ['1420-06-01', 1420, 5, 1],
   ])('reads %s as the right day', (input, year, month, day) => {
     const date = todayFor(input);

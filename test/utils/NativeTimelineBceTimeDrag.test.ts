@@ -53,8 +53,8 @@ const span: [number, number] = [utc(-100, 0, 1), utc(100, 0, 1)];
 
 describe('a BCE date with a time of day places on its BCE year and drags back to text that reads the same', () => {
   it.each([
-    ['-44-03-15 10:00', utc(-44, 2, 15, 10)],
-    ['-0044-03-15 10:00', utc(-44, 2, 15, 10)],
+    ['-44-03-15 10:00', utc(-43, 2, 15, 10)],
+    ['-0044-03-15 10:00', utc(-43, 2, 15, 10)],
     ['44 BCE 10:00', utc(-43, 0, 1, 10)],
   ])('"%s" is drawn at its own date, not today', async (text, expected) => {
     const event = { id: 'e1', name: 'Event', filePath: 'Events/Event.md', dateTime: text };

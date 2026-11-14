@@ -300,7 +300,9 @@ describe('DateParsing', () => {
     it('keeps the minus sign on ISO-style negative years', () => {
       const r = parseEventDate('-3000-01-01', { timezone: 'utc' });
       expect(r.error).toBeUndefined();
-      expect(r.start?.year).toBe(-3000);
+      // A hand-written signed year is the BCE year: -3000 is 3000 BCE (year -2999).
+      expect(r.start?.year).toBe(-2999);
+      expect(r.originalYear).toBe(3000);
       expect(r.start?.month).toBe(1);
       expect(r.start?.day).toBe(1);
       expect(r.start?.hour).toBe(0);
@@ -310,31 +312,38 @@ describe('DateParsing', () => {
 
     it('places a short negative ISO year at the correct negative year', () => {
       const r = parseEventDate('-0044-03-15', { timezone: 'utc' });
-      expect(r.start?.year).toBe(-44);
+      expect(r.start?.year).toBe(-43);
+      expect(r.originalYear).toBe(44);
       expect(r.start?.month).toBe(3);
       expect(r.start?.day).toBe(15);
       expect(r.start?.hour).toBe(0);
     });
 
-    it('treats a negative ISO year as astronomical (-43 is 44 BCE)', () => {
-      const r = parseEventDate('-0043-01-01', { timezone: 'utc' });
+    it('reads a short signed year as that BCE year, like "44 BCE" (issue #150)', () => {
+      const r = parseEventDate('-0044-01-01', { timezone: 'utc' });
+      expect(r.start?.year).toBe(parseEventDate('44 BCE', { timezone: 'utc' }).start?.year);
+      expect(r.originalYear).toBe(44);
+    });
+
+    it('keeps six-digit signed ISO years astronomical (-000043 is 44 BCE)', () => {
+      const r = parseEventDate('-000043-01-01', { timezone: 'utc' });
       expect(r.start?.year).toBe(-43);
       expect(r.originalYear).toBe(44);
     });
 
     it('parses negative ISO years with year-only and year-month precision', () => {
-      expect(parseEventDate('-3000', { timezone: 'utc' }).start?.year).toBe(-3000);
+      expect(parseEventDate('-3000', { timezone: 'utc' }).start?.year).toBe(-2999);
       expect(parseEventDate('-3000', { timezone: 'utc' }).precision).toBe('year');
       const ym = parseEventDate('-3000-06', { timezone: 'utc' });
-      expect(ym.start?.year).toBe(-3000);
+      expect(ym.start?.year).toBe(-2999);
       expect(ym.start?.month).toBe(6);
       expect(ym.precision).toBe('month');
     });
 
     it('keeps the minus sign on both endpoints of a negative ISO range', () => {
       const r = parseEventDate('-3000-01-01 to -2990-01-01', { timezone: 'utc' });
-      expect(r.start?.year).toBe(-3000);
-      expect(r.end?.year).toBe(-2990);
+      expect(r.start?.year).toBe(-2999);
+      expect(r.end?.year).toBe(-2989);
       expect(r.isBCE).toBe(true);
     });
 
@@ -415,13 +424,56 @@ describe('DateParsing', () => {
       expect(bceMillis).toBeLessThan(ceMillis);
     });
   });
+
+  describe('numeric BCE dates (issue #150)', () => {
+    const yearOnly = parseEventDate('335 BCE');
+
+    it.each(['-335-01-02', '-0335-01-02', '335-01-02 BCE', '0335-01-02 BC'])(
+      '%s is 2 January 335 BCE, the same year as "335 BCE"',
+      (input) => {
+        const r = parseEventDate(input);
+        expect(r.error).toBeUndefined();
+        expect(r.isBCE).toBe(true);
+        expect(r.originalYear).toBe(335);
+        expect(r.precision).toBe('day');
+        expect(r.start!.year).toBe(yearOnly.start!.year);
+        expect(r.start!.month).toBe(1);
+        expect(r.start!.day).toBe(2);
+        expect(toDisplay(r.start, 'en', r.isBCE, r.originalYear)).toBe('January 2, 335 BCE');
+      }
+    );
+
+    it('infers year and month precision', () => {
+      expect(parseEventDate('-335').precision).toBe('year');
+      expect(parseEventDate('-335').originalYear).toBe(335);
+      expect(parseEventDate('-335-03').precision).toBe('month');
+    });
+
+    it('keeps six-digit expanded ISO years astronomical', () => {
+      const r = parseEventDate('-000335-01-02');
+      expect(r.start!.year).toBe(-335);
+    });
+
+    it('parses BCE ranges on both ends', () => {
+      const r = parseEventDate('-335-01-02 to -330-06-01');
+      expect(r.start!.year).toBe(1 - 335);
+      expect(r.end!.year).toBe(1 - 330);
+    });
+
+    it('reads back the six-digit form the timeline writes on drag', () => {
+      const r = parseEventDate('-000334-01-02');
+      expect(r.originalYear).toBe(335);
+      expect(r.start!.year).toBe(parseEventDate('335 BCE').start!.year);
+    });
+  });
 });
 
 describe('BCE and negative years with a time of day', () => {
-  it.each(['-44-03-15 10:00', '-0044-03-15 10:00', '-000044-03-15 10:00', '-0044-03-15T10:00'])('keeps the sign, month and day of "%s"', text => {
+  it.each(['-44-03-15 10:00', '-0044-03-15 10:00', '-000043-03-15 10:00', '-0044-03-15T10:00'])('keeps the sign, month and day of "%s" (44 BCE)', text => {
     const r = parseEventDate(text, { timezone: 'utc' });
     expect(r.error).toBeUndefined();
-    expect(r.start?.year).toBe(-44);
+    expect(r.start?.year).toBe(-43);
+    expect(r.originalYear).toBe(44);
     expect(r.start?.month).toBe(3);
     expect(r.start?.day).toBe(15);
     expect(r.start?.hour).toBe(10);
@@ -437,7 +489,7 @@ describe('BCE and negative years with a time of day', () => {
 
   it('a midnight negative ISO date is unchanged', () => {
     const r = parseEventDate('-0044-03-15', { timezone: 'utc' });
-    expect(r.start?.toMillis()).toBe(Date.UTC(-44, 2, 15));
+    expect(r.start?.toMillis()).toBe(Date.UTC(-43, 2, 15));
     expect(r.precision).toBe('day');
   });
 
