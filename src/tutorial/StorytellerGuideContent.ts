@@ -138,6 +138,8 @@ export function getGettingStartedGuide(version: string): StorytellerGuideDocumen
     };
 }
 
+const RELEASE_SCREENSHOTS = 'https://raw.githubusercontent.com/Maws7140/obsidian-storyteller-suite/f1e9d78191cad4dbf4b1a07a1e8f36847532046a/screenshots/2.0';
+
 export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
@@ -169,7 +171,12 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                         <li><strong>Timelines in your notes.</strong> <code>Storyteller: Insert timeline block</code> embeds a live timeline in any note.</li>
                         <li><strong>Eras, tracks and branches</strong> belong to their story, branches carry the history they split from, and <em>Detect from event gaps</em> suggests eras for you.</li>
                     </ul>
-                `
+                `,
+                images: [
+                    { src: `${RELEASE_SCREENSHOTS}/timeline-horizontal.png`, alt: 'Horizontal timeline with dated event cards', caption: 'Lay out dated events along a horizontal timeline.' },
+                    { src: `${RELEASE_SCREENSHOTS}/timeline-vertical.png`, alt: 'Vertical timeline with events arranged by month', caption: 'Read through events in a vertical view organised by month.' },
+                    { src: `${RELEASE_SCREENSHOTS}/timeline-gantt.png`, alt: 'Gantt timeline with location lanes and event dependencies', caption: 'Group events by location and follow their dependencies in Gantt view.' },
+                ]
             },
             {
                 title: 'Writing',
@@ -222,11 +229,12 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                         <li><strong>Tidier modals.</strong> Every entity modal is laid out in collapsible sections.</li>
                         <li><strong>Bring in notes you already have.</strong> <code>Storyteller: Import existing notes as entities</code> turns them into characters, locations, events and more, without deleting anything.</li>
                         <li><strong>Templates</strong> can be edited, imported from files, and adjusted before you apply them.</li>
-                        <li><strong>Network graph.</strong> It follows the story's theme, colours by type, group, location or culture, has a legend that matches the screen, and zooms out to fit any layout.</li>
+                        <li><strong>Network graph.</strong> It follows the story's theme, colours by type, group, location, culture or connection count, has a legend that matches the screen, and zooms out to fit any layout.</li>
                     </ul>
                 `,
                 images: [
-                    { src: 'https://i.ibb.co/qFCQwY2h/073c396b6682.png', alt: 'Groups and the network graph', caption: 'Groups are notes of their own and connect into the network graph with the rest of your story.' },
+                    { src: `${RELEASE_SCREENSHOTS}/network-graph-by-group.png`, alt: 'Character network graph coloured by group', caption: 'Colour characters by group to see how relationships cross groups.' },
+                    { src: `${RELEASE_SCREENSHOTS}/network-graph-by-connections.png`, alt: 'Character network graph coloured by connection count', caption: 'Colour characters by connection count to spot the most connected people in a story.' },
                 ]
             }
         ]

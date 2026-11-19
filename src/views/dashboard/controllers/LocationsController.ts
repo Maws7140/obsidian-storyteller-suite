@@ -1,14 +1,21 @@
 import { LocationModal } from '../../../modals/LocationModal';
 import { t } from '../../../i18n/strings';
+import type { Location } from '../../../types';
 import type { DashboardControllerContext, DashboardTabController } from './types';
 
 export const locationsController: DashboardTabController = {
     id: 'locations',
     async render(container, context) {
+        const locations = await context.plugin.listLocations();
+        if (!context.isCurrentRender()) return;
+
         container.empty();
+        let list: HTMLElement;
         context.renderHeaderControls(container, t('locations'), async (filter: string) => {
+            if (list.parentElement !== container || !context.isCurrentRender()) return;
             context.setCurrentFilter(filter);
-            await renderLocationsList(container, context);
+            list.remove();
+            list = renderLocationsList(container, context, locations);
         }, () => {
             new LocationModal(context.app, context.plugin, null, async (loc) => {
                 await context.mutationRunner.runCreate({
@@ -22,16 +29,12 @@ export const locationsController: DashboardTabController = {
             }).open();
         }, t('createLocation'));
 
-        await renderLocationsList(container, context);
+        list = renderLocationsList(container, context, locations);
     },
 };
 
-async function renderLocationsList(container: HTMLElement, context: DashboardControllerContext): Promise<void> {
-    const existingListContainer = container.querySelector('.storyteller-list-container');
-    if (existingListContainer) existingListContainer.remove();
-
+function renderLocationsList(container: HTMLElement, context: DashboardControllerContext, allLocations: Location[]): HTMLElement {
     const filter = context.getCurrentFilter();
-    const allLocations = await context.plugin.listLocations();
     const locations = allLocations.filter(location =>
         location.name.toLowerCase().includes(filter) ||
         (location.description || '').toLowerCase().includes(filter)
@@ -40,7 +43,7 @@ async function renderLocationsList(container: HTMLElement, context: DashboardCon
     const listContainer = container.createDiv('storyteller-list-container');
     if (locations.length === 0) {
         listContainer.createEl('p', { text: t('noLocationsFound') + (filter ? t('matchingFilter') : '') });
-        return;
+        return listContainer;
     }
 
     locations.forEach(location => {
@@ -104,4 +107,5 @@ async function renderLocationsList(container: HTMLElement, context: DashboardCon
         });
         context.addOpenFileButton(actionsEl, location.filePath);
     });
+    return listContainer;
 }

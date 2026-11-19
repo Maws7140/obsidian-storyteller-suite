@@ -45,6 +45,13 @@ export const VIEW_TYPE_DASHBOARD = "storyteller-dashboard-view";
 
 /** How long a tab may take to draw before it stops blocking the next tab switch. */
 const TAB_RENDER_TIME_LIMIT_MS = 8000;
+const BUFFERED_DASHBOARD_TABS = new Set(['characters', 'locations', 'writing']);
+
+interface DashboardTab {
+    id: string;
+    label: string;
+    renderFn: (container: HTMLElement, isCurrentRender: () => boolean) => Promise<void>;
+}
 
 /**
  * Main dashboard view class providing a tabbed interface for story management
@@ -76,7 +83,7 @@ export class DashboardView extends ItemView {
     activeTabId: string = 'characters';
 
     /** Tab configuration mapping */
-    tabs: Array<{ id: string; label: string; renderFn: (container: HTMLElement) => Promise<void> }>;
+    tabs: DashboardTab[];
 
     // Responsive tabs UI state
     private tabHeaderRibbonEl: HTMLElement | null = null;
@@ -127,6 +134,8 @@ export class DashboardView extends ItemView {
     private tabRenderQueue: Promise<void> = Promise.resolve();
     /** Bumped on every tab switch, so a queued render for an older switch is skipped. */
     private renderSeq = 0;
+    /** Orders replacements within one tab after an earlier read has timed out. */
+    private renderAttempt = 0;
     /** Ends the wait on the tab render in progress; set while one runs. */
     private supersedeRender: (() => void) | null = null;
     /** Shared dashboard mutation helper */
@@ -250,8 +259,8 @@ export class DashboardView extends ItemView {
 
         // Initialize tab configuration
         this.tabs = [
-            { id: 'characters', label: t('characters'), renderFn: (c: HTMLElement) => this.renderCharactersContent(c) },
-            { id: 'locations', label: t('locations'), renderFn: (c: HTMLElement) => this.renderLocationsContent(c) },
+            { id: 'characters', label: t('characters'), renderFn: (c, isCurrent) => this.renderCharactersContent(c, isCurrent) },
+            { id: 'locations', label: t('locations'), renderFn: (c, isCurrent) => this.renderLocationsContent(c, isCurrent) },
             { id: 'events', label: t('timeline'), renderFn: (c: HTMLElement) => this.renderEventsContent(c) },
             { id: 'items', label: t('items'), renderFn: (c: HTMLElement) => this.renderItemsContent(c) },
             { id: 'maps', label: t('maps'), renderFn: (c: HTMLElement) => this.renderMapsContent(c) },
@@ -259,7 +268,7 @@ export class DashboardView extends ItemView {
             { id: 'gallery', label: t('gallery'), renderFn: (c: HTMLElement) => this.renderGalleryContent(c) },
             { id: 'groups', label: t('groups'), renderFn: (c: HTMLElement) => this.renderGroupsContent(c) },
             { id: 'references', label: t('references'), renderFn: (c: HTMLElement) => this.renderReferencesContent(c) },
-            { id: 'writing', label: t('writing'), renderFn: (c: HTMLElement) => this.renderWritingContent(c) },
+            { id: 'writing', label: t('writing'), renderFn: (c, isCurrent) => this.renderWritingContent(c, isCurrent) },
             { id: 'compile', label: t('compile'), renderFn: (c: HTMLElement) => this.renderCompileContent(c) },
             { id: 'cultures', label: t('cultures'), renderFn: (c: HTMLElement) => this.renderCulturesContent(c) },
             { id: 'economies', label: t('economies'), renderFn: (c: HTMLElement) => this.renderEconomiesContent(c) },
@@ -392,7 +401,8 @@ export class DashboardView extends ItemView {
             return;
         }
         
-        const snapshot = captureDashboardStateSnapshot(this.currentSearchInput);
+        const previousSearch = this.currentSearchInput;
+        const snapshot = captureDashboardStateSnapshot(previousSearch);
         
         const currentTabId = this.activeTabId;
         this.captureTabScrollState(currentTabId);
@@ -401,17 +411,22 @@ export class DashboardView extends ItemView {
         if (activeTab) {
             try {
                 this.isRefreshingActiveTab = true;
-                await this.enqueueTabRender(activeTab, this.renderSeq, async () => {
+                const seq = this.renderSeq;
+                await this.enqueueTabRender(activeTab, seq, async () => {
+                    const searchInput = this.currentSearchInput;
+                    const valueAtCommit = searchInput?.value;
                     await this.restoreTabScroll(currentTabId);
+                    if (previousSearch === searchInput || (previousSearch && previousSearch.value !== snapshot.searchValue)) return;
                     restoreDashboardStateSnapshot(
                         snapshot,
-                        () => this.currentSearchInput,
+                        () => seq === this.renderSeq && searchInput === this.currentSearchInput &&
+                            searchInput?.value === valueAtCommit ? searchInput : null,
                         (value) => {
                             this.currentFilter = value;
                         },
                         () => !this.isSimplifiedMobileDashboard()
                     );
-                });
+                }, true);
             } finally {
                 this.isRefreshingActiveTab = false;
                 if (this.pendingActiveTabRefresh) {
@@ -430,18 +445,33 @@ export class DashboardView extends ItemView {
      * stops holding up the queue, so the next click still works.
      */
     private enqueueTabRender(
-        tab: { id: string; renderFn: (container: HTMLElement) => Promise<void> },
+        tab: DashboardTab,
         seq: number,
         after?: () => Promise<void>,
+        refresh = false,
     ): Promise<void> {
         const run = async () => {
             if (seq !== this.renderSeq || tab.id !== this.activeTabId) return;
             const container = this.tabContentContainer;
+            const buffered = BUFFERED_DASHBOARD_TABS.has(tab.id);
+            const preserveContent = refresh && buffered && container.hasChildNodes();
+            const attempt = ++this.renderAttempt;
+            let elapsed = false;
+            const isCurrentRender = () => seq === this.renderSeq && tab.id === this.activeTabId &&
+                (!elapsed || attempt === this.renderAttempt);
+            const reportError = (error: unknown) => {
+                if (!isCurrentRender()) return;
+                if (preserveContent) {
+                    console.error(`Storyteller Suite: the ${tab.id} tab failed to refresh`, error);
+                } else {
+                    this.showTabRenderError(tab.id, error);
+                }
+            };
             container.addClass('is-loading');
             this._suppressScrollCapture = true;
             let timer: number | null = null;
             try {
-                const render = tab.renderFn(container);
+                const render = tab.renderFn(container, isCurrentRender);
                 const timedOut = new Promise<'timeout'>(resolve => {
                     timer = window.setTimeout(() => resolve('timeout'), TAB_RENDER_TIME_LIMIT_MS);
                 });
@@ -450,21 +480,27 @@ export class DashboardView extends ItemView {
                 const outcome = await Promise.race([render.then(() => 'done' as const), timedOut, superseded]);
                 this.supersedeRender = null;
                 if (outcome !== 'done') {
+                    elapsed = true;
                     if (outcome === 'timeout') {
                         console.warn(`Storyteller Suite: the ${tab.id} tab is taking longer than ${TAB_RENDER_TIME_LIMIT_MS / 1000}s to draw.`);
                     }
-                    // If the slow render finishes later it has drawn into the shared content area,
-                    // so draw whatever tab is showing by then again.
-                    render.then(
-                        () => { if (tab.id !== this.activeTabId) this.refreshCoordinator.requestImmediateRefresh({ source: 'manual', detail: 'late-tab-render' }); },
-                        error => this.showTabRenderError(tab.id, error),
-                    );
+                    if (buffered) {
+                        // Let a slow read finish if no newer render has taken over the tab.
+                        render.then(() => { if (isCurrentRender()) elapsed = false; }, reportError);
+                    } else {
+                        // A legacy renderer may still have drawn into the shared content area.
+                        render.then(
+                            () => { if (tab.id !== this.activeTabId) this.refreshCoordinator.requestImmediateRefresh({ source: 'manual', detail: 'late-tab-render' }); },
+                            error => this.showTabRenderError(tab.id, error),
+                        );
+                    }
                     return;
                 }
-                if (after) await after();
+                if (after && isCurrentRender()) await after();
             } catch (error) {
-                this.showTabRenderError(tab.id, error);
+                reportError(error);
             } finally {
+                this.supersedeRender = null;
                 if (timer !== null) window.clearTimeout(timer);
                 this._suppressScrollCapture = false;
                 container.removeClass('is-loading');
@@ -496,10 +532,11 @@ export class DashboardView extends ItemView {
         this.mutationRunner.requestRefresh('immediate', detail);
     }
 
-    private getDashboardControllerContext(): DashboardControllerContext {
+    private getDashboardControllerContext(isCurrentRender: () => boolean = () => true): DashboardControllerContext {
         return {
             app: this.app,
             plugin: this.plugin,
+            isCurrentRender,
             getCurrentFilter: () => this.currentFilter,
             setCurrentFilter: (filter: string) => {
                 this.currentFilter = filter.toLowerCase();
@@ -559,13 +596,18 @@ export class DashboardView extends ItemView {
         };
     }
 
-    private async renderWithController(tabId: string, container: HTMLElement, fallback: () => Promise<void>): Promise<void> {
+    private async renderWithController(
+        tabId: string,
+        container: HTMLElement,
+        fallback: () => Promise<void>,
+        isCurrentRender?: () => boolean,
+    ): Promise<void> {
         const controller = this.controllerRegistry.get(tabId);
         if (!controller) {
             await fallback();
             return;
         }
-        await controller.render(container, this.getDashboardControllerContext());
+        await controller.render(container, this.getDashboardControllerContext(isCurrentRender));
     }
 
     private async persistChapterFromDashboard(chapter: import('../types').Chapter, successNotice: string, detail: string): Promise<void> {
@@ -825,7 +867,7 @@ export class DashboardView extends ItemView {
     private applyTabOrder(): void {
         const savedOrder = this.plugin.settings.dashboardTabOrder;
         if (!savedOrder || savedOrder.length === 0) return;
-        const reordered: Array<{ id: string; label: string; renderFn: (container: HTMLElement) => Promise<void> }> = [];
+        const reordered: DashboardTab[] = [];
         for (const id of savedOrder) {
             const tab = this.tabs.find(t => t.id === id);
             if (tab) reordered.push(tab);
@@ -1043,6 +1085,9 @@ export class DashboardView extends ItemView {
         // Mark tab context for CSS entity card accent colors
         this.tabContentContainer.setAttr('data-tab', tabId);
         this.syncActiveTabStyles();
+        if (tabId !== previousTabId && BUFFERED_DASHBOARD_TABS.has(tabId)) {
+            this.tabContentContainer.empty();
+        }
         const seq = ++this.renderSeq;
         this.supersedeRender?.();
         await this.enqueueTabRender(tab, seq, () => this.restoreTabScroll(tabId));
@@ -1172,7 +1217,7 @@ export class DashboardView extends ItemView {
      * Shows character list with filtering and management controls
      * @param container The container element to render content into
      */
-    async renderCharactersContent(container: HTMLElement) {
+    async renderCharactersContent(container: HTMLElement, isCurrentRender?: () => boolean) {
         await this.renderWithController('characters', container, async () => {
         container.empty();
         this.renderHeaderControls(container, t('characters'), async (filter: string) => {
@@ -1192,7 +1237,7 @@ export class DashboardView extends ItemView {
         });
 
         await this.renderCharactersList(container);
-        });
+        }, isCurrentRender);
     }
 
     /**
@@ -1227,7 +1272,7 @@ export class DashboardView extends ItemView {
      * Shows location list with filtering and management controls
      * @param container The container element to render content into
      */
-    async renderLocationsContent(container: HTMLElement) {
+    async renderLocationsContent(container: HTMLElement, isCurrentRender?: () => boolean) {
         await this.renderWithController('locations', container, async () => {
         container.empty();
         this.renderHeaderControls(container, t('locations'), async (filter: string) => {
@@ -1247,7 +1292,7 @@ export class DashboardView extends ItemView {
         }, t('createLocation'));
 
         await this.renderLocationsList(container);
-        });
+        }, isCurrentRender);
     }
 
     /**
@@ -2520,7 +2565,7 @@ export class DashboardView extends ItemView {
     }
 
     /** Render the Writing tab — includes view mode switcher */
-    async renderWritingContent(container: HTMLElement) {
+    async renderWritingContent(container: HTMLElement, isCurrentRender?: () => boolean) {
         await this.renderWithController('writing', container, async () => {
         container.empty();
         this.renderWritingGoalBanner(container);
@@ -2660,7 +2705,7 @@ export class DashboardView extends ItemView {
         );
 
         await renderActive();
-        });
+        }, isCurrentRender);
     }
 
     async renderChaptersContent(container: HTMLElement) {
@@ -5440,6 +5485,8 @@ export class DashboardView extends ItemView {
     }
 
     async onClose() {
+        ++this.renderSeq;
+        this.supersedeRender?.();
         // Clean up file input if it exists
         this.fileInput?.remove();
         this.fileInput = null;

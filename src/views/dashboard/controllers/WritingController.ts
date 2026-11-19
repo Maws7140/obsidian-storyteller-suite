@@ -13,18 +13,32 @@ const WRITING_MODES: Array<{ id: DashboardWritingViewMode; icon: string; label: 
 export const writingController: DashboardTabController = {
     id: 'writing',
     async render(container, context) {
+        const buildBody = async (mode: DashboardWritingViewMode) => {
+            const body = container.ownerDocument.createElement('div');
+            body.className = 'storyteller-writing-view-body';
+            await context.renderWritingMode(mode, body);
+            return body;
+        };
+        let body: HTMLElement;
+        while (true) {
+            const mode = context.getWritingViewMode();
+            const filter = context.getCurrentFilter();
+            body = await buildBody(mode);
+            if (!context.isCurrentRender()) return;
+            if (mode === context.getWritingViewMode() && filter === context.getCurrentFilter()) break;
+        }
+
         container.empty();
         context.renderWritingGoalBanner(container);
 
         const switcher = container.createDiv(`storyteller-writing-switcher${context.isSimplifiedMobileDashboard() ? ' storyteller-writing-switcher--mobile' : ''}`);
+        let renderRequest = 0;
         const renderActive = async () => {
-            const existing = container.querySelector('.storyteller-writing-view-body');
-            if (existing) {
-                existing.remove();
-            }
-
-            const body = container.createDiv('storyteller-writing-view-body');
-            await context.renderWritingMode(context.getWritingViewMode(), body);
+            const request = ++renderRequest;
+            const next = await buildBody(context.getWritingViewMode());
+            if (request !== renderRequest || !context.isCurrentRender() || body.parentElement !== container) return;
+            body.replaceWith(next);
+            body = next;
         };
 
         const popOutBtn = switcher.createEl('button', {
@@ -163,6 +177,6 @@ export const writingController: DashboardTabController = {
             }
         );
 
-        await renderActive();
+        container.append(body);
     },
 };

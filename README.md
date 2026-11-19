@@ -105,7 +105,7 @@ Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, run
 
 ## Network use
 
-The in-app update highlights load their screenshots from `i.ibb.co`. Nothing from your vault is sent. Without a connection the screenshots are left out.
+The in-app update highlights load screenshots from GitHub and `i.ibb.co`. Nothing from your vault is sent. Without a connection the screenshots are left out.
 
 ## Feature Breakdown
 

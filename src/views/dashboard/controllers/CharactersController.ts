@@ -6,10 +6,16 @@ import type { DashboardControllerContext, DashboardTabController } from './types
 export const charactersController: DashboardTabController = {
     id: 'characters',
     async render(container, context) {
+        const characters = await context.plugin.listCharacters();
+        if (!context.isCurrentRender()) return;
+
         container.empty();
+        let list: HTMLElement;
         context.renderHeaderControls(container, t('characters'), async (filter: string) => {
+            if (list.parentElement !== container || !context.isCurrentRender()) return;
             context.setCurrentFilter(filter);
-            await renderCharactersList(container, context);
+            list.remove();
+            list = renderCharactersList(container, context, characters);
         }, () => {
             new CharacterModal(context.app, context.plugin, null, async (char: Character) => {
                 await context.mutationRunner.runCreate({
@@ -23,16 +29,13 @@ export const charactersController: DashboardTabController = {
             }).open();
         });
 
-        await renderCharactersList(container, context);
+        list = renderCharactersList(container, context, characters);
     },
 };
 
-async function renderCharactersList(container: HTMLElement, context: DashboardControllerContext): Promise<void> {
-    const existingListContainer = container.querySelector('.storyteller-list-container');
-    if (existingListContainer) existingListContainer.remove();
-
+function renderCharactersList(container: HTMLElement, context: DashboardControllerContext, allCharacters: Character[]): HTMLElement {
     const filter = context.getCurrentFilter();
-    const characters = (await context.plugin.listCharacters()).filter(char =>
+    const characters = allCharacters.filter(char =>
         char.name.toLowerCase().includes(filter) ||
         (char.description || '').toLowerCase().includes(filter) ||
         (char.traits || []).join(' ').toLowerCase().includes(filter)
@@ -43,7 +46,7 @@ async function renderCharactersList(container: HTMLElement, context: DashboardCo
         const emptyMsg = listContainer.createEl('p', { text: t('noCharactersFound'), cls: 'storyteller-empty-state' });
         emptyMsg.setCssStyles({ color: 'var(--text-muted)' });
         emptyMsg.setCssStyles({ fontStyle: 'italic' });
-        return;
+        return listContainer;
     }
 
     characters.forEach(character => {
@@ -104,4 +107,5 @@ async function renderCharactersList(container: HTMLElement, context: DashboardCo
         });
         context.addOpenFileButton(actionsEl, character.filePath);
     });
+    return listContainer;
 }

@@ -241,6 +241,24 @@ describe('DateParsing', () => {
   });
 
   describe('BCE date parsing', () => {
+    it.each([
+      ['335-01-02 BCE', -334, 335, 1, 2, 0, 'day'],
+      ['1-12-31 BC 18:30', 0, 1, 12, 31, 18, 'time'],
+      ['335-01-02T18:30 BCE', -334, 335, 1, 2, 18, 'time'],
+      ['-335-01-02', -335, 336, 1, 2, 0, 'day'],
+    ])('preserves the full Gregorian date in %s', (input, year, eraYear, month, day, hour, precision) => {
+      const parsed = parseEventDate(input, { timezone: 'utc' });
+      expect(parsed.start?.toObject()).toMatchObject({ year, month, day, hour });
+      expect(parsed.originalYear).toBe(eraYear);
+      expect(parsed.precision).toBe(precision);
+    });
+
+    it('rejects an impossible full BCE date instead of guessing a different date', () => {
+      const parsed = parseEventDate('335-02-30 BCE', { timezone: 'utc' });
+      expect(parsed.start).toBeUndefined();
+      expect(parsed.error).toBeDefined();
+    });
+
     it('parses BCE year', () => {
       const r = parseEventDate('500 BCE');
       expect(r.error).toBeUndefined();

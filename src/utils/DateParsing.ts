@@ -26,6 +26,7 @@ const APPROX_RE = /(circa|around|about|approx|~|approx\.)/i;
 const BCE_RE = /\b(\d+)\s*(BC|bce|BCE|B\.C\.|B\.C|B\.C\.E\.|b\.c\.|b\.c\.e\.|bc|b\.c\.e)\b/i;
 const CE_RE = /\b(\d+)\s*(CE|ce|A\.D\.|AD|ad|a\.d\.)\b/i;
 const NEG_ISO_RE = /^-(\d{1,6})(?:-(\d{1,2}))?(?:-(\d{1,2}))?(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/;
+const FULL_BCE_RE = /^(\d{1,6})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?\s*(?:BCE?|B\.C\.?(?:E\.?)?)(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/i;
 const BCE_TIME_ONLY_RE = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
 
 function inferPrecisionFromChrono(result: chrono.ParsedResult): ParsedPrecision {
@@ -154,22 +155,28 @@ function splitRange(text: string): [string, string] | null {
   // of -3000 used to land at 3000 AD. Build the date from parts so the sign
   // survives. Years are astronomical (matching formatCalendarYear), so -43 is
   // 44 BCE, and the same BCE flags as the "44 BC" form are set.
-  const negIso = text.match(NEG_ISO_RE);
-  if (negIso) {
-    const year = -parseInt(negIso[1], 10);
-    const month = negIso[2] != null ? parseInt(negIso[2], 10) : 1;
-    const day = negIso[3] != null ? parseInt(negIso[3], 10) : 1;
-    const hasTime = negIso[4] != null;
+  // Match a full era date before BCE_RE can mistake its day for the year.
+  const fullBce = text.match(FULL_BCE_RE);
+  const dateParts = fullBce ?? text.match(NEG_ISO_RE);
+  if (dateParts) {
+    const inputYear = Number(dateParts[1]);
+    if (fullBce && inputYear === 0) return { error: 'invalid BCE year' };
+    const year = fullBce ? 1 - inputYear : -inputYear;
+    const month = Number(dateParts[2] ?? 1);
+    const day = Number(dateParts[3] ?? 1);
+    if (fullBce?.[4] != null && fullBce[7] != null) return { error: 'invalid BCE date' };
+    const hour = dateParts[4] ?? fullBce?.[7];
     const dt = DateTime.fromObject({
       year, month, day,
-      hour: hasTime ? parseInt(negIso[4], 10) : 0,
-      minute: hasTime ? parseInt(negIso[5], 10) : 0,
-      second: hasTime && negIso[6] != null ? parseInt(negIso[6], 10) : 0,
+      hour: Number(hour ?? 0),
+      minute: Number(dateParts[5] ?? fullBce?.[8] ?? 0),
+      second: Number(dateParts[6] ?? fullBce?.[9] ?? 0),
     }, { zone });
     if (dt.isValid) {
-      const precision: ParsedPrecision = hasTime ? 'time' : negIso[3] != null ? 'day' : negIso[2] != null ? 'month' : 'year';
+      const precision: ParsedPrecision = hour != null ? 'time' : dateParts[3] != null ? 'day' : dateParts[2] != null ? 'month' : 'year';
       return { start: dt, precision, approximate, isBCE: true, originalYear: 1 - year };
     }
+    if (fullBce) return { error: 'invalid BCE date' };
   }
 
   // 0b) CE date detection
