@@ -53,6 +53,20 @@ Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, run
 
 ## Screenshots
 
+### Timeline
+
+![Horizontal timeline with dated event cards](screenshots/2.0/timeline-horizontal.png)
+
+*Lay out dated events along a horizontal timeline.*
+
+![Vertical timeline with events arranged by month](screenshots/2.0/timeline-vertical.png)
+
+*Read through events in a vertical view organized by month.*
+
+![Gantt timeline with location lanes and event dependencies](screenshots/2.0/timeline-gantt.png)
+
+*Group events by location and follow their dependencies in Gantt view.*
+
 ### Campaign play
 
 ![Campaign play session view](https://i.ibb.co/Fb3QVNgd/a086488103f6.png)
@@ -69,11 +83,15 @@ Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, run
 
 *Organize scenes visually with the story board while keeping the writing dashboard in sync.*
 
-### Groups and graph-aware worldbuilding
+### Network graph
 
-![Groups and network graph](https://i.ibb.co/qFCQwY2h/073c396b6682.png)
+![Character network graph colored by group](screenshots/2.0/network-graph-by-group.png)
 
-*Groups are first-class notes and connect cleanly into the network graph alongside the rest of your story data.*
+*Color characters by group to see how relationships cross groups.*
+
+![Character network graph colored by connection count](screenshots/2.0/network-graph-by-connections.png)
+
+*Color characters by connection count to spot the most connected people in a story.*
 
 ### Maps
 
@@ -87,7 +105,7 @@ Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, run
 
 ## Network use
 
-The update highlights shown after an update load their screenshots from `i.ibb.co`, the same images as in this README. Nothing from your vault is sent. Without a connection the screenshots are simply left out.
+The in-app update highlights load their screenshots from `i.ibb.co`. Nothing from your vault is sent. Without a connection the screenshots are left out.
 
 ## Feature Breakdown
 
