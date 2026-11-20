@@ -1,0 +1,180 @@
+{
+  "maplogMarks": [
+    {
+      "id": "mark-moria-entrance",
+      "mark": "entrance",
+      "latlng": [
+        622,
+        722
+      ],
+      "label": "Moria",
+      "locationId": "loc-moria"
+    },
+    {
+      "id": "mark-bree-inn",
+      "mark": "inn",
+      "latlng": [
+        730,
+        470
+      ],
+      "label": "Prancing Pony",
+      "locationId": "loc-bree"
+    },
+    {
+      "id": "mark-weathertop",
+      "mark": "tower",
+      "latlng": [
+        705,
+        520
+      ],
+      "label": "Weathertop"
+    },
+    {
+      "id": "mark-ford",
+      "mark": "ford",
+      "latlng": [
+        745,
+        650
+      ],
+      "label": "Ford of Bruinen"
+    },
+    {
+      "id": "mark-caradhras",
+      "mark": "peak",
+      "latlng": [
+        690,
+        690
+      ],
+      "label": "Caradhras"
+    },
+    {
+      "id": "mark-minas-tirith",
+      "mark": "city",
+      "latlng": [
+        330,
+        600
+      ],
+      "label": "Minas Tirith",
+      "locationId": "loc-minas-tirith"
+    }
+  ],
+  "maplogLines": [
+    {
+      "id": "line-company-road",
+      "mark": "trail",
+      "points": [
+        [
+          742,
+          404
+        ],
+        [
+          730,
+          470
+        ],
+        [
+          705,
+          520
+        ],
+        [
+          752,
+          668
+        ]
+      ],
+      "label": "Hobbiton to Rivendell"
+    },
+    {
+      "id": "line-anduin",
+      "mark": "river",
+      "points": [
+        [
+          560,
+          860
+        ],
+        [
+          500,
+          840
+        ],
+        [
+          440,
+          820
+        ],
+        [
+          380,
+          800
+        ]
+      ],
+      "label": "Anduin"
+    },
+    {
+      "id": "line-misty-spine",
+      "mark": "cliff",
+      "points": [
+        [
+          800,
+          690
+        ],
+        [
+          730,
+          690
+        ],
+        [
+          690,
+          690
+        ],
+        [
+          620,
+          700
+        ]
+      ],
+      "label": "Misty Mountains"
+    }
+  ],
+  "maplogAreas": [
+    {
+      "id": "area-old-forest",
+      "mark": "forest",
+      "points": [
+        [
+          765,
+          430
+        ],
+        [
+          772,
+          455
+        ],
+        [
+          752,
+          462
+        ],
+        [
+          745,
+          438
+        ]
+      ],
+      "label": "Old Forest"
+    },
+    {
+      "id": "area-lothlorien",
+      "mark": "forest",
+      "points": [
+        [
+          575,
+          850
+        ],
+        [
+          590,
+          880
+        ],
+        [
+          560,
+          900
+        ],
+        [
+          545,
+          875
+        ]
+      ],
+      "label": "Lothlórien"
+    }
+  ]
+}

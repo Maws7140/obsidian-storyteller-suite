@@ -4,7 +4,7 @@
 import { Setting } from 'obsidian';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
-import { TimelineRenderer } from './TimelineRenderer';
+import { TimelineRenderer } from './NativeTimelineRenderer';
 import { TimelineUIState, Event, Location } from '../types';
 
 /**
@@ -190,28 +190,12 @@ export class TimelineFilterBuilder {
     }
 
     /**
-     * Build milestones only toggle
-     */
-    createMilestonesToggle(container: HTMLElement): void {
-        new Setting(container)
-            .setName(t('milestonesOnly') || 'Milestones Only')
-            .setDesc('Show only milestone events')
-            .addToggle(toggle => {
-                toggle.setValue(this.state.filters.milestonesOnly || false)
-                    .onChange(value => {
-                        this.state.filters.milestonesOnly = value;
-                        this.applyFilters();
-                    });
-            });
-    }
-
-    /**
      * Build clear all filters button
      */
     createClearFiltersButton(container: HTMLElement): void {
         new Setting(container)
             .addButton(button => button
-                .setButtonText(t('clearAllFilters') || 'Clear All Filters')
+                .setButtonText(t('clearAllFilters') || 'Clear all filters')
                 .onClick(() => {
                     this.clearAllFilters();
                 }));
@@ -223,8 +207,8 @@ export class TimelineFilterBuilder {
     async buildFilterPanel(container: HTMLElement, events: Event[]): Promise<void> {
         // Load locations for name resolution
         await this.loadLocations();
-        
-        this.createMilestonesToggle(container);
+
+        // Milestones only is already a checkbox in the toolbar, so it is not repeated here.
         this.createCharacterFilter(container, events);
         this.createLocationFilter(container, events);
         this.createGroupFilter(container);
@@ -282,7 +266,7 @@ export class TimelineFilterBuilder {
 
         // Milestones chip
         if (this.state.filters.milestonesOnly) {
-            this.createFilterChip(container, 'Milestones Only', () => {
+            this.createFilterChip(container, t('milestonesOnly'), () => {
                 this.state.filters.milestonesOnly = false;
                 this.renderFilterChips(container);
                 this.applyFilters();

@@ -18,12 +18,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '18.x'
+          node-version: '22.x'
           cache: 'npm'
 
       - name: Install dependencies
@@ -31,6 +31,9 @@ jobs:
 
       - name: Type check
         run: npx tsc -p tsconfig.json --noEmit
+
+      - name: Unit tests
+        run: npx vitest run
 
       - name: Build
         run: node esbuild.config.mjs production

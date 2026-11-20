@@ -2,7 +2,7 @@ import { App, Modal, Setting, Notice, setIcon } from 'obsidian';
 import { TimelineEra, Event } from '../types';
 import { t } from '../i18n/strings';
 import StorytellerSuitePlugin from '../main';
-import { parseEventDate } from '../utils/DateParsing';
+import { parseTimelineDate } from '../utils/DateParsing';
 
 /**
  * Modal for managing timeline eras/periods
@@ -152,6 +152,17 @@ export class EraManagerModal extends Modal {
         });
         nameInput.addEventListener('change', () => {
             era.name = nameInput.value;
+        });
+
+        const abbreviationInput = headerEl.createEl('input', {
+            type: 'text',
+            value: era.abbreviation || '',
+            placeholder: 'Abbreviation',
+            cls: 'storyteller-era-name-input'
+        });
+        abbreviationInput.setAttr('aria-label', `Abbreviation for ${era.name}`);
+        abbreviationInput.addEventListener('change', () => {
+            era.abbreviation = abbreviationInput.value.trim() || undefined;
         });
 
         // Era date range badge
@@ -315,8 +326,8 @@ export class EraManagerModal extends Modal {
     private getEventCountForEra(era: TimelineEra): number {
         if (!era.startDate || !era.endDate) return 0;
 
-        const startParsed = parseEventDate(era.startDate);
-        const endParsed = parseEventDate(era.endDate);
+        const startParsed = parseTimelineDate(era.startDate);
+        const endParsed = parseTimelineDate(era.endDate);
 
         if (!startParsed.start || !endParsed.start) return 0;
 
@@ -325,7 +336,7 @@ export class EraManagerModal extends Modal {
 
         return this.events.filter(event => {
             if (!event.dateTime) return false;
-            const eventParsed = parseEventDate(event.dateTime);
+            const eventParsed = parseTimelineDate(event.dateTime);
             if (!eventParsed.start) return false;
 
             const eventMillis = eventParsed.start.toMillis();
@@ -339,8 +350,8 @@ export class EraManagerModal extends Modal {
         this.eras.forEach(era => {
             if (!era.startDate || !era.endDate) return;
 
-            const startParsed = parseEventDate(era.startDate);
-            const endParsed = parseEventDate(era.endDate);
+            const startParsed = parseTimelineDate(era.startDate);
+            const endParsed = parseTimelineDate(era.endDate);
 
             if (!startParsed.start || !endParsed.start) return;
 
@@ -351,7 +362,7 @@ export class EraManagerModal extends Modal {
 
             this.events.forEach(event => {
                 if (!event.dateTime) return;
-                const eventParsed = parseEventDate(event.dateTime);
+                const eventParsed = parseTimelineDate(event.dateTime);
                 if (!eventParsed.start) return;
 
                 const eventMillis = eventParsed.start.toMillis();
@@ -389,14 +400,14 @@ export class EraManagerModal extends Modal {
         // Validate dates
         for (const era of this.eras) {
             if (era.startDate) {
-                const parsed = parseEventDate(era.startDate);
+                const parsed = parseTimelineDate(era.startDate);
                 if (parsed.error) {
                     new Notice(`Invalid start date for "${era.name}": ${parsed.error}`);
                     return;
                 }
             }
             if (era.endDate) {
-                const parsed = parseEventDate(era.endDate);
+                const parsed = parseTimelineDate(era.endDate);
                 if (parsed.error) {
                     new Notice(`Invalid end date for "${era.name}": ${parsed.error}`);
                     return;

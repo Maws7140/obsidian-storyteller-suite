@@ -139,7 +139,7 @@ function buildRelationshipLines(data: SheetData): string[] {
 function buildItemLines(data: SheetData): string[] {
     const { character, items } = data;
     const lines = items.map(item => {
-        const ownership = item.currentOwner?.toLowerCase() === character.name.toLowerCase() ? 'current' : 'former';
+        const ownership = item.owners.some(owner => owner.toLowerCase() === character.name.toLowerCase()) ? 'current' : 'former';
         return `${noteLink(item.name)} (${ownership})${item.isPlotCritical ? ' — Plot Critical' : ''}`;
     });
     return buildBulletLines(lines);
@@ -387,7 +387,7 @@ function sharedBuildHTML(
     const itemsHTML = items.length > 0
         ? `<div class="cs-section"><h2 class="cs-sh">Items</h2><div class="cs-list">${
             items.map(item => {
-                const own  = item.currentOwner?.toLowerCase() === character.name.toLowerCase() ? '(current)' : '(former)';
+                const own  = item.owners.some(owner => owner.toLowerCase() === character.name.toLowerCase()) ? '(current)' : '(former)';
                 const crit = item.isPlotCritical ? ' <span class="cs-badge-critical">Plot Critical</span>' : '';
                 return `<div class="cs-list-item"><strong>${esc(item.name)}</strong> <span class="cs-list-meta">${own}</span>${crit}</div>`;
             }).join('')

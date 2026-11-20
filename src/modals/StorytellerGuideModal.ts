@@ -45,6 +45,23 @@ export class StorytellerGuideModal extends Modal {
                 void this.plugin.activateView();
             });
 
+        new ButtonComponent(footerEl)
+            .setIcon('coffee')
+            .setButtonText('Everything runs on coffee')
+            .setTooltip('Support on Ko-fi')
+            .onClick(() => {
+                window.open('https://ko-fi.com/kingmaws', '_blank');
+            });
+
+        new ButtonComponent(footerEl)
+            .setIcon('circle-help')
+            .setButtonText('Help section')
+            .setTooltip('Open plugin settings help tab')
+            .onClick(() => {
+                this.close();
+                this.plugin.openSettingsHelpTab();
+            });
+
         if (this.mode === 'whats-new') {
             new ButtonComponent(footerEl)
                 .setIcon('book-open')

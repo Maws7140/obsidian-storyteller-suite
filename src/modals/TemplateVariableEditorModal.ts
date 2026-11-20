@@ -9,6 +9,7 @@ import { ResponsiveModal } from './ResponsiveModal';
 import type StorytellerSuitePlugin from '../main';
 import { TemplateVariable } from '../templates/TemplateTypes';
 import { findTemplateEntityType, getTemplateEntityLabel } from '../templates/TemplateEntityRegistry';
+import { VARIABLE_NAME_PATTERN } from '../templates/VariableBulkParser';
 
 export class TemplateVariableEditorModal extends ResponsiveModal {
     private plugin: StorytellerSuitePlugin;
@@ -90,7 +91,7 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
                     const currentValue = inputEl.value;
                     const formatted = currentValue
                         .trim()
-                        .replace(/[^a-zA-Z0-9]/g, '')
+                        .replace(/[^a-zA-Z0-9_]/g, '')
                         .replace(/^[0-9]/, ''); // Can't start with number
                     
                     if (formatted !== currentValue) {
@@ -106,7 +107,7 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
                     // This allows continuous typing without interruption
                     const tempFormatted = value
                         .trim()
-                        .replace(/[^a-zA-Z0-9]/g, '')
+                        .replace(/[^a-zA-Z0-9_]/g, '')
                         .replace(/^[0-9]/, '');
                     this.variable.name = tempFormatted;
                     this.renderPreviewSection();
@@ -354,9 +355,11 @@ export class TemplateVariableEditorModal extends ResponsiveModal {
             return;
         }
 
-        // Validate name format (alphanumeric only, no spaces)
-        if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(this.variable.name)) {
-            new Notice('Variable name must start with a letter and contain only letters and numbers');
+        // Validate name format. {{...}} substitution matches \w+, so underscores
+        // are legal — rejecting them here refused names the bulk panel produces
+        // and that the template body would have substituted fine.
+        if (!VARIABLE_NAME_PATTERN.test(this.variable.name)) {
+            new Notice('Variable name must start with a letter or underscore and contain only letters, numbers and underscores');
             return;
         }
 

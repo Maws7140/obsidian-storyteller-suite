@@ -1,5 +1,6 @@
 import { App, Modal, Setting, ButtonComponent } from 'obsidian';
 import { PlatformUtils } from '../utils/PlatformUtils';
+import { singleFlight } from '../utils/SingleFlight';
 
 /**
  * Base class for mobile-responsive modals
@@ -47,7 +48,11 @@ export abstract class ResponsiveModal extends Modal {
         if (options?.cta) button.setCta();
         if (options?.warning) button.setWarning();
         if (options?.title) button.buttonEl.setAttr('title', options.title);
-        button.onClick(() => { void onClick(); });
+        // A busy button ignores repeat clicks, so Save or Create cannot run twice.
+        button.onClick(singleFlight(
+            async () => { await onClick(); },
+            busy => { button.setDisabled(busy); }
+        ));
         return button.buttonEl;
     }
 

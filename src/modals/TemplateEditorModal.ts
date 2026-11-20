@@ -18,6 +18,11 @@ import {
 } from '../templates/TemplateTypes';
 import { TemplateEntityDetailModal } from './TemplateEntityDetailModal';
 import { TemplateVariableEditorModal } from './TemplateVariableEditorModal';
+import {
+    parseBulkVariables,
+    serializeVariables,
+    BulkParseResult
+} from '../templates/VariableBulkParser';
 import { getEntityNotePreview } from '../utils/TemplatePreviewRenderer';
 import {
     TEMPLATE_ENTITY_TYPES,
@@ -624,78 +629,7 @@ export class TemplateEditorModal extends ResponsiveModal {
             this.addVariable();
         });
 
-        // Bulk add section
-        const bulkToggle = section.createEl('button', {
-            text: 'Bulk add variables',
-            cls: 'template-bulk-toggle'
-        });
-        const bulkPanel = section.createDiv('template-bulk-panel');
-        bulkPanel.setCssStyles({ display: 'none' });
-
-        bulkToggle.addEventListener('click', () => {
-            const hidden = bulkPanel.style.display === 'none';
-            bulkPanel.setCssStyles({ display: hidden ? 'block' : 'none' });
-            bulkToggle.setText('Bulk add variables');
-        });
-
-        bulkPanel.createEl('p', {
-            text: 'One variable per line. Format: name  or  name:type  or  name:type:default  or  name:type:default:label',
-            cls: 'setting-item-description'
-        });
-        bulkPanel.createEl('p', {
-            text: 'Valid types: text, number, boolean, select, date  (default: text)',
-            cls: 'setting-item-description'
-        });
-
-        const bulkTextarea = bulkPanel.createEl('textarea', { cls: 'template-bulk-textarea' });
-        bulkTextarea.placeholder = 'Charactername\ncharacterage:number:25\nalignment:select::lawful good\nbirthdate:date::date of birth';
-        bulkTextarea.rows = 6;
-        bulkTextarea.setCssStyles({ width: '100%' });
-        bulkTextarea.setCssStyles({ fontFamily: 'monospace' });
-
-        const bulkAddBtn = bulkPanel.createEl('button', { text: 'Add variables', cls: 'mod-cta' });
-        const bulkFeedback = bulkPanel.createDiv('template-bulk-feedback');
-
-        bulkAddBtn.addEventListener('click', () => {
-            const lines = bulkTextarea.value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-            const validTypes = new Set(['text', 'number', 'boolean', 'select', 'date']);
-            let added = 0;
-            const skipped: string[] = [];
-
-            if (!this.template.variables) this.template.variables = [];
-
-            for (const line of lines) {
-                const parts = line.split(':');
-                const name = parts[0].trim();
-                if (!name || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
-                    skipped.push(`"${name}" (invalid name)`);
-                    continue;
-                }
-                if (this.template.variables.some(v => v.name === name)) {
-                    skipped.push(`"${name}" (already exists)`);
-                    continue;
-                }
-                const rawType = (parts[1] || 'text').trim().toLowerCase();
-                const type = validTypes.has(rawType) ? rawType as TemplateVariable['type'] : 'text';
-                const defaultValue = parts[2]?.trim() || undefined;
-                const label = parts[3]?.trim() || name;
-
-                this.template.variables.push({ name, label, type, defaultValue });
-                added++;
-            }
-
-            bulkFeedback.empty();
-            if (added > 0) {
-                bulkFeedback.createEl('p', { text: `✓ Added ${added} variable${added !== 1 ? 's' : ''}.`, cls: 'template-bulk-success' });
-            }
-            if (skipped.length > 0) {
-                bulkFeedback.createEl('p', { text: `Skipped: ${skipped.join(', ')}`, cls: 'template-bulk-warning' });
-            }
-            if (added > 0) {
-                bulkTextarea.value = '';
-                this.refreshCurrentTab();
-            }
-        });
+        this.renderBulkVariablePanel(section);
 
         // List existing variables
         const variablesList = section.createDiv('template-variables-list');
@@ -710,6 +644,195 @@ export class TemplateEditorModal extends ResponsiveModal {
                 this.renderVariableCard(variablesList, variable, index);
             });
         }
+    }
+
+    /**
+     * Bulk add/import panel. Nothing is written to the template until the user
+     * has seen the parsed preview and pressed the commit button, so a bad paste
+     * costs a re-edit rather than a pile of half-formed variables.
+     */
+    private renderBulkVariablePanel(section: HTMLElement): void {
+        const bulkToggle = section.createEl('button', {
+            text: 'Bulk add variables',
+            cls: 'template-bulk-toggle'
+        });
+        const bulkPanel = section.createDiv('template-bulk-panel');
+        bulkPanel.hide();
+
+        bulkToggle.addEventListener('click', () => {
+            if (bulkPanel.isShown()) {
+                bulkPanel.hide();
+                bulkToggle.setText('Bulk add variables');
+            } else {
+                bulkPanel.show();
+                bulkToggle.setText('Hide bulk add');
+            }
+        });
+
+        bulkPanel.createEl('p', {
+            text: 'Paste one variable per line, or a JSON array, or a YAML list. Columns can be separated by a tab, |, : or a comma.',
+            cls: 'setting-item-description'
+        });
+        bulkPanel.createEl('p', {
+            text: 'Columns: name, type, default, label, description. For select, options come third and are separated by ; — name, select, options, default, label, description.',
+            cls: 'setting-item-description'
+        });
+        bulkPanel.createEl('p', {
+            text: 'Types: text, number, boolean, select, date. Type defaults to text. Lines starting with # are ignored.',
+            cls: 'setting-item-description'
+        });
+
+        const bulkTextarea = bulkPanel.createEl('textarea', { cls: 'template-bulk-textarea' });
+        bulkTextarea.placeholder = [
+            'characterName',
+            'characterAge | number | 25',
+            'isVillain | boolean | false | Is a villain',
+            'faction | select | rebels;empire;neutral | neutral',
+            'foundingDate | date | 1247-03-02',
+        ].join('\n');
+        bulkTextarea.rows = 8;
+
+        const modeRow = bulkPanel.createDiv('template-bulk-mode-row');
+        let overwriteExisting = false;
+        new Setting(modeRow)
+            .setName('When a variable already exists')
+            .setDesc('Append only keeps the variable you already have. Overwrite replaces it with the pasted definition.')
+            .addDropdown(dropdown => dropdown
+                .addOption('append', 'Append only — skip duplicates')
+                .addOption('overwrite', 'Overwrite existing')
+                .setValue('append')
+                .onChange(value => {
+                    overwriteExisting = value === 'overwrite';
+                    renderPreview();
+                })
+            );
+
+        const previewContainer = bulkPanel.createDiv('template-bulk-preview');
+        const actionsRow = bulkPanel.createDiv('template-bulk-actions');
+        const commitBtn = actionsRow.createEl('button', { text: 'Add variables', cls: 'mod-cta' });
+        const exportBtn = actionsRow.createEl('button', { text: 'Export existing variables' });
+
+        let lastResult: BulkParseResult = { format: 'delimited', rows: [] };
+
+        const renderPreview = () => {
+            lastResult = parseBulkVariables(bulkTextarea.value);
+            previewContainer.empty();
+
+            if (lastResult.fatalError) {
+                previewContainer.createEl('p', {
+                    text: lastResult.fatalError,
+                    cls: 'template-bulk-warning'
+                });
+                commitBtn.disabled = true;
+                return;
+            }
+            if (lastResult.rows.length === 0) {
+                commitBtn.disabled = true;
+                return;
+            }
+
+            const existingNames = new Set((this.template.variables || []).map(v => v.name));
+            let committable = 0;
+
+            previewContainer.createEl('h4', {
+                text: `Preview — read as ${lastResult.format.toUpperCase()}`
+            });
+
+            const table = previewContainer.createDiv('template-bulk-preview-table');
+            for (const row of lastResult.rows) {
+                const rowEl = table.createDiv('template-bulk-preview-row');
+
+                if (row.error || !row.variable) {
+                    rowEl.addClass('is-error');
+                    rowEl.createSpan({ cls: 'template-bulk-preview-name', text: row.source });
+                    rowEl.createSpan({ cls: 'template-bulk-preview-note', text: row.error || 'could not be read' });
+                    continue;
+                }
+
+                const variable = row.variable;
+                const isDuplicate = existingNames.has(variable.name);
+                const willCommit = !isDuplicate || overwriteExisting;
+                if (willCommit) committable++;
+                else rowEl.addClass('is-skipped');
+
+                rowEl.createSpan({
+                    cls: 'template-bulk-preview-name',
+                    text: `{{${variable.name}}}`
+                });
+
+                const detail: string[] = [variable.type];
+                if (variable.options) detail.push(`options: ${variable.options.join(', ')}`);
+                if (variable.defaultValue !== undefined) detail.push(`default: ${String(variable.defaultValue)}`);
+                if (variable.label !== variable.name) detail.push(`label: ${variable.label}`);
+                rowEl.createSpan({ cls: 'template-bulk-preview-detail', text: detail.join('  ·  ') });
+
+                if (isDuplicate) {
+                    rowEl.createSpan({
+                        cls: 'template-bulk-preview-note',
+                        text: overwriteExisting ? 'replaces existing' : 'already exists — skipped'
+                    });
+                }
+            }
+
+            const errorCount = lastResult.rows.filter(r => r.error).length;
+            const summary = previewContainer.createEl('p', { cls: 'setting-item-description' });
+            summary.setText(
+                `${committable} variable${committable !== 1 ? 's' : ''} will be added` +
+                (errorCount > 0 ? `, ${errorCount} line${errorCount !== 1 ? 's' : ''} cannot be read` : '') + '.'
+            );
+
+            commitBtn.disabled = committable === 0;
+        };
+
+        bulkTextarea.addEventListener('input', renderPreview);
+
+        commitBtn.addEventListener('click', () => {
+            if (!this.template.variables) this.template.variables = [];
+
+            let added = 0;
+            let replaced = 0;
+            for (const row of lastResult.rows) {
+                if (!row.variable) continue;
+                const existingIndex = this.template.variables.findIndex(v => v.name === row.variable!.name);
+                if (existingIndex >= 0) {
+                    if (!overwriteExisting) continue;
+                    // Keep the usage map — it is derived from the template body,
+                    // not from anything the pasted definition can know about.
+                    const usedIn = this.template.variables[existingIndex].usedIn;
+                    this.template.variables[existingIndex] = usedIn
+                        ? { ...row.variable, usedIn }
+                        : row.variable;
+                    replaced++;
+                } else {
+                    this.template.variables.push(row.variable);
+                    added++;
+                }
+            }
+
+            if (added === 0 && replaced === 0) {
+                new Notice('No variables were added.');
+                return;
+            }
+            const parts: string[] = [];
+            if (added > 0) parts.push(`added ${added}`);
+            if (replaced > 0) parts.push(`replaced ${replaced}`);
+            new Notice(`Variables: ${parts.join(', ')}.`);
+            bulkTextarea.value = '';
+            this.refreshCurrentTab();
+        });
+
+        exportBtn.addEventListener('click', () => {
+            const variables = this.template.variables || [];
+            if (variables.length === 0) {
+                new Notice('This template has no variables to export.');
+                return;
+            }
+            bulkTextarea.value = serializeVariables(variables);
+            renderPreview();
+            new Notice(`Exported ${variables.length} variable${variables.length !== 1 ? 's' : ''} into the box above.`);
+        });
+
+        renderPreview();
     }
 
     private renderVariableCard(container: HTMLElement, variable: TemplateVariable, index: number): void {

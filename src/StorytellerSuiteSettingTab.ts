@@ -1,9 +1,32 @@
-import { App, PluginSettingTab, Setting, Notice, TFolder, setIcon } from 'obsidian';
+import {
+    App,
+    PluginSettingTab,
+    Setting,
+    Notice,
+    Platform,
+    TFolder,
+    setIcon,
+    SettingPage,
+    TextComponent,
+    type SettingDefinitionItem,
+} from 'obsidian';
 import StorytellerSuitePlugin from './main';
 import { NewStoryModal } from './modals/NewStoryModal';
 import { EditStoryModal } from './modals/EditStoryModal';
 import type { StoryFolderOverrides } from './folders/FolderResolver';
-import { MODAL_FIELD_SETS, isModalFieldVisible } from './modals/entity/ModalFieldVisibility';
+import type { TimelineGroupMode } from './types';
+import { MODAL_FIELD_SETS, isModalFieldVisible, setModalFieldHidden } from './modals/entity/ModalFieldVisibility';
+import { getConfigurableSectionFields, getFrontmatterSectionFields } from './utils/SectionFieldPlacement';
+import {
+    CUSTOM_FIELD_LINK_TARGETS,
+    CUSTOM_FIELD_TYPE_LABELS,
+    CUSTOM_FIELD_TYPES,
+    CustomFieldDefinition,
+    CustomFieldType,
+    checkDefaultCustomFieldNames,
+    isLinkFieldType,
+    validateCustomFieldKey,
+} from './modals/entity/CustomFieldDefinitions';
 import { FolderSuggestModal } from './modals/FolderSuggestModal';
 import { CustomSheetTemplateModal } from './modals/CustomSheetTemplateModal';
 import { getGettingStartedGuide, renderGuideDocument } from './tutorial/StorytellerGuideContent';
@@ -12,17 +35,99 @@ import { setLocale, t, getAvailableLanguages, getLanguageName, isLanguageAvailab
 import { VIEW_TYPE_DASHBOARD } from './views/DashboardView';
 import { confirmWithModal } from './modals/ui/ConfirmModal';
 import type { TemplateEntityType } from './templates/TemplateTypes';
+import type { EntityType } from './yaml/EntitySections';
+import { CalendarRegistry } from './calendar/CalendarRegistry';
+import { parseReferenceDate } from './utils/DateParsing';
+import { todayTextProblem } from './calendar/ReferenceToday';
+import { iconColorKey, isSafeFrontmatterKey } from './utils/EntityIcon';
+import { encodeShareCode, makeCalendarDocument, makeThemeDocument } from './calendar/TimelineDocuments';
+import { CalendarManagerModal } from './modals/CalendarManagerModal';
+import { TimelineThemeManagerModal, openActiveTimelineThemeEditor } from './modals/TimelineThemeModal';
 import { PlatformUtils } from './utils/PlatformUtils';
+import { importPortableFile } from './utils/PortableImport';
 
-type TabId = 'stories' | 'dashboard' | 'folders' | 'timeline' | 'maps' | 'templates' | 'gallery' | 'help';
+type TabId = 'stories' | 'dashboard' | 'modals' | 'folders' | 'timeline' | 'maps' | 'templates' | 'gallery' | 'help';
 
 // Video walkthrough for the Help tab. Empty shows a coming-soon state.
 const TUTORIAL_VIDEO_URL = 'https://www.youtube.com/watch?v=HL0i6bUpVn0';
 
 interface TabDef { id: TabId; icon: string; label: string; }
 
+/** Entity types whose modals honour the field toggles. */
+const MODAL_CUSTOMIZABLE_ENTITY_TYPES = [
+    'character', 'event', 'item', 'location', 'faction', 'culture', 'economy', 'magicSystem',
+    'compendiumEntry', 'reference', 'scene', 'chapter', 'book', 'map',
+] as const;
+
+/**
+ * Entity types whose body-section fields can be stored as frontmatter. Each
+ * one's save path honours sectionFieldsInFrontmatter (main.ts saveX methods).
+ * Faction (Group) and timeline types write through other paths and are left out.
+ */
+const SECTION_FIELD_ENTITY_TYPES: ReadonlyArray<EntityType> = [
+    'character', 'location', 'map', 'event', 'item', 'reference', 'chapter', 'book', 'scene',
+    'culture', 'economy', 'compendiumEntry', 'magicSystem',
+];
+
+/** Entity types whose modals lay out the "Default custom fields" list on creation. */
+const DEFAULT_CUSTOM_FIELD_ENTITY_TYPES: readonly string[] = ['character', 'event', 'item'];
+
+/** Entity types whose modal can ask for typed fields (matches the modal editors). */
+const DEFINED_FIELD_ENTITY_TYPES: ReadonlyArray<{ value: EntityType; label: string }> = [
+    { value: 'character', label: 'Character' },
+    { value: 'location', label: 'Location' },
+    { value: 'event', label: 'Event' },
+    { value: 'item', label: 'Item' },
+    { value: 'reference', label: 'Reference' },
+    { value: 'chapter', label: 'Chapter' },
+    { value: 'map', label: 'Map' },
+    { value: 'culture', label: 'Culture' },
+    { value: 'economy', label: 'Economy' },
+    { value: 'magicSystem', label: 'Magic system' },
+    { value: 'compendiumEntry', label: 'Compendium entry' },
+    { value: 'book', label: 'Book' },
+    { value: 'faction', label: 'Group' },
+];
+
+const MODAL_ENTITY_LABELS: Record<(typeof MODAL_CUSTOMIZABLE_ENTITY_TYPES)[number], string> = {
+    character: 'Character',
+    event: 'Event',
+    item: 'Item',
+    location: 'Location',
+    faction: 'Group',
+    culture: 'Culture',
+    economy: 'Economy',
+    magicSystem: 'Magic system',
+    compendiumEntry: 'Compendium entry',
+    reference: 'Reference',
+    scene: 'Scene',
+    chapter: 'Chapter',
+    book: 'Book',
+    map: 'Map',
+};
+
 interface ReopenableView {
     onOpen(): Promise<void> | void;
+}
+
+class StorytellerSettingsPage extends SettingPage {
+    constructor(
+        title: string,
+        private readonly renderPage: (containerEl: HTMLElement) => void,
+        private readonly onHidePage: (containerEl: HTMLElement) => void
+    ) {
+        super();
+        this.title = title;
+    }
+
+    display(): void {
+        this.renderPage(this.containerEl);
+    }
+
+    hide(): void {
+        this.onHidePage(this.containerEl);
+        super.hide();
+    }
 }
 
 export class StorytellerSuiteSettingTab extends PluginSettingTab {
@@ -32,6 +137,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
     private readonly TABS: TabDef[] = [
         { id: 'stories',   icon: 'book-open',       label: 'Stories'   },
         { id: 'dashboard', icon: 'layout-dashboard', label: 'Dashboard' },
+        { id: 'modals',    icon: 'sliders-horizontal', label: 'Modals'    },
         { id: 'folders',   icon: 'folder',           label: 'Folders'   },
         { id: 'timeline',  icon: 'clock',            label: 'Timeline'  },
         { id: 'maps',      icon: 'map',              label: 'Maps'      },
@@ -45,9 +151,9 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         this.plugin = plugin;
 
         // Obsidian 1.13 moves settings content into a separate window. On some
-        // devices the move happens after the display() re-render loop below has
-        // exhausted its time budget, leaving the migrated container empty. Use
-        // Obsidian's window-migration hook so recovery runs in the target
+        // devices the move leaves this connected container empty even though
+        // the tab and its declarative definitions are registered correctly.
+        // Use Obsidian's window-migration hook so recovery runs in the target
         // window after the move has completed.
         const removeWindowMigrationListener = this.containerEl.onWindowMigrated(win => {
             win.setTimeout(() => {
@@ -59,59 +165,82 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         plugin.register(removeWindowMigrationListener);
     }
 
-    private activeRenderToken = 0;
+    private declarativeContainer: HTMLElement | null = null;
 
-    display(): void {
-        const token = ++this.activeRenderToken;
-        this.renderWithGuard();
-
-        // Obsidian 1.13 opens Settings in a separate window and can swap in the
-        // real container *after* display() first runs, discarding our initial
-        // render so the pane stays blank until settings are reopened. The delay
-        // before the container settles varies by device, so a fixed timer isn't
-        // enough. Instead, keep re-rendering whenever the current container is
-        // empty until it sticks (or we hit the time budget). This automates the
-        // manual "call display() again" that reliably repopulates the pane.
-        // renderSettings() empties first, so re-rendering a populated pane never
-        // happens (guarded by the empty check) and this is a no-op once content
-        // is present.
-        const started = Date.now();
-        const tick = () => {
-            if (token !== this.activeRenderToken) return; // navigated away or re-displayed
-            if (this.containerEl && this.containerEl.childElementCount === 0) {
-                this.renderWithGuard();
-            }
-            if (Date.now() - started < 5000) {
-                window.setTimeout(tick, 150);
-            }
-        };
-        window.setTimeout(tick, 50);
+    getSettingDefinitions(): SettingDefinitionItem[] {
+        // Desktop keeps the two-column layout (sidebar of sections, settings beside
+        // it): an empty list makes Obsidian call display() instead. Phones and
+        // tablets have no room for the sidebar, so they get Obsidian's native list
+        // of section pages built from the definitions below.
+        if (!Platform.isMobile) return [];
+        return this.TABS.map(tab => ({
+            type: 'page',
+            name: tab.label,
+            page: () => new StorytellerSettingsPage(
+                tab.label,
+                containerEl => this.renderDeclarativePage(tab.id, containerEl),
+                containerEl => {
+                    if (this.declarativeContainer === containerEl) {
+                        this.declarativeContainer = null;
+                    }
+                }
+            ),
+        }));
     }
 
-    hide(): void {
-        // Invalidate any pending re-render loop so it can't repopulate the pane
-        // after the user has navigated away or closed settings.
-        this.activeRenderToken++;
-        super.hide();
+    display(): void {
+        this.renderWithGuard();
+    }
+
+    private renderDeclarativePage(tabId: TabId, containerEl: HTMLElement): void {
+        this.activeTab = tabId;
+        this.declarativeContainer = containerEl;
+        containerEl.empty();
+        containerEl.addClass('sts-settings-root');
+        this.ensureSettingsCollections();
+        try {
+            this.renderSection(tabId, containerEl);
+        } catch (error) {
+            this.renderFailure(containerEl, error);
+        }
+    }
+
+    private refreshSettingsView(): void {
+        if (this.declarativeContainer?.isConnected) {
+            this.renderDeclarativePage(this.activeTab, this.declarativeContainer);
+            return;
+        }
+        this.display();
     }
 
     private renderWithGuard(): void {
         try {
             this.renderSettings();
         } catch (error) {
-            // Never leave the pane blank: surface the failure in-place so we (and
-            // the user) can see what went wrong instead of an empty window.
-            const msg = error instanceof Error ? (error.stack || error.message) : String(error);
             console.error('[STS] settings display() failed:', error);
-            try {
-                this.containerEl.empty();
-                this.containerEl.addClass('sts-settings-root');
-                this.containerEl.createEl('h3', { text: 'Storyteller settings failed to render' });
-                this.containerEl.createEl('pre', {
-                    text: msg,
-                    cls: 'setting-item-description',
-                });
-            } catch { /* last resort: swallow */ }
+            this.renderFailure(this.containerEl, error);
+        }
+    }
+
+    private renderFailure(containerEl: HTMLElement, error: unknown): void {
+        const msg = error instanceof Error ? (error.stack || error.message) : String(error);
+        try {
+            containerEl.empty();
+            containerEl.addClass('sts-settings-root');
+            containerEl.createEl('h3', { text: 'Storyteller settings failed to render' });
+            containerEl.createEl('pre', {
+                text: msg,
+                cls: 'setting-item-description',
+            });
+        } catch { /* last resort: swallow */ }
+    }
+
+    private ensureSettingsCollections(): void {
+        if (!Array.isArray(this.plugin.settings.stories)) {
+            this.plugin.settings.stories = [];
+        }
+        if (!Array.isArray(this.plugin.settings.groups)) {
+            this.plugin.settings.groups = [];
         }
     }
 
@@ -123,12 +252,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         // Defensive: settings loaded from disk may be missing collections (older or
         // partially-migrated data). Without this guard a later `.forEach` throws and
         // the whole settings pane renders blank.
-        if (!Array.isArray(this.plugin.settings.stories)) {
-            this.plugin.settings.stories = [];
-        }
-        if (!Array.isArray(this.plugin.settings.groups)) {
-            this.plugin.settings.groups = [];
-        }
+        this.ensureSettingsCollections();
 
         const wrapper = containerEl.createDiv('sts-settings-wrapper');
         const nav     = wrapper.createDiv('sts-settings-nav');
@@ -168,18 +292,19 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 btn.addClass('is-active');
                 this.activeTab = tab.id;
                 content.empty();
-                this.renderTab(tab.id, content);
+                this.renderSection(tab.id, content);
             });
         });
 
-        this.renderTab(this.activeTab, content);
+        this.renderSection(this.activeTab, content);
     }
 
-    private renderTab(tabId: TabId, container: HTMLElement): void {
+    private renderSection(tabId: TabId, container: HTMLElement): void {
         try {
             switch (tabId) {
                 case 'stories':   this.renderStoriesTab(container);   break;
                 case 'dashboard': this.renderDashboardTab(container); break;
+                case 'modals':    this.renderModalsTab(container);    break;
                 case 'folders':   this.renderFoldersTab(container);   break;
                 case 'timeline':  this.renderTimelineTab(container);  break;
                 case 'maps':      this.renderMapsTab(container);      break;
@@ -311,7 +436,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     setLocale(value);
                     new Notice(t('languageChanged'));
-                    this.display();
+                    this.refreshSettingsView();
                 });
             });
 
@@ -328,7 +453,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     .setDisabled(isActive)
                     .onClick(async () => {
                         await this.plugin.setActiveStory(story.id);
-                        this.display();
+                        this.refreshSettingsView();
                     })
                 )
                 .addExtraButton(btn => btn
@@ -340,7 +465,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                             this.app, this.plugin, story, existingNames,
                             async (name: string, description?: string, folderOverrides?: StoryFolderOverrides) => {
                                 await this.plugin.updateStory(story.id, name, description, folderOverrides);
-                                this.display();
+                                this.refreshSettingsView();
                             }
                         ).open();
                     })
@@ -359,7 +484,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                                 this.plugin.settings.activeStoryId = this.plugin.settings.stories[0]?.id || '';
                             }
                             await this.plugin.saveSettings();
-                            this.display();
+                            this.refreshSettingsView();
                         }
                     })
                 );
@@ -375,7 +500,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         this.app, this.plugin, existingNames,
                         async (name: string, description?: string) => {
                             await this.plugin.createStory(name, description);
-                            this.display();
+                            this.refreshSettingsView();
                         }
                     ).open();
                 })
@@ -393,51 +518,13 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                         await this.plugin.refreshStoryDiscovery();
                     } finally {
                         btn.setDisabled(false);
-                        this.display();
+                        this.refreshSettingsView();
                     }
                 })
             );
     }
 
     // ─── Tab: Dashboard ───────────────────────────────────────────────────────
-    /**
-     * Turn individual entity modal fields off. Hiding is presentation only: a
-     * hidden field keeps whatever the entity already has stored, so turning one
-     * back on shows the old value again.
-     */
-    private renderModalFieldsSection(container: HTMLElement): void {
-        new Setting(container)
-            .setName('Entity modal fields')
-            .setDesc('Turn off fields you never use so they stop crowding the create and edit dialogs. Hiding a field does not delete anything already stored in it.')
-            .setHeading();
-
-        for (const [entityType, fields] of Object.entries(MODAL_FIELD_SETS)) {
-            const label = entityType.charAt(0).toUpperCase() + entityType.slice(1);
-            new Setting(container).setName(`${label} modal`).setHeading();
-
-            let lastGroup: string | undefined;
-            for (const field of fields) {
-                if (field.group && field.group !== lastGroup) {
-                    container.createEl('p', { cls: 'setting-item-description', text: field.group });
-                    lastGroup = field.group;
-                }
-                new Setting(container)
-                    .setName(field.label)
-                    .addToggle(toggle => toggle
-                        .setValue(isModalFieldVisible(this.plugin.settings.hiddenModalFields, entityType, field.key))
-                        .onChange(async (visible) => {
-                            const hidden = { ...(this.plugin.settings.hiddenModalFields || {}) };
-                            const current = new Set(Array.isArray(hidden[entityType]) ? hidden[entityType] : []);
-                            if (visible) current.delete(field.key);
-                            else current.add(field.key);
-                            hidden[entityType] = Array.from(current);
-                            this.plugin.settings.hiddenModalFields = hidden;
-                            await this.plugin.saveSettings();
-                        })
-                    );
-            }
-        }
-    }
 
     private renderDashboardTab(container: HTMLElement): void {
         new Setting(container).setName('Writing goal').setHeading();
@@ -543,10 +630,13 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             { id: 'locations',    name: t('locations') },
             { id: 'events',       name: t('timeline') },
             { id: 'items',        name: t('items') },
+            { id: 'maps',         name: t('maps') },
             { id: 'network',      name: t('networkGraph') },
             { id: 'gallery',      name: t('gallery') },
             { id: 'groups',       name: t('groups') },
             { id: 'references',   name: t('references') },
+            { id: 'writing',      name: t('writing') },
+            { id: 'compile',      name: t('compile') },
             { id: 'chapters',     name: t('chapters') },
             { id: 'scenes',       name: t('scenes') },
             { id: 'cultures',     name: t('cultures') },
@@ -555,7 +645,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             { id: 'compendium',   name: 'Compendium' },
             { id: 'books',        name: 'Books' },
             { id: 'campaign',     name: 'Campaign' },
-            { id: 'templates',    name: t('templates') }
+            { id: 'templates',    name: t('templates') },
+            { id: 'analytics',    name: t('analytics') }
         ];
 
         availableTabs.forEach(tab => {
@@ -582,7 +673,291 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 );
         });
 
-        this.renderModalFieldsSection(container);
+    }
+
+    /**
+     * One toggle per body-section field of a type. On: the field is stored as a
+     * frontmatter property (Bases and Properties can query it). Off: a body section.
+     */
+    private renderSectionFieldToggles(container: HTMLElement, entityType: EntityType): void {
+        const fields = getConfigurableSectionFields(entityType);
+        if (fields.length === 0) return;
+        container.createEl('p', {
+            cls: 'setting-item-description',
+            text: 'Some text fields can be stored as a property instead of a "## Heading" section in the note body. ' +
+                'Notes already saved keep working either way: a property is read first and the section is used when the property is missing. ' +
+                'Turning a switch on moves the text into the property on the next save, and turning it off moves it back into the section on the next save.',
+        });
+        const configured = getFrontmatterSectionFields(this.plugin.settings.sectionFieldsInFrontmatter, entityType);
+        for (const { field, sectionName } of fields) {
+            new Setting(container)
+                .setName(`Store ${sectionName} as a property instead of a note section`)
+                .addToggle(toggle => toggle
+                    .setValue(configured.includes(field))
+                    .setTooltip(configured.includes(field) ? 'Stored as a property' : 'Stored as a section')
+                    .onChange(async (value) => {
+                        const current = getFrontmatterSectionFields(this.plugin.settings.sectionFieldsInFrontmatter, entityType);
+                        const next = value
+                            ? [...current.filter(name => name !== field), field]
+                            : current.filter(name => name !== field);
+                        const map = { ...(this.plugin.settings.sectionFieldsInFrontmatter ?? {}) };
+                        if (next.length > 0) map[entityType] = next;
+                        else delete map[entityType];
+                        this.plugin.settings.sectionFieldsInFrontmatter = map;
+                        // Remember fields switched off, so their property copies move back into
+                        // the body on save; hand-written properties on other fields are untouched.
+                        const released = { ...(this.plugin.settings.sectionFieldsReleasedToBody ?? {}) };
+                        const releasedForType = (released[entityType] ?? []).filter(name => name !== field);
+                        if (!value) releasedForType.push(field);
+                        if (releasedForType.length > 0) released[entityType] = releasedForType;
+                        else delete released[entityType];
+                        this.plugin.settings.sectionFieldsReleasedToBody = released;
+                        await this.plugin.saveSettings();
+                    })
+                );
+        }
+    }
+
+    // ─── Tab: Modals ──────────────────────────────────────────────────────────
+    private renderModalsTab(container: HTMLElement): void {
+        container.createEl('p', {
+            text: 'The entity modals ship with every field the plugin knows about. Switch off the ones your project does not use so the modal only asks for what you actually track.',
+            cls: 'setting-item-description'
+        });
+        container.createEl('p', {
+            text: 'Hiding a section only stops it being drawn. Nothing already saved is deleted, so turning a section back on brings its values with it.',
+            cls: 'setting-item-description'
+        });
+
+        for (const entityType of MODAL_CUSTOMIZABLE_ENTITY_TYPES) {
+            new Setting(container).setName(MODAL_ENTITY_LABELS[entityType]).setHeading();
+
+            let lastGroup: string | undefined;
+            for (const field of MODAL_FIELD_SETS[entityType] ?? []) {
+                if (field.group && field.group !== lastGroup) {
+                    container.createEl('p', { cls: 'setting-item-description', text: field.group });
+                    lastGroup = field.group;
+                }
+                const isVisible = isModalFieldVisible(
+                    this.plugin.settings.hiddenModalFields,
+                    entityType,
+                    field.key
+                );
+                new Setting(container)
+                    .setName(field.label)
+                    .setDesc(field.description ?? '')
+                    .addToggle(toggle => toggle
+                        .setValue(isVisible)
+                        .setTooltip(isVisible ? 'Shown' : 'Hidden')
+                        .onChange(async (shown) => {
+                            this.plugin.settings.hiddenModalFields = setModalFieldHidden(
+                                this.plugin.settings.hiddenModalFields,
+                                entityType,
+                                field.key,
+                                !shown
+                            );
+                            await this.plugin.saveSettings();
+                        })
+                    );
+            }
+
+            if (SECTION_FIELD_ENTITY_TYPES.includes(entityType)) {
+                this.renderSectionFieldToggles(container, entityType);
+            }
+
+            if (DEFAULT_CUSTOM_FIELD_ENTITY_TYPES.includes(entityType)) {
+                const defaults = this.plugin.settings.defaultCustomFields?.[entityType] ?? [];
+                const defaultsSetting = new Setting(container)
+                    .setName('Default custom fields')
+                    .setDesc('One field name per line, for example intent or parents. Every new ' +
+                        MODAL_ENTITY_LABELS[entityType].toLowerCase() +
+                        ' starts with these fields ready to fill in. Existing entities are left alone.')
+                    .addTextArea(text => {
+                        text.setPlaceholder('One field name per line')
+                            .setValue(defaults.join('\n'))
+                            .onChange(async (value) => {
+                                const check = checkDefaultCustomFieldNames(
+                                    entityType,
+                                    value.split('\n'),
+                                    this.plugin.getCustomFieldDefinitions(entityType),
+                                    this.plugin.getSectionFrontmatterFields(entityType)
+                                );
+                                for (const refused of check.rejected) {
+                                    new Notice(`Default field "${refused.name}" was not saved. ${refused.problem}`);
+                                }
+                                const names = check.accepted;
+                                const map = { ...(this.plugin.settings.defaultCustomFields ?? {}) };
+                                if (names.length > 0) map[entityType] = names;
+                                else delete map[entityType];
+                                this.plugin.settings.defaultCustomFields = map;
+                                await this.plugin.saveSettings();
+                            });
+                        text.inputEl.rows = 4;
+                    });
+                this.addInfoToggle(defaultsSetting,
+                    'Custom fields are written as ordinary frontmatter properties when "Custom fields mode" is set to flatten, ' +
+                    'which is the default. A field named intent becomes an intent: property on the note, editable from ' +
+                    'Obsidian\'s own Properties panel and queryable from Bases and Dataview.'
+                );
+            }
+        }
+
+        this.renderDefinedFieldsSettings(container);
+    }
+
+    /** Typed fields the entity modals ask for, per entity type (issue #138). */
+    private renderDefinedFieldsSettings(container: HTMLElement): void {
+        new Setting(container).setName('Defined fields').setHeading();
+        container.createEl('p', {
+            text: 'Ask for your own properties with the right input. Text, long text and number work as you expect. A list is comma separated. A link picks one note from the active story, and links picks several. Values are written as top-level properties, for example aliases with a list of names or parents with links. Long text keeps its line breaks in frontmatter, written as a multi-line YAML value. Clearing a field removes its property from the note.',
+            cls: 'setting-item-description'
+        });
+
+        const host = container.createDiv();
+        let selected: EntityType = 'character';
+        const render = (): void => {
+            host.empty();
+            new Setting(host)
+                .setName('Entity type')
+                .addDropdown(dropdown => {
+                    for (const option of DEFINED_FIELD_ENTITY_TYPES) {
+                        dropdown.addOption(option.value, option.label);
+                    }
+                    dropdown.setValue(selected).onChange(value => {
+                        selected = value as EntityType;
+                        render();
+                    });
+                });
+            this.renderDefinedFieldRows(host, selected, render);
+        };
+        render();
+    }
+
+    private renderDefinedFieldRows(host: HTMLElement, entityType: EntityType, rerender: () => void): void {
+        const current = (): CustomFieldDefinition[] =>
+            [...(this.plugin.settings.customFieldDefinitions?.[entityType] ?? [])];
+        const persist = async (next: CustomFieldDefinition[]): Promise<void> => {
+            const map = { ...(this.plugin.settings.customFieldDefinitions ?? {}) };
+            if (next.length > 0) map[entityType] = next;
+            else delete map[entityType];
+            this.plugin.settings.customFieldDefinitions = map;
+            await this.plugin.saveSettings();
+        };
+        const update = async (index: number, patch: Partial<CustomFieldDefinition>): Promise<void> => {
+            const next = current();
+            if (!next[index]) return;
+            next[index] = { ...next[index], ...patch };
+            await persist(next);
+            rerender();
+        };
+
+        const list = current();
+        if (list.length === 0) {
+            host.createEl('p', { cls: 'setting-item-description', text: 'No defined fields for this entity type yet.' });
+        }
+
+        list.forEach((definition, index) => {
+            const setting = new Setting(host).setName(`Field ${index + 1}`);
+
+            setting.addText(text => {
+                text.setPlaceholder('Property name')
+                    .setValue(definition.key)
+                    .onChange(async (value) => {
+                        const key = value.trim();
+                        const taken = current().filter((_, i) => i !== index).map(d => d.key);
+                        // Only a valid name is saved. The error is shown when the field is left.
+                        if (key !== '' && validateCustomFieldKey(key, entityType, taken) !== null) return;
+                        const next = current();
+                        if (!next[index]) return;
+                        next[index] = { ...next[index], key };
+                        await persist(next);
+                    });
+                text.inputEl.addEventListener('blur', () => {
+                    const key = (current()[index]?.key ?? '');
+                    const taken = current().filter((_, i) => i !== index).map(d => d.key);
+                    const error = validateCustomFieldKey(text.getValue().trim(), entityType, taken);
+                    if (error && text.getValue().trim() !== '') {
+                        new Notice(error);
+                        text.setValue(key);
+                    }
+                });
+            });
+
+            setting.addText(text => text
+                .setPlaceholder('Label (optional)')
+                .setValue(definition.label ?? '')
+                .onChange(async (value) => {
+                    const next = current();
+                    if (!next[index]) return;
+                    const edited: CustomFieldDefinition = { ...next[index] };
+                    delete edited.label;
+                    const label = value.trim();
+                    if (label) edited.label = label;
+                    next[index] = edited;
+                    await persist(next);
+                }));
+
+            setting.addDropdown(dropdown => {
+                for (const type of CUSTOM_FIELD_TYPES) {
+                    dropdown.addOption(type, CUSTOM_FIELD_TYPE_LABELS[type]);
+                }
+                dropdown.setValue(definition.type).onChange(async (value) => {
+                    const type = value as CustomFieldType;
+                    const patch: Partial<CustomFieldDefinition> = { type };
+                    if (isLinkFieldType(type) && !definition.target) patch.target = 'character';
+                    await update(index, patch);
+                });
+            });
+
+            if (isLinkFieldType(definition.type)) {
+                setting.addDropdown(dropdown => {
+                    for (const target of CUSTOM_FIELD_LINK_TARGETS) {
+                        dropdown.addOption(target.value, target.label);
+                    }
+                    dropdown.setValue(definition.target ?? 'character').onChange(async (value) => {
+                        await update(index, { target: value });
+                    });
+                });
+            }
+
+            setting.addExtraButton(button => button
+                .setIcon('arrow-up')
+                .setTooltip('Move up')
+                .setDisabled(index === 0)
+                .onClick(async () => {
+                    const next = current();
+                    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                    await persist(next);
+                    rerender();
+                }));
+            setting.addExtraButton(button => button
+                .setIcon('arrow-down')
+                .setTooltip('Move down')
+                .setDisabled(index === list.length - 1)
+                .onClick(async () => {
+                    const next = current();
+                    [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                    await persist(next);
+                    rerender();
+                }));
+            setting.addExtraButton(button => button
+                .setIcon('trash')
+                .setTooltip('Remove field')
+                .onClick(async () => {
+                    const next = current().filter((_, i) => i !== index);
+                    await persist(next);
+                    rerender();
+                }));
+        });
+
+        new Setting(host).addButton(button => button
+            .setButtonText('Add field')
+            .setIcon('plus')
+            .onClick(async () => {
+                // A blank row is kept until it is named, and ignored at runtime until then.
+                await persist([...current(), { key: '', type: 'text' }]);
+                rerender();
+            }));
     }
 
     // ─── Tab: Folders ─────────────────────────────────────────────────────────
@@ -616,6 +991,9 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                             this.plugin.settings.groupFolderPath,
                             this.plugin.settings.bookFolderPath,
                             this.plugin.settings.sessionsFolderPath,
+                            this.plugin.settings.eraFolderPath,
+                            this.plugin.settings.trackFolderPath,
+                            this.plugin.settings.branchFolderPath,
                         ];
                         const hasStoryPlaceholder = paths.some(p => (p || '').match(/\{story(Name|Slug|Id)\}/i));
                         if (hasStoryPlaceholder && !this.plugin.settings.activeStoryId) {
@@ -626,7 +1004,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                             await this.plugin.refreshCustomFolderDiscovery();
                         }
                     }
-                    this.display();
+                    this.refreshSettingsView();
                 })
             );
         this.addInfoToggle(customToggleSetting,
@@ -636,6 +1014,41 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         );
 
         if (this.plugin.settings.enableCustomEntityFolders) {
+            // These paths are global. Without a story placeholder every story writes
+            // into the same folders, so a second story silently lands on top of the
+            // first one's entities. Say so instead of letting it happen quietly.
+            const configuredPaths = [
+                this.plugin.settings.storyRootFolderTemplate,
+                this.plugin.settings.characterFolderPath,
+                this.plugin.settings.locationFolderPath,
+                this.plugin.settings.eventFolderPath,
+                this.plugin.settings.itemFolderPath,
+                this.plugin.settings.referenceFolderPath,
+                this.plugin.settings.chapterFolderPath,
+                this.plugin.settings.sceneFolderPath,
+                this.plugin.settings.mapFolderPath,
+                this.plugin.settings.cultureFolderPath,
+                this.plugin.settings.economyFolderPath,
+                this.plugin.settings.factionFolderPath,
+                this.plugin.settings.magicSystemFolderPath,
+                this.plugin.settings.groupFolderPath,
+                this.plugin.settings.bookFolderPath,
+                this.plugin.settings.sessionsFolderPath,
+                this.plugin.settings.eraFolderPath,
+                this.plugin.settings.trackFolderPath,
+                this.plugin.settings.branchFolderPath,
+            ].filter((p): p is string => Boolean(p && p.trim()));
+            const hasStoryPlaceholder = configuredPaths.some(p => /\{story(Name|Slug|Id)\}/i.test(p));
+            if (configuredPaths.length > 0 && !hasStoryPlaceholder && this.plugin.settings.stories.length > 1) {
+                const shared = container.createDiv({ cls: 'mod-warning sts-shared-folder-warning' });
+                shared.setText(
+                    'These folder paths contain no {storyName}, {storySlug}, or {storyId} placeholder, ' +
+                    'so all ' + this.plugin.settings.stories.length + ' of your stories read and write the same folders. ' +
+                    'Add a placeholder to a path (for example Stories/{storyName}/Characters), or set a folder ' +
+                    'layout on the individual story, to keep each story separate.'
+                );
+            }
+
             new Setting(container)
                 .setName(t('previewResolvedFolders'))
                 .setDesc(t('previewFoldersDesc'))
@@ -746,6 +1159,27 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 v => { this.plugin.settings.sessionsFolderPath = v; },
                 'e.g. MyWorld/Stories/{storyName}/Sessions'
             );
+            this.addFolderPathSetting(container,
+                'Eras folder',
+                'Custom folder path for timeline era files. Supports {storyName}, {storySlug}, {storyId}.',
+                () => this.plugin.settings.eraFolderPath || '',
+                v => { this.plugin.settings.eraFolderPath = v; },
+                'e.g. MyWorld/Stories/{storyName}/Eras'
+            );
+            this.addFolderPathSetting(container,
+                'Tracks folder',
+                'Custom folder path for timeline track files. Supports {storyName}, {storySlug}, {storyId}.',
+                () => this.plugin.settings.trackFolderPath || '',
+                v => { this.plugin.settings.trackFolderPath = v; },
+                'e.g. MyWorld/Stories/{storyName}/Tracks'
+            );
+            this.addFolderPathSetting(container,
+                'Branches folder',
+                'Custom folder path for timeline branch files. Supports {storyName}, {storySlug}, {storyId}.',
+                () => this.plugin.settings.branchFolderPath || '',
+                v => { this.plugin.settings.branchFolderPath = v; },
+                'e.g. MyWorld/Stories/{storyName}/Branches'
+            );
         }
 
         // ── One Story Mode ──
@@ -760,7 +1194,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     this.plugin.settings.enableOneStoryMode = value;
                     await this.plugin.saveSettings();
                     if (value) await this.plugin.initializeOneStoryModeIfNeeded();
-                    this.display();
+                    this.refreshSettingsView();
                 })
             );
         this.addInfoToggle(oneStoryModeSetting,
@@ -817,7 +1251,103 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
 
     // ─── Tab: Timeline ────────────────────────────────────────────────────────
     private renderTimelineTab(container: HTMLElement): void {
+        this.renderTimelineStorageSection(container);
+
         new Setting(container).setName(t('timelineAndParsing')).setHeading();
+
+        const calendarRegistry = new CalendarRegistry(this.plugin);
+        const activeCalendar = calendarRegistry.getActiveCalendar();
+        const activeTheme = calendarRegistry.getActiveTheme();
+
+        new Setting(container)
+            .setName('Dating system')
+            .setDesc('Calendar used to parse and display dates for the active story. Use manage calendars to create or edit one.')
+            .addDropdown(dropdown => {
+                calendarRegistry.listCalendars().forEach(calendar => dropdown.addOption(calendar.id, calendar.name));
+                dropdown.setValue(activeCalendar.id).onChange(async id => {
+                    await calendarRegistry.setActiveCalendar(id);
+                    new Notice(`Dating system changed to ${calendarRegistry.getActiveCalendar().name}`);
+                });
+            })
+            .addButton(button => button
+                .setButtonText('Manage calendars')
+                .setTooltip('Create, edit, duplicate, or delete dating systems')
+                .onClick(() => {
+                    new CalendarManagerModal(this.app, this.plugin, () => this.refreshSettingsView()).open();
+                }))
+            .addExtraButton(button => button.setIcon('copy').setTooltip('Copy calendar share code').onClick(() => { void (async () => {
+                await navigator.clipboard.writeText(encodeShareCode(makeCalendarDocument(calendarRegistry.getActiveCalendar())));
+                new Notice('Calendar share code copied');
+            })(); }));
+
+        new Setting(container)
+            .setName('Timeline theme')
+            .setDesc('Colours, lane palette, font, shapes and background image of the timeline for this story. Also available from the timeline toolbar.')
+            .addDropdown(dropdown => {
+                calendarRegistry.listThemes().forEach(theme => dropdown.addOption(theme.id, theme.name));
+                dropdown.setValue(activeTheme.id).onChange(async id => {
+                    await calendarRegistry.setActiveTheme(id);
+                    new Notice(`Timeline theme changed to ${calendarRegistry.getActiveTheme().name}`);
+                });
+            })
+            .addButton(button => button
+                .setButtonText('Manage themes')
+                .setTooltip('Create, edit, duplicate, or delete timeline themes')
+                .onClick(() => {
+                    new TimelineThemeManagerModal(this.app, this.plugin, () => this.refreshSettingsView()).open();
+                }))
+            .addExtraButton(button => button.setIcon('pencil').setTooltip('Edit this theme').onClick(() => {
+                openActiveTimelineThemeEditor(this.app, this.plugin, () => this.refreshSettingsView());
+            }))
+            .addExtraButton(button => button.setIcon('copy').setTooltip('Copy timeline theme share code').onClick(() => { void (async () => {
+                await navigator.clipboard.writeText(encodeShareCode(makeThemeDocument(calendarRegistry.getActiveTheme())));
+                new Notice('Timeline theme share code copied');
+            })(); }));
+
+        const activeStory = this.plugin.getActiveStory();
+        if (activeStory) {
+            const inherited = this.plugin.settings.customTodayISO?.trim();
+            new Setting(container)
+                .setName('Today for this story')
+                .setDesc(`Where the now marker sits and what "Jump to today" and relative dates count from in ${activeStory.name}. Type a date in the story's dating system, an ISO date or a BCE year. Leave blank to use ${inherited ? `the default custom today (${inherited})` : 'the system date'}. Also available from the timeline's zoom menu.`)
+                .addText(text => {
+                    text.setPlaceholder(inherited || 'System date')
+                        .setValue(activeStory.customToday || '')
+                        .onChange(async (value) => {
+                            await this.plugin.setStoryToday(activeStory.id, value);
+                        });
+                    // Checked once the field is left, not per keystroke: "2026-0" is unreadable on the way to a good date.
+                    text.inputEl.addEventListener('blur', () => {
+                        const problem = todayTextProblem(text.getValue(), activeCalendar);
+                        if (problem) new Notice(`${problem} Until it is fixed, this story uses the default today.`);
+                    });
+                })
+                .addExtraButton(btn => btn
+                    .setIcon('reset')
+                    .setTooltip('Use the default today')
+                    .onClick(async () => {
+                        await this.plugin.setStoryToday(activeStory.id, undefined);
+                        this.refreshSettingsView();
+                    }));
+        }
+
+        let portableImport = '';
+        new Setting(container)
+            .setName('Import dating system or timeline theme')
+            .setDesc('Paste a .storycal.json/.storytl.json document or Storyteller share code, or import the file directly.')
+            .addTextArea(text => text.setPlaceholder('Storyteller:cal:1:...').onChange(value => { portableImport = value; }))
+            .addButton(button => button.setButtonText('Import').setCta().onClick(async () => {
+                try {
+                    const imported = await calendarRegistry.importText(portableImport, 'copy');
+                    new Notice(imported.kind === 'storyteller-calendar' ? 'Dating system imported' : 'Timeline theme imported');
+                    this.refreshSettingsView();
+                } catch (error) {
+                    new Notice(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
+                }
+            }))
+            .addButton(button => button.setButtonText('Import from file…').setTooltip('Choose a .storytl.json or .storycal.json file').onClick(async () => {
+                if (await importPortableFile(calendarRegistry)) this.refreshSettingsView();
+            }));
 
         const cfSetting = new Setting(container)
             .setName(t('customFieldsSerialization'))
@@ -852,8 +1382,14 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .setPlaceholder(t('customTodayPh'))
                 .setValue(this.plugin.settings.customTodayISO || '')
                 .onChange(async (value) => {
-                    this.plugin.settings.customTodayISO = value.trim() || undefined;
+                    const trimmed = value.trim();
+                    this.plugin.settings.customTodayISO = trimmed || undefined;
                     await this.plugin.saveSettings();
+                    // Say so when the value cannot be read, rather than silently using the system clock.
+                    if (trimmed && !parseReferenceDate(trimmed)) {
+                        new Notice(`Could not read "${trimmed}" as a date. Use a form such as 2026-03-15, 44 BCE or -0044-03-15. Today is the system date until this is fixed.`);
+                    }
+                    this.plugin.refreshTimelineViews();
                 }))
             .addExtraButton(btn => btn
                 .setIcon('reset')
@@ -861,7 +1397,8 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onClick(async () => {
                     this.plugin.settings.customTodayISO = undefined;
                     await this.plugin.saveSettings();
-                    this.display();
+                    this.plugin.refreshTimelineViews();
+                    this.refreshSettingsView();
                 }));
 
         // Timeline defaults
@@ -870,10 +1407,10 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         new Setting(container)
             .setName(t('defaultTimelineGrouping'))
             .addDropdown(dd => dd
-                .addOptions({ none: t('noGrouping'), location: t('byLocation'), group: t('byGroup'), character: t('byCharacter') })
+                .addOptions({ none: t('noGrouping'), location: t('byLocation'), group: t('byGroup'), character: t('byCharacter'), track: 'By Track', item: 'By Item', culture: 'By Culture', magicSystem: 'By Magic System' })
                 .setValue(this.plugin.settings.defaultTimelineGroupMode || 'none')
                 .onChange(async (v) => {
-                    this.plugin.settings.defaultTimelineGroupMode = v as 'none' | 'location' | 'group' | 'character';
+                    this.plugin.settings.defaultTimelineGroupMode = v as TimelineGroupMode;
                     await this.plugin.saveSettings();
                 }));
 
@@ -984,6 +1521,126 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             'Alternative to the watch property: tag any note with this tag (e.g. #timeline) ' +
             'and give it a "date" frontmatter field to include it on the timeline.'
         );
+
+        this.renderTimelineIconSettings(container);
+    }
+
+    /** Timeline icons: which frontmatter keys hold an event or scene icon, and what the timeline shows. */
+    private renderTimelineIconSettings(container: HTMLElement): void {
+        new Setting(container).setName('Timeline icons').setHeading();
+
+        let colorText: TextComponent | undefined;
+        const iconSetting = new Setting(container)
+            .setName('Icon property')
+            .setDesc('Frontmatter key that holds an event or scene icon. Changing it does not rewrite existing notes; the plugin reads and writes the new key from then on.');
+        const errorEl = iconSetting.descEl.createDiv({ cls: 'mod-warning' });
+        errorEl.style.display = 'none';
+        iconSetting.addText(text => text
+            .setPlaceholder('icon')
+            .setValue(this.plugin.settings.timelineIconProperty || 'icon')
+            .onChange(async (v) => {
+                const value = v.trim() || 'icon';
+                if (!isSafeFrontmatterKey(value)) {
+                    errorEl.setText('Use letters, digits, "-" or "_", starting with a letter. Core entity keys such as "name" are not allowed.');
+                    errorEl.style.display = '';
+                    return;
+                }
+                errorEl.style.display = 'none';
+                this.plugin.settings.timelineIconProperty = value;
+                colorText?.setPlaceholder(iconColorKey(value));
+                await this.plugin.saveSettings();
+            }));
+
+        new Setting(container)
+            .setName('Icon colour property')
+            .setDesc('Frontmatter key that holds the icon colour. Leave empty to use the icon property name with "Color" added.')
+            .addText(text => {
+                colorText = text;
+                text
+                    .setPlaceholder(iconColorKey(this.plugin.settings.timelineIconProperty || 'icon'))
+                    .setValue(this.plugin.settings.timelineIconColorProperty || '')
+                    .onChange(async (v) => {
+                        const value = v.trim();
+                        if (value && !isSafeFrontmatterKey(value)) return;
+                        this.plugin.settings.timelineIconColorProperty = value;
+                        await this.plugin.saveSettings();
+                    });
+            });
+
+        new Setting(container)
+            .setName('Show icons on timelines')
+            .setDesc('Draw each event or scene icon on the timeline. When off, markers are plain dots.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.timelineShowIcons ?? true)
+                .onChange(async (v) => {
+                    this.plugin.settings.timelineShowIcons = v;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshTimelineViews();
+                }));
+
+        new Setting(container)
+            .setName('Use the cover image when there is no icon')
+            .setDesc('Show the cover image as a round thumbnail for events and scenes that have no icon.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.timelineUseCoverImage ?? true)
+                .onChange(async (v) => {
+                    this.plugin.settings.timelineUseCoverImage = v;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshTimelineViews();
+                }));
+    }
+
+    // ─── Timeline storage section ─────────────────────────────────────────────
+
+    /**
+     * Where eras, tracks and branches are kept, and the button that moves them.
+     *
+     * A vault with more than one story cannot be migrated without being asked
+     * which story adopts the unlabelled rows, so the move has to be triggered
+     * by hand. This is that trigger somewhere a user will actually find it,
+     * rather than only in the command palette.
+     */
+    private renderTimelineStorageSection(container: HTMLElement): void {
+        const plugin = this.plugin;
+        const pending = plugin.unmigratedTimelineCounts();
+        const migrated = plugin.timelineEntities.migrated;
+
+        if (!migrated && pending.total === 0) return;
+
+        new Setting(container).setName('Timeline storage').setHeading();
+
+        if (migrated) {
+            const setting = new Setting(container)
+                .setName('Eras, tracks and branches are notes')
+                .setDesc('They live in your story folders alongside characters and locations.');
+            if (plugin.settings.timelineEntityBackup) {
+                setting.addButton(button => button
+                    .setButtonText('Undo migration')
+                    .onClick(() => { void plugin.rollbackTimelineEntityMigration(() => this.display()); }));
+            }
+            return;
+        }
+
+        const parts: string[] = [];
+        if (pending.eras) parts.push(`${pending.eras} era${pending.eras === 1 ? '' : 's'}`);
+        if (pending.tracks) parts.push(`${pending.tracks} track${pending.tracks === 1 ? '' : 's'}`);
+        if (pending.branches) parts.push(`${pending.branches} branch${pending.branches === 1 ? '' : 'es'}`);
+
+        const hasStory = plugin.settings.stories.length > 0;
+        const desc =
+            `${parts.join(', ')} waiting to move into your story folders.` +
+            (hasStory ? '' : ' Create a story first: notes need a story folder to live in.');
+
+        const setting = new Setting(container)
+            .setName('Eras, tracks and branches are still in plugin settings')
+            .setDesc(desc);
+
+        if (hasStory) {
+            setting.addButton(button => button
+                .setButtonText('Move into notes')
+                .setCta()
+                .onClick(() => plugin.openTimelineEntityMigration(() => this.display())));
+        }
     }
 
     // ─── Tab: Maps ────────────────────────────────────────────────────────────
@@ -1087,9 +1744,62 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                     this.plugin.settings.tiling.showProgressNotifications = value;
                     await this.plugin.saveSettings();
                 }));
+        this.renderMapDrawingSettings(container);
     }
 
     // ─── Tab: Templates ───────────────────────────────────────────────────────
+
+    /** Map Ink defaults for new drawing, and the presets saved from the inspector. */
+    private renderMapDrawingSettings(container: HTMLElement): void {
+        new Setting(container).setName('Map drawing').setHeading();
+
+        new Setting(container)
+            .setName('Scale new items with the map')
+            .setDesc('New items grow and shrink with the map, like ink on paper. Turn this off for icons that should keep their size on screen. Each item can still change this.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.inkScaleWithMap !== false)
+                .onChange(async (value) => {
+                    this.plugin.settings.inkScaleWithMap = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(container)
+            .setName('Default text font')
+            .setDesc('The font for new text. Applies to maps opened after the change.')
+            .addDropdown(dropdown => dropdown
+                .addOptions({ serif: 'Serif', sans: 'Sans serif', hand: 'Handwritten', mono: 'Monospace' })
+                .setValue(this.plugin.settings.inkTextFont ?? 'serif')
+                .onChange(async (value) => {
+                    this.plugin.settings.inkTextFont = value as 'serif' | 'sans' | 'hand' | 'mono';
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(container).setName('Saved presets').setHeading();
+        const presets = this.plugin.settings.inkPresets ?? [];
+        if (presets.length === 0) {
+            new Setting(container)
+                .setName('No saved presets yet')
+                .setDesc('Select an item on a map, open the Map drawing inspector, and save its style as a preset. Presets are listed here.');
+        }
+        for (const preset of presets) {
+            const fit = preset.fits === 'path' ? 'lines' : preset.fits === 'area' ? 'areas' : preset.fits === 'text' ? 'text' : 'stamps';
+            new Setting(container)
+                .setName(preset.name)
+                .setDesc(`For ${fit}`)
+                .addButton(button => button
+                    .setIcon('trash')
+                    .setTooltip(`Delete preset ${preset.name}`)
+                    .onClick(async () => {
+                        // Remove in place, so the settings keep the same array.
+                        const list = this.plugin.settings.inkPresets;
+                        const index = list.findIndex(existing => existing.id === preset.id);
+                        if (index >= 0) list.splice(index, 1);
+                        await this.plugin.saveSettings();
+                        this.display();
+                    }));
+        }
+    }
+
     private renderTemplatesTab(container: HTMLElement): void {
         new Setting(container).setName(t('defaultTemplates')).setHeading();
 
@@ -1267,7 +1977,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onChange(async (value) => {
                     this.plugin.settings.galleryScopeMode = value as 'vault' | 'book';
                     await this.plugin.saveSettings();
-                    this.display();
+                    this.refreshSettingsView();
                 }));
 
         if ((this.plugin.settings.galleryScopeMode ?? 'vault') === 'book') {
@@ -1361,7 +2071,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
                 .onChange(async (value) => {
                     this.plugin.settings.showTutorial = value;
                     await this.plugin.saveSettings();
-                    this.display();
+                    this.refreshSettingsView();
                 }));
 
         if (this.plugin.settings.showTutorial) {

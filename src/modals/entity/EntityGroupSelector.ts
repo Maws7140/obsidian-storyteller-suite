@@ -79,8 +79,11 @@ export class EntityGroupSelector {
         this.containerEl.empty();
         const allGroups = this.plugin.getGroups();
         if (allGroups.length === 0) {
+            const totalGroups = (this.plugin.settings.groups ?? []).length;
             this.containerEl.createEl('p', {
-                text: 'No groups available. Create groups in the groups section.'
+                text: totalGroups > 0
+                    ? `No groups in this story. ${totalGroups} group${totalGroups === 1 ? '' : 's'} belong${totalGroups === 1 ? 's' : ''} to other stories — switch stories or fix their story id to use them here.`
+                    : 'No groups available. Create groups in the groups section.'
             });
             return;
         }
@@ -111,7 +114,12 @@ export class EntityGroupSelector {
             .filter(group => this.selectedGroupIds.has(group.id))
             .forEach(group => {
                 const tag = selectedDiv.createSpan({ text: group.name, cls: 'group-tag' });
-                const removeBtn = tag.createSpan({ text: ' x', cls: 'remove-group-btn' });
+                // A real button: reachable by keyboard and named for screen readers.
+                const removeBtn = tag.createEl('button', {
+                    text: '×',
+                    cls: 'remove-group-btn',
+                    attr: { type: 'button', 'aria-label': `Remove ${group.name}`, title: `Remove ${group.name}` },
+                });
                 removeBtn.onclick = () => {
                     void this.removeGroup(group.id);
                 };

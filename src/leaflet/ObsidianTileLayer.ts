@@ -80,6 +80,26 @@ export class ObsidianTileLayer extends L.TileLayer {
     }
 
     /**
+     * Leaflet's redraw() sets the tile zoom to the map zoom without rounding it. With
+     * zoomSnap 0 the map zoom is fractional (a board that fits at 2.27), so every redraw
+     * asked for tiles at a zoom that has none and the map went blank until the next zoom.
+     * _setView rounds the tile zoom like every other Leaflet path, so rebuild through it.
+     */
+    redraw(): this {
+        const self = this as unknown as {
+            _map?: L.Map;
+            _removeAllTiles: () => void;
+            _tileZoom?: number;
+            _setView: (center: L.LatLng, zoom: number) => void;
+        };
+        if (!self._map) return this;
+        self._removeAllTiles();
+        self._tileZoom = undefined;
+        self._setView(self._map.getCenter(), self._map.getZoom());
+        return this;
+    }
+
+    /**
      * Check if a tile exists in the vault
      * Can be used by Leaflet for tile existence checks
      *

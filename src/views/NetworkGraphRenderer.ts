@@ -3,15 +3,46 @@
 
 import cytoscape, { Core, NodeSingular, EdgeSingular, LayoutOptions } from 'cytoscape';
 import StorytellerSuitePlugin from '../main';
-import { GraphFilters, GraphNode, GraphEdge, Character, Location, Event, PlotItem, Culture, Economy, MagicSystem } from '../types';
+import { GraphFilters, GraphNode, GraphEdge, Character, Location, Event, PlotItem, Culture, Economy, MagicSystem, Group, RelationshipType } from '../types';
 
 type NodeEntityData = Character | Location | Event | PlotItem | Culture | Economy | MagicSystem;
 import { 
     extractAllRelationships, 
     buildBidirectionalEdges,
-    filterRedundantReciprocalEdges
+    filterRedundantReciprocalEdges,
+    withImpliedInverseEdges,
+    buildCytoscapeElements,
+    getRelationshipColor,
+    GROUP_MEMBERSHIP_LABEL
 } from '../utils/GraphUtils';
-import { TFile } from 'obsidian';
+import { RELATIONSHIP_KINDS } from '../utils/RelationshipKinds';
+import { EventRef, TFile, setIcon } from 'obsidian';
+import { CalendarRegistry, onTimelineThemeChange } from '../calendar/CalendarRegistry';
+import {
+    TIMELINE_THEME_VARIABLES,
+    resolveTimelineStyle,
+    splitColorAlpha,
+    themeCssVariables,
+} from '../utils/TimelineStyle';
+import type { ResolvedTimelineStyle, TimelineColorRole } from '../utils/TimelineStyle';
+import {
+    GRAPH_DECEASED_COLOR,
+    GRAPH_TYPE_STYLES,
+    buildGraphLegend,
+    graphColorKey,
+    sanitizeGraphDisplay,
+    spacingFor,
+} from '../utils/GraphAppearance';
+import type { GraphColorContext, GraphDisplayOptions, GraphEntityFields, GraphLayoutName, GraphLegendEntry } from '../utils/GraphAppearance';
+import type { CytoscapeElement } from '../utils/GraphUtils';
+
+/** Display options whose change means the elements themselves must be rebuilt. */
+const DATA_OPTIONS: Array<keyof GraphDisplayOptions> = ['showImages', 'showEnded', 'showImplied', 'showMembership', 'showIsolated'];
+
+/** Default zoom floor; lowered per graph when every node would not otherwise fit. */
+const GRAPH_MIN_ZOOM = 0.2;
+/** Space kept around the nodes when the graph is fitted to the view. */
+const GRAPH_FIT_PADDING = 80;
 
 export class NetworkGraphRenderer {
     private containerEl: HTMLElement;
@@ -19,12 +50,26 @@ export class NetworkGraphRenderer {
     private cy: Core | null = null;
     private canvasEl: HTMLElement | null = null;
     private currentFilters: GraphFilters = {
-        entityTypes: ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem']
+        entityTypes: ['character', 'location', 'event', 'item', 'culture', 'economy', 'magicsystem', 'group']
     };
     private infoPanelEl: HTMLElement | null = null; // Fixed info panel instead of tooltip
     private pinnedNodes: Set<string> = new Set();
-    private currentLayout: 'cose' | 'circle' | 'grid' | 'concentric' = 'cose';
-    private showAllEdgeLabels = false; // Toggle for showing all edge labels
+    private display: GraphDisplayOptions;
+    private style: ResolvedTimelineStyle = resolveTimelineStyle(() => '', { id: 'none', name: 'none' });
+    private palette: string[] = [];
+    private appliedThemeVariables = '';
+    private backdropEl: HTMLElement | null = null;
+    private colorProbe: CanvasRenderingContext2D | null = null;
+    private lookups: Omit<GraphColorContext, 'palette'> = {
+        group: () => undefined,
+        locationName: value => value,
+        cultureName: value => value,
+    };
+    /** Legend entries the user clicked to hide. Hidden with a class, so nothing is rebuilt. */
+    private hiddenLegendKeys: Set<string> = new Set();
+    private legendBodyEl: HTMLElement | null = null;
+    private unsubscribeTheme: (() => void) | null = null;
+    private cssChangeRef: EventRef | null = null;
     private infoPanelTimeout: number | null = null; // Delay before updating info panel
     private saveViewportTimeout: number | null = null; // Debounce for saving viewport state
     private legendVisible = false; // Toggle for showing/hiding legend
@@ -39,6 +84,7 @@ export class NetworkGraphRenderer {
         this.plugin = plugin;
         this.isModal = isModal;
         this.allowWheelZoom = allowWheelZoom;
+        this.display = sanitizeGraphDisplay(plugin.settings.networkGraphDisplay);
     }
 
     private setParsedHtml(container: HTMLElement, html: string): void {
@@ -48,45 +94,6 @@ export class NetworkGraphRenderer {
         for (const node of Array.from(parsed.body.childNodes)) {
             container.appendChild(activeDocument.importNode(node, true));
         }
-    }
-
-    // Resolve CSS custom property to actual color value
-    // Cytoscape.js doesn't support CSS variables, so we need to compute them
-    private getCSSVariable(varName: string): string {
-        const style = getComputedStyle(activeDocument.body);
-        let value = style.getPropertyValue(varName).trim();
-
-        // Fallback values if CSS variable is not found or invalid
-        const fallbacks: Record<string, string> = {
-            '--background-modifier-border': '#3e3e3e',
-            '--interactive-accent': '#7952b3',
-            '--interactive-accent-hover': '#9a7bcc',
-            '--font-interface': 'sans-serif'
-        };
-
-        // Special handling for font-family
-        if (varName === '--font-interface' && value) {
-            // Remove invalid characters like '??' and clean up the font stack
-            value = value
-                .replace(/['"]?\?\?['"]?/g, '') // Remove ?? characters
-                .replace(/,\s*,/g, ',') // Remove double commas
-                .replace(/^,\s*/, '') // Remove leading comma
-                .replace(/\s*,\s*$/, '') // Remove trailing comma
-                .trim();
-
-            // If the cleaned value is empty or invalid, use fallback
-            if (!value || value === ',') {
-                value = fallbacks[varName] || 'sans-serif';
-            }
-        }
-
-        // Special handling for colors with calc() or invalid HSL
-        // Cytoscape doesn't support calc() in any CSS value, so use fallback
-        if (value && value.includes('calc(')) {
-            value = fallbacks[varName] || '#808080';
-        }
-
-        return value || fallbacks[varName] || '#808080';
     }
 
     // Convert vault image path to usable URL for display
@@ -122,6 +129,10 @@ export class NetworkGraphRenderer {
         const cultures = await this.plugin.listCultures();
         const economies = await this.plugin.listEconomies();
         const magicSystems = await this.plugin.listMagicSystems();
+        const showGroups = !this.currentFilters.entityTypes || this.currentFilters.entityTypes.includes('group');
+        const allGroups = this.plugin.getGroups();
+        const groups: Group[] = showGroups ? allGroups : [];
+        this.lookups = this.buildLookups(allGroups, locations, cultures);
 
         // Apply filters
         const filteredData = this.applyFiltersToEntities(
@@ -184,8 +195,18 @@ export class NetworkGraphRenderer {
                 type: 'magicsystem' as const,
                 data: m,
                 imageUrl: m.profileImagePath ? this.getImageSrc(m.profileImagePath) : undefined
+            })),
+            ...groups.map(g => ({
+                id: g.id || g.name,
+                label: g.name,
+                type: 'group' as const,
+                data: g,
+                imageUrl: g.profileImagePath ? this.getImageSrc(g.profileImagePath) : undefined
             }))
         ];
+
+        // With images off every node shows its colour, so "Colour by" reads on portraits too
+        if (!this.display.showImages) nodes.forEach(node => { node.imageUrl = undefined; });
 
         // Extract all relationships and build edges
         let edges = extractAllRelationships(
@@ -195,7 +216,8 @@ export class NetworkGraphRenderer {
             filteredData.items,
             filteredData.cultures,
             filteredData.economies,
-            filteredData.magicSystems
+            filteredData.magicSystems,
+            groups
         );
 
         // Build bidirectional edges for certain relationship types
@@ -210,10 +232,13 @@ export class NetworkGraphRenderer {
         // Filter out redundant reciprocal edges (e.g., "owns"/"owned by", "involved"/"involved")
         edges = filterRedundantReciprocalEdges(edges, entityMap);
 
+        // Draw the inverse of stored parent/child relationships (dotted, marked implied)
+        edges = withImpliedInverseEdges(edges);
+
         // Final deduplication pass to ensure no duplicates
         const edgeMap = new Map<string, GraphEdge>();
         edges.forEach(edge => {
-            const edgeKey = `${edge.source}-${edge.target}-${edge.relationshipType}-${edge.label || ''}`;
+            const edgeKey = `${edge.source}|${edge.target}|${edge.relationshipType}|${edge.label || ''}|${edge.ended ? 'ended' : ''}|${edge.implied ? 'implied' : ''}`;
             if (!edgeMap.has(edgeKey)) {
                 edgeMap.set(edgeKey, edge);
             }
@@ -221,6 +246,66 @@ export class NetworkGraphRenderer {
         edges = Array.from(edgeMap.values());
 
         return { nodes, edges };
+    }
+
+    /** Name and colour lookups for "Colour by", indexed by id and by name. */
+    private buildLookups(groups: Group[], locations: Location[], cultures: Culture[]): Omit<GraphColorContext, 'palette'> {
+        const index = <T extends { id?: string; name: string }>(values: T[]) => {
+            const map = new Map<string, T>();
+            values.forEach(value => {
+                map.set(value.name, value);
+                if (value.id) map.set(value.id, value);
+            });
+            return map;
+        };
+        const groupIndex = index(groups);
+        const locationIndex = index(locations);
+        const cultureIndex = index(cultures);
+        return {
+            group: value => groupIndex.get(value),
+            locationName: value => locationIndex.get(value)?.name || value,
+            cultureName: value => cultureIndex.get(value)?.name || value,
+        };
+    }
+
+    /**
+     * Cytoscape elements for the nodes and edges, with the display options
+     * applied: hidden kinds of line dropped, unconnected entities dropped
+     * when asked, and every node given the colour its "Colour by" key has.
+     */
+    private toElements(nodes: GraphNode[], edges: GraphEdge[]): CytoscapeElement[] {
+        const d = this.display;
+        const shownEdges = edges.filter(edge =>
+            (d.showEnded || !edge.ended)
+            && (d.showImplied || !edge.implied)
+            && (d.showMembership || edge.label !== GROUP_MEMBERSHIP_LABEL));
+        let elements = buildCytoscapeElements(nodes, shownEdges);
+        if (!d.showIsolated) {
+            elements = elements.filter(element => element.data.source !== undefined || ((element.data.degree as number) || 0) > 0);
+        }
+        elements.forEach(element => {
+            if (element.data.source === undefined) Object.assign(element.data, this.nodeColor(element.data));
+        });
+        return elements;
+    }
+
+    private nodeColor(data: Record<string, unknown>): Record<string, unknown> {
+        const key = graphColorKey({
+            id: data.id as string,
+            label: (data.label as string) || '',
+            type: data.type as GraphNode['type'],
+            degree: (data.degree as number) || 0,
+            data: data.entityData || {},
+        }, this.display.colorMode, { ...this.lookups, palette: this.palette });
+        return { color: key.color, colorKey: key.key, colorLabel: key.label, colorOrder: key.order ?? 0 };
+    }
+
+    /** Re-colour the nodes on screen in place, without a new layout. */
+    private recolorNodes(): void {
+        if (!this.cy) return;
+        this.cy.batch(() => {
+            this.cy!.nodes().forEach(node => { node.data(this.nodeColor(node.data() as Record<string, unknown>)); });
+        });
     }
 
     // Apply filters to entities
@@ -306,10 +391,13 @@ export class NetworkGraphRenderer {
         const maxHeight = 'calc(90vh - 250px)'; // Account for filters and controls
         this.canvasEl.setCssStyles({ height: maxHeight });
         this.canvasEl.setCssStyles({ minHeight: minHeight });
-        this.canvasEl.setCssStyles({ backgroundColor: 'var(--background-primary)' });
-        this.canvasEl.setCssStyles({ border: '1px solid var(--background-modifier-border)' });
         this.canvasEl.setCssStyles({ borderRadius: '8px' });
         this.canvasEl.setCssStyles({ position: 'relative' });
+        // Under Cytoscape's own layer, so the theme's background image sits behind the graph
+        this.backdropEl = this.canvasEl.createDiv('storyteller-network-backdrop');
+
+        // The story's timeline theme: colours, palette, font and background
+        this.refreshStyle();
 
         // Build graph data
         const { nodes, edges } = await this.buildGraphData();
@@ -317,56 +405,30 @@ export class NetworkGraphRenderer {
         // Remove loading state
         loadingEl.remove();
 
-        // Check for empty state
-        if (nodes.length === 0) {
-            this.renderEmptyState();
-            return;
-        }
-
-        // Calculate node degrees for dynamic sizing and visual hierarchy
-        const nodeDegrees = new Map<string, number>();
-        nodes.forEach(node => nodeDegrees.set(node.id, 0));
-        edges.forEach(edge => {
-            nodeDegrees.set(edge.source, (nodeDegrees.get(edge.source) || 0) + 1);
-            nodeDegrees.set(edge.target, (nodeDegrees.get(edge.target) || 0) + 1);
-        });
-
-        // Convert to cytoscape format with degree data
-        const elements = [
-            ...nodes.map(node => ({
-                data: {
-                    id: node.id,
-                    label: node.label,
-                    type: node.type,
-                    entityData: node.data,
-                    imageUrl: node.imageUrl,
-                    degree: nodeDegrees.get(node.id) || 0
-                }
-            })),
-            ...edges.map(edge => ({
-                data: {
-                    id: `${edge.source}-${edge.target}-${edge.relationshipType}-${edge.label || ''}`,
-                    source: edge.source,
-                    target: edge.target,
-                    relationshipType: edge.relationshipType,
-                    label: edge.label
-                }
-            }))
-        ];
+        // Degrees, R-Map flags, ids and colours are computed in one place for initial render and refresh
+        const elements = this.toElements(nodes, edges);
 
         // Initialize cytoscape
         this.cy = cytoscape({
             container: this.canvasEl,
             elements: elements,
             style: this.getCytoscapeStyle() as unknown as cytoscape.StylesheetStyle[],
-            layout: this.getLayoutOptions('cose'),
-            minZoom: 0.2,
+            layout: this.getLayoutOptions(this.display.layout),
+            minZoom: GRAPH_MIN_ZOOM,
             maxZoom: 4,
             userZoomingEnabled: this.allowWheelZoom
         });
+        // Registered before the one-off initial-zoom handler below, so it runs first.
+        this.cy.on('layoutstop', () => this.allowZoomToFitAll());
 
         if (!this.allowWheelZoom) {
             this.cy.userZoomingEnabled(false);
+        }
+
+        // The instance always exists so that refresh() can draw nodes added later;
+        // the empty-state message sits over it while there is nothing to draw.
+        if (nodes.length === 0) {
+            this.renderEmptyState();
         }
 
         // Apply initial zoom adjustment after layout completes
@@ -399,18 +461,133 @@ export class NetworkGraphRenderer {
         
         // Create legend panel
         this.createLegendPanel();
-        
+        this.renderLegend();
+        if (this.display.legendVisible) this.showLegend();
+
         // Add event listeners (after panels are created)
         this.setupEventListeners();
+
+        // Restyle when the story's theme changes, or Obsidian switches light and dark
+        this.unsubscribeTheme = onTimelineThemeChange(() => this.restyle());
+        this.cssChangeRef = this.plugin.app.workspace.on('css-change', () => this.restyle());
+    }
+
+    /**
+     * Resolve the colours the graph paints with, the timeline's way: the
+     * active theme's values go onto the canvas as inline `--sts-timeline-*`
+     * variables and are read back through the cascade, so a theme, a CSS
+     * snippet and the Obsidian theme all reach the graph by the same path.
+     */
+    private refreshStyle(): void {
+        const theme = new CalendarRegistry(this.plugin).getActiveTheme();
+        const root = this.canvasEl;
+        if (!root) {
+            this.style = resolveTimelineStyle(() => '', theme);
+        } else {
+            const variables = themeCssVariables(theme);
+            const signature = JSON.stringify(variables);
+            if (signature !== this.appliedThemeVariables) {
+                TIMELINE_THEME_VARIABLES.forEach(name => root.style.removeProperty(name));
+                Object.entries(variables).forEach(([name, value]) => root.style.setProperty(name, value));
+                this.appliedThemeVariables = signature;
+            }
+            const computed = getComputedStyle(root);
+            this.style = resolveTimelineStyle(name => computed.getPropertyValue(name).trim(), theme);
+        }
+        this.palette = this.style.palette.map(color => this.normalizeColor(color, '#7c3aed').hex);
+        this.applyBackdrop();
+    }
+
+    /**
+     * A colour Cytoscape can read. Theme values can be any CSS colour, or an
+     * Obsidian variable that resolves to hsl() with calc() inside, and
+     * Cytoscape only takes plain forms, so the browser normalises it first.
+     */
+    private normalizeColor(value: string, fallback: string): { hex: string; alpha: number } {
+        const parse = (input: string) => {
+            if (!input) return null;
+            if (!this.colorProbe) this.colorProbe = activeDocument.createElement('canvas').getContext('2d');
+            const probe = this.colorProbe;
+            if (!probe) return splitColorAlpha(input);
+            const sentinel = '#010203';
+            probe.fillStyle = sentinel;
+            probe.fillStyle = input;
+            const out = String(probe.fillStyle);
+            if (out === sentinel && input.trim().toLowerCase() !== sentinel) return null;
+            return splitColorAlpha(out);
+        };
+        return parse(value) || parse(fallback) || { hex: '#808080', alpha: 1 };
+    }
+
+    private themeColor(role: TimelineColorRole): string {
+        return this.normalizeColor(this.style.colors[role], this.fallbackColor(role)).hex;
+    }
+
+    private themeAlpha(role: TimelineColorRole): number {
+        return this.normalizeColor(this.style.colors[role], this.fallbackColor(role)).alpha;
+    }
+
+    private fallbackColor(role: TimelineColorRole): string {
+        return resolveTimelineStyle(() => '', { id: 'none', name: 'none' }).colors[role];
+    }
+
+    /** The theme's font, with the stray characters some Obsidian themes leave in the stack removed. */
+    private themeFont(): string {
+        const value = (this.style.font || '')
+            .replace(/['"]?\?\?['"]?/g, '')
+            .replace(/,\s*,/g, ',')
+            .replace(/^,\s*/, '')
+            .replace(/\s*,\s*$/, '')
+            .trim();
+        return value && value !== ',' ? value : 'sans-serif';
+    }
+
+    /** The theme's background image, drawn by CSS on a layer under the graph. */
+    private applyBackdrop(): void {
+        const backdrop = this.backdropEl;
+        if (!backdrop) return;
+        const background = this.style.background;
+        const url = background ? this.backdropUrl(background.image) : '';
+        if (!background || !url || background.opacity <= 0) {
+            backdrop.setCssStyles({ display: 'none', backgroundImage: '' });
+            return;
+        }
+        const size = background.fit === 'stretch' ? '100% 100%' : background.fit === 'tile' ? 'auto' : background.fit;
+        backdrop.setCssStyles({
+            display: 'block',
+            backgroundImage: `url("${url.replace(/"/g, '%22')}")`,
+            backgroundSize: size,
+            backgroundRepeat: background.fit === 'tile' ? 'repeat' : 'no-repeat',
+            backgroundPosition: background.position,
+            opacity: String(background.opacity),
+            filter: background.blur > 0 ? `blur(${background.blur}px)` : '',
+        });
+    }
+
+    private backdropUrl(source: string): string {
+        if (/^(data:|https:\/\/)/i.test(source)) return source;
+        const link = source.replace(/^!?\[\[/, '').replace(/\]\]$/, '').split('|')[0].trim();
+        const file = this.plugin.app.vault.getAbstractFileByPath(link) || this.plugin.app.metadataCache.getFirstLinkpathDest(link, '');
+        return file instanceof TFile ? this.plugin.app.vault.getResourcePath(file) : '';
+    }
+
+    /** New theme or Obsidian colours: re-resolve, re-colour and redraw, keeping the layout. */
+    private restyle(): void {
+        if (!this.cy || !this.canvasEl?.isConnected) return;
+        this.refreshStyle();
+        this.recolorNodes();
+        this.cy.style(this.getCytoscapeStyle() as unknown as cytoscape.StylesheetStyle[]);
+        this.renderLegend();
     }
 
     // Get layout configuration options based on selected layout type
-    private getLayoutOptions(layoutName: 'cose' | 'circle' | 'grid' | 'concentric'): LayoutOptions {
+    private getLayoutOptions(layoutName: GraphLayoutName): LayoutOptions {
+        const spacing = spacingFor(this.display.spacing);
         const baseOptions = {
             animate: true,
             animationDuration: 500,
             fit: true,
-            padding: 80 // Increased from 50 for better initial zoom
+            padding: GRAPH_FIT_PADDING
         };
 
         switch (layoutName) {
@@ -418,8 +595,8 @@ export class NetworkGraphRenderer {
                 return {
                     ...baseOptions,
                     name: 'cose',
-                    nodeRepulsion: 25000,
-                    idealEdgeLength: 200,
+                    nodeRepulsion: spacing.nodeRepulsion,
+                    idealEdgeLength: spacing.idealEdgeLength,
                     edgeElasticity: 100,
                     nestingFactor: 5,
                     gravity: 30,
@@ -436,7 +613,7 @@ export class NetworkGraphRenderer {
                     ...baseOptions,
                     name: 'circle',
                     radius: undefined,
-                    spacingFactor: 1.5
+                    spacingFactor: spacing.spacingFactor
                 };
             case 'grid':
                 return {
@@ -444,13 +621,13 @@ export class NetworkGraphRenderer {
                     name: 'grid',
                     rows: undefined,
                     cols: undefined,
-                    spacingFactor: 1.5
+                    spacingFactor: spacing.spacingFactor
                 };
             case 'concentric':
                 return {
                     ...baseOptions,
                     name: 'concentric',
-                    minNodeSpacing: 100,
+                    minNodeSpacing: spacing.minNodeSpacing,
                     concentric: (node: NodeSingular) => (node.data('degree') as number) || 0,
                     levelWidth: () => 2
                 };
@@ -459,305 +636,206 @@ export class NetworkGraphRenderer {
         }
     }
 
-    // Get Cytoscape stylesheet with Obsidian theme integration
+    /**
+     * The Cytoscape stylesheet, from the resolved theme and the display
+     * options. Rebuilt whenever either changes; Cytoscape reads no CSS
+     * variables, so every colour here is already a plain value.
+     */
     private getCytoscapeStyle() {
-        // Compute CSS variables at runtime (Cytoscape doesn't support CSS vars)
-        const borderColor = this.getCSSVariable('--background-modifier-border');
-        const accentColor = this.getCSSVariable('--interactive-accent');
-        const accentHoverColor = this.getCSSVariable('--interactive-accent-hover');
-        const fontFamily = this.getCSSVariable('--font-interface');
+        const d = this.display;
+        const text = this.themeColor('text');
+        const surface = this.themeColor('surface');
+        const surfaceOpacity = 0.85 * this.themeAlpha('surface');
+        const grid = this.themeColor('grid');
+        const accent = this.themeColor('accent');
+        const accentText = this.themeColor('accentText');
+        const hub = this.themeColor('milestone');
+        const fontFamily = this.themeFont();
+        const metrics = this.style.metrics;
+        const edgeWidth = metrics.connectorWidth;
+        const sizeFor = (node: NodeSingular) => {
+            if (!d.sizeByConnections) return 50;
+            const degree = (node.data('degree') as number) || 0;
+            return Math.max(40, Math.min(120, 40 + degree * 8));
+        };
+
+        // Visual hierarchy by connections: only when "Size by connections" is on
+        const hierarchy = d.sizeByConnections ? [
+            // Hub nodes (degree > 10): major characters and places
+            { selector: 'node[degree > 10]', style: { 'border-width': 5, 'border-color': hub, 'z-index': 200, 'font-size': '16px', 'font-weight': 'bold' } },
+            // Highly connected (6-10)
+            { selector: 'node[degree > 5][degree <= 10]', style: { 'border-width': 4, 'z-index': 150, 'font-size': '15px', 'font-weight': '600' } },
+            // Moderately connected (3-5)
+            { selector: 'node[degree > 2][degree <= 5]', style: { 'border-width': 3, 'z-index': 100 } },
+            // Minor (1-2)
+            { selector: 'node[degree > 0][degree <= 2]', style: { 'opacity': 0.8, 'border-width': 2, 'font-size': '13px' } },
+            // Unconnected
+            { selector: 'node[degree = 0]', style: { 'opacity': 0.5, 'border-style': 'dashed', 'border-width': 2, 'font-size': '12px' } },
+        ] : [];
 
         return [
-            // Node styles - Dynamic sizing based on connections
             {
                 selector: 'node',
                 style: {
                     'label': (node: NodeSingular) => {
                         const label = node.data('label') as string;
-                        return label && label.length > 15 ? label.substring(0, 15) + '...' : label;
+                        const name = label && label.length > 15 ? label.substring(0, 15) + '...' : label;
+                        // R-Map minimum notation: age and gender under the name; the dead get a cross
+                        const subtitle = node.data('subtitle') as string | undefined;
+                        const deceased = node.data('deceased') === true;
+                        return (deceased ? '✝ ' : '') + name + (subtitle ? `\n${subtitle}` : '');
                     },
-                    'text-valign': 'center', // Center labels on nodes for better readability
+                    'text-valign': 'center',
                     'text-halign': 'center',
-                    'font-size': '14px', // Increased for accessibility (min 14px)
+                    'font-size': '14px', // Accessibility minimum
                     'font-family': fontFamily,
-                    'color': '#ffffff', // White text for contrast
-                    // Label background for better readability
-                    'text-background-color': 'rgba(0, 0, 0, 0.75)',
-                    'text-background-opacity': 0.85,
+                    'color': text,
+                    // Label plate in the theme's surface colour, so labels read on any background
+                    'text-background-color': surface,
+                    'text-background-opacity': surfaceOpacity,
                     'text-background-padding': '4px',
                     'text-background-shape': 'roundrectangle',
-                    'text-outline-color': 'transparent', // Remove outline, background is enough
                     'text-outline-width': 0,
-                    'background-color': accentColor,
+                    'background-color': accent,
+                    'background-opacity': metrics.eventOpacity,
                     'border-width': 2,
-                    'border-color': borderColor,
-                    // Enhanced dynamic sizing based on degree (connections)
-                    'width': (node: NodeSingular) => {
-                        const degree = (node.data('degree') as number) || 0;
-                        return Math.max(40, Math.min(120, 40 + degree * 8));
-                    },
-                    'height': (node: NodeSingular) => {
-                        const degree = (node.data('degree') as number) || 0;
-                        return Math.max(40, Math.min(120, 40 + degree * 8));
-                    },
+                    'border-color': grid,
+                    'width': sizeFor,
+                    'height': sizeFor,
                     'text-wrap': 'wrap',
                     'text-max-width': '100px',
-                    // Smooth transitions for hover effects
                     'transition-property': 'opacity, border-width, border-color',
                     'transition-duration': '150ms',
                     'transition-timing-function': 'ease-out'
                 }
             },
-            // Nodes with images - use image as background
+            // Shape always tells the entity type, so colouring by something else loses nothing
+            ...(Object.entries(GRAPH_TYPE_STYLES)).map(([type, style]) => ({
+                selector: `node[type="${type}"]`,
+                style: { 'shape': style.shape }
+            })),
+            // The "Colour by" colour, worked out per node
+            {
+                selector: 'node[color]',
+                style: { 'background-color': 'data(color)' }
+            },
+            // Nodes with images: the image fills the node and the rim carries the colour
             {
                 selector: 'node[imageUrl]',
                 style: {
                     'background-image': 'data(imageUrl)',
                     'background-fit': 'cover',
                     'background-clip': 'node',
-                    'background-color': '#ffffff'
-                }
-            },
-            // Character nodes (circles) - Color-blind friendly rose/pink
-            {
-                selector: 'node[type="character"]',
-                style: {
-                    'shape': 'ellipse',
-                    'background-color': '#CC6677' // Tol muted palette - rose
-                }
-            },
-            // Location nodes (squares) - Color-blind friendly teal
-            {
-                selector: 'node[type="location"]',
-                style: {
-                    'shape': 'round-rectangle',
-                    'background-color': '#44AA99' // Tol muted palette - teal
-                }
-            },
-            // Event nodes (diamonds) - Color-blind friendly sand/gold
-            {
-                selector: 'node[type="event"]',
-                style: {
-                    'shape': 'diamond',
-                    'background-color': '#DDCC77' // Tol muted palette - sand
-                }
-            },
-            // Item nodes (hexagons) - Color-blind friendly cyan
-            {
-                selector: 'node[type="item"]',
-                style: {
-                    'shape': 'hexagon',
-                    'background-color': '#88CCEE' // Tol muted palette - cyan
-                }
-            },
-            // Culture nodes (tags) - Color-blind friendly purple
-            {
-                selector: 'node[type="culture"]',
-                style: {
-                    'shape': 'tag',
-                    'background-color': '#AA4499' // Tol muted palette - purple
-                }
-            },
-            // Economy nodes (pentagons) - Color-blind friendly green
-            {
-                selector: 'node[type="economy"]',
-                style: {
-                    'shape': 'pentagon',
-                    'background-color': '#117733' // Tol muted palette - green
-                }
-            },
-            // MagicSystem nodes (stars) - Color-blind friendly indigo
-            {
-                selector: 'node[type="magicsystem"]',
-                style: {
-                    'shape': 'star',
-                    'background-color': '#332288' // Tol muted palette - indigo
-                }
-            },
-            // Visual hierarchy: Hub nodes (degree > 10) - Major characters/locations
-            {
-                selector: 'node[[degree > 10]]',
-                style: {
-                    'border-width': 5,
-                    'border-color': '#FFD700',
-                    'z-index': 200,
-                    'font-size': '16px',
-                    'font-weight': 'bold'
-                }
-            },
-            // Visual hierarchy: Highly connected nodes (degree 6-10) - Important entities
-            {
-                selector: 'node[[degree > 5]][[degree <= 10]]',
-                style: {
+                    'background-color': '#ffffff',
+                    'background-opacity': 1,
                     'border-width': 4,
-                    'z-index': 150,
-                    'font-size': '15px',
-                    'font-weight': '600'
+                    'border-color': 'data(color)'
                 }
             },
-            // Visual hierarchy: Moderately connected nodes (degree 3-5) - Regular entities
+            // Dead characters stay on the map, faded and dashed, with their links as history.
+            // Grey by type; under another colour mode they keep that colour so it still reads.
             {
-                selector: 'node[[degree > 2]][[degree <= 5]]',
-                style: {
-                    'border-width': 3,
-                    'z-index': 100,
-                    'opacity': 1
-                }
-            },
-            // Visual hierarchy: Less connected nodes (degree 1-2) - Minor entities
-            {
-                selector: 'node[[degree > 0]][[degree <= 2]]',
-                style: {
-                    'opacity': 0.8,
-                    'border-width': 2,
-                    'font-size': '13px'
-                }
-            },
-            // Visual hierarchy: Isolated nodes (degree = 0) - Orphaned entities
-            {
-                selector: 'node[[degree = 0]]',
+                selector: 'node[?deceased]',
                 style: {
                     'opacity': 0.5,
                     'border-style': 'dashed',
-                    'border-width': 2,
-                    'font-size': '12px'
+                    ...(d.colorMode === 'type' ? { 'background-color': GRAPH_DECEASED_COLOR } : {})
                 }
             },
-            // Edge styles - Labels hidden by default, shown on hover
+            ...hierarchy,
             {
                 selector: 'edge',
                 style: {
-                    'width': 2,
-                    'line-color': borderColor,
-                    'target-arrow-color': borderColor,
+                    'width': edgeWidth,
+                    'line-color': grid,
+                    'target-arrow-color': grid,
                     'target-arrow-shape': 'triangle',
                     'curve-style': 'bezier',
                     'arrow-scale': 1.2,
-                    'label': '', // Hide labels by default
-                    'font-size': '11px', // Increased from 10px for accessibility
+                    'label': d.showEdgeLabels ? 'data(label)' : '',
+                    'font-size': '11px',
                     'text-rotation': 'autorotate',
                     'text-margin-y': -10,
-                    'color': '#ffffff',
-                    'text-background-color': 'rgba(0, 0, 0, 0.8)', // Background for edge labels too
-                    'text-background-opacity': 0.85,
+                    'color': text,
+                    'text-background-color': surface,
+                    'text-background-opacity': surfaceOpacity,
                     'text-background-padding': '3px',
                     'text-background-shape': 'roundrectangle',
-                    'text-outline-color': 'transparent',
                     'text-outline-width': 0,
                     'font-family': fontFamily,
-                    // Smooth transitions for hover effects
                     'transition-property': 'opacity, width',
                     'transition-duration': '150ms',
                     'transition-timing-function': 'ease-out'
                 }
             },
-            // Relationship type colors
+            // Mutual relationships are one plain line; one-way ones keep the arrow
             {
-                selector: 'edge[relationshipType="ally"]',
-                style: {
-                    'line-color': '#4ade80',
-                    'target-arrow-color': '#4ade80'
-                }
+                selector: 'edge[direction = "mutual"]',
+                style: { 'target-arrow-shape': 'none' }
             },
+            // Ended (severed) relationships: dashed and faded, label kept
             {
-                selector: 'edge[relationshipType="enemy"]',
-                style: {
-                    'line-color': '#ef4444',
-                    'target-arrow-color': '#ef4444'
-                }
+                selector: 'edge[?ended]',
+                style: { 'line-style': 'dashed', 'opacity': 0.6 }
             },
+            // Implied inverses (e.g. child implied by a stored parent): dotted
             {
-                selector: 'edge[relationshipType="family"]',
-                style: {
-                    'line-color': '#3b82f6',
-                    'target-arrow-color': '#3b82f6'
-                }
+                selector: 'edge[?implied]',
+                style: { 'line-style': 'dotted' }
             },
+            // Group membership: thin, so factions read as context rather than as relationships
             {
-                selector: 'edge[relationshipType="rival"]',
-                style: {
-                    'line-color': '#f97316',
-                    'target-arrow-color': '#f97316'
-                }
+                selector: `edge[label = "${GROUP_MEMBERSHIP_LABEL}"]`,
+                style: { 'width': Math.max(0.5, edgeWidth / 2), 'target-arrow-shape': 'none', 'line-style': 'solid' }
             },
-            {
-                selector: 'edge[relationshipType="romantic"]',
-                style: {
-                    'line-color': '#ec4899',
-                    'target-arrow-color': '#ec4899'
-                }
-            },
-            {
-                selector: 'edge[relationshipType="mentor"]',
-                style: {
-                    'line-color': '#a855f7',
-                    'target-arrow-color': '#a855f7'
-                }
-            },
-            {
-                selector: 'edge[relationshipType="acquaintance"]',
-                style: {
-                    'line-color': '#94a3b8',
-                    'target-arrow-color': '#94a3b8'
-                }
-            },
-            // Hover/selection states
+            // Relationship kind colours, one per kind (neutral and custom keep the default line)
+            ...RELATIONSHIP_KINDS
+                .filter(kind => kind !== 'neutral' && kind !== 'custom')
+                .map(kind => ({
+                    selector: `edge[relationshipType="${kind}"]`,
+                    style: {
+                        'line-color': getRelationshipColor(kind),
+                        'target-arrow-color': getRelationshipColor(kind)
+                    }
+                })),
             {
                 selector: 'node:selected',
-                style: {
-                    'border-width': 4,
-                    'border-color': accentHoverColor,
-                    'z-index': 999
-                }
+                style: { 'border-width': 4, 'border-color': accentText, 'z-index': 999 }
             },
             {
                 selector: 'edge:selected',
-                style: {
-                    'width': 4
-                }
+                style: { 'width': edgeWidth + 2 }
             },
-            // Dimmed state for non-highlighted nodes
+            // Dimmed: everything outside a hover, a search or a legend entry
             {
                 selector: 'node.dimmed',
-                style: {
-                    'opacity': 0.3
-                }
+                style: { 'opacity': 0.3 }
             },
             {
                 selector: 'edge.dimmed',
-                style: {
-                    'opacity': 0.2
-                }
+                style: { 'opacity': 0.2 }
             },
-            // Highlighted state
             {
                 selector: 'node.highlighted',
-                style: {
-                    'border-width': 4,
-                    'border-color': accentColor,
-                    'z-index': 999
-                }
+                style: { 'border-width': 4, 'border-color': accent, 'z-index': 999 }
             },
             {
                 selector: 'edge.highlighted',
                 style: {
-                    'width': 3,
+                    'width': edgeWidth + 1,
                     'z-index': 999,
-                    'font-size': '11px',
-                    'label': 'data(label)', // Show label when highlighted
-                    // Enhanced visibility with background
-                    'text-background-color': 'rgba(0, 0, 0, 0.85)',
-                    'text-background-opacity': 0.95
+                    'label': 'data(label)',
+                    'text-background-opacity': Math.min(1, surfaceOpacity + 0.1)
                 }
             },
-            // Pinned nodes
             {
                 selector: 'node.pinned',
-                style: {
-                    'border-width': 3,
-                    'border-style': 'double',
-                    'border-color': accentHoverColor
-                }
+                style: { 'border-width': 3, 'border-style': 'double', 'border-color': accentText }
+            },
+            // Legend entries switched off. Hiding a node hides its lines with it.
+            {
+                selector: '.legend-hidden',
+                style: { 'display': 'none' }
             }
         ];
     }
@@ -973,7 +1051,8 @@ export class NetworkGraphRenderer {
             'item': '🎁',
             'culture': '🎭',
             'economy': '💰',
-            'magicsystem': '✨'
+            'magicsystem': '✨',
+            'group': '⚑'
         };
         const icon = typeIcons[type] || '●';
         
@@ -1080,7 +1159,8 @@ export class NetworkGraphRenderer {
                 { key: 'item', icon: '🎁', label: 'Items', color: '#88CCEE' },
                 { key: 'culture', icon: '🎭', label: 'Cultures', color: '#AA4499' },
                 { key: 'economy', icon: '💰', label: 'Economies', color: '#117733' },
-                { key: 'magicsystem', icon: '✨', label: 'Magic', color: '#332288' }
+                { key: 'magicsystem', icon: '✨', label: 'Magic', color: '#332288' },
+                { key: 'group', icon: '⚑', label: 'Groups', color: '#D55E00' }
             ];
             
             typeInfo.forEach(({ key, icon, label, color }) => {
@@ -1108,18 +1188,8 @@ export class NetworkGraphRenderer {
                         <div style="font-size: 11px; font-weight: 600; color: var(--text-normal); margin-bottom: 4px;">Top Relationships</div>
                 `;
                 
-                const relColors: Record<string, string> = {
-                    'ally': '#4ade80',
-                    'enemy': '#ef4444',
-                    'family': '#3b82f6',
-                    'rival': '#f97316',
-                    'romantic': '#ec4899',
-                    'mentor': '#a855f7',
-                    'acquaintance': '#94a3b8'
-                };
-                
                 topRelationships.forEach(([relType, count]) => {
-                    const color = relColors[relType] || 'var(--text-muted)';
+                    const color = relType === 'unknown' ? 'var(--text-muted)' : getRelationshipColor(relType as RelationshipType);
                     const percent = (count / degree) * 100;
                     content += `
                         <div style="margin-bottom: 3px;">
@@ -1211,203 +1281,220 @@ export class NetworkGraphRenderer {
         }
     }
     
-    // Create interactive legend panel
+    /**
+     * The legend panel's frame: a header with a close button and a body that
+     * renderLegend() fills from what is on screen.
+     */
     private createLegendPanel(): void {
         if (!this.canvasEl) return;
-        
-        const legendPanel = createDiv();
-        legendPanel.className = 'storyteller-network-legend-panel';
-        legendPanel.setCssStyles({ position: 'absolute' });
-        legendPanel.setCssStyles({ top: '16px' });
-        legendPanel.setCssStyles({ left: '16px' });
-        legendPanel.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
-        legendPanel.setCssStyles({ border: '2px solid var(--background-modifier-border)' });
-        legendPanel.setCssStyles({ borderRadius: '12px' });
-        legendPanel.setCssStyles({ padding: '0' });
-        legendPanel.setCssStyles({ zIndex: '999' }); // Just below info panel but above canvas
-        legendPanel.setCssStyles({ minWidth: '200px' });
-        legendPanel.setCssStyles({ maxWidth: '280px' });
-        legendPanel.setCssStyles({ boxShadow: '0 8px 24px rgba(0,0,0,0.3)' });
-        legendPanel.setCssStyles({ maxHeight: 'calc(100% - 32px)' }); // Stay within canvas bounds
-        legendPanel.setCssStyles({ overflowY: 'auto' });
-        legendPanel.setCssStyles({ opacity: '0' });
-        legendPanel.setCssStyles({ transform: 'translateX(-100%)' });
-        legendPanel.setCssStyles({ pointerEvents: 'none' });
-        legendPanel.setCssStyles({ display: 'none' }); // Start completely hidden
-        
-        let content = `
-            <div style="background: linear-gradient(135deg, var(--background-secondary-alt) 0%, var(--background-secondary) 100%); padding: 12px 16px; border-bottom: 2px solid var(--background-modifier-border); position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; align-items: center;">
-                <div style="font-weight: 700; font-size: 14px; color: var(--text-normal);">🗺️ Graph Legend</div>
-                <button class="legend-toggle-btn" style="background: transparent; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; color: var(--text-muted); font-size: 16px;" title="Hide legend">✕</button>
-            </div>
-            
-            <div style="padding: 12px 16px;">
-                <!-- Node Types -->
-                <div style="margin-bottom: 16px;">
-                    <div style="font-size: 12px; font-weight: 600; color: var(--text-normal); margin-bottom: 8px;">Node Types</div>
-                    <div style="display: flex; flex-direction: column; gap: 6px;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="width: 20px; height: 20px; border-radius: 50%; background: #CC6677; border: 2px solid var(--background-modifier-border);"></div>
-                            <span style="font-size: 11px; color: var(--text-muted);">👤 Characters</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="width: 20px; height: 20px; border-radius: 4px; background: #44AA99; border: 2px solid var(--background-modifier-border);"></div>
-                            <span style="font-size: 11px; color: var(--text-muted);">📍 Locations</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="width: 20px; height: 20px; background: #DDCC77; border: 2px solid var(--background-modifier-border); transform: rotate(45deg);"></div>
-                            <span style="font-size: 11px; color: var(--text-muted); margin-left: 4px;">⚡ Events</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="width: 20px; height: 20px; background: #88CCEE; border: 2px solid var(--background-modifier-border); clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);"></div>
-                            <span style="font-size: 11px; color: var(--text-muted);">🎁 Items</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Importance Hierarchy -->
-                <div style="margin-bottom: 16px;">
-                    <div style="font-size: 12px; font-weight: 600; color: var(--text-normal); margin-bottom: 8px;">Importance Level</div>
-                    <div style="display: flex; flex-direction: column; gap: 6px;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-size: 14px; color: #FFD700;">★★★</span>
-                            <span style="font-size: 11px; color: var(--text-muted);">Hub (10+ connections)</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-size: 14px; color: var(--text-success);">★★</span>
-                            <span style="font-size: 11px; color: var(--text-muted);">Major (6-10 connections)</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-size: 14px; color: var(--text-accent);">★</span>
-                            <span style="font-size: 11px; color: var(--text-muted);">Moderate (3-5 connections)</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-size: 14px; color: var(--text-muted);">○</span>
-                            <span style="font-size: 11px; color: var(--text-muted);">Minor (1-2 connections)</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-size: 14px; color: var(--text-faint);">⊝</span>
-                            <span style="font-size: 11px; color: var(--text-muted);">Isolated (0 connections)</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Relationship Types -->
-                <div style="margin-bottom: 16px;">
-                    <div style="font-size: 12px; font-weight: 600; color: var(--text-normal); margin-bottom: 8px;">Relationships</div>
-                    <div style="display: flex; flex-direction: column; gap: 6px;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="width: 24px; height: 3px; background: #4ade80; border-radius: 2px;"></div>
-                            <span style="font-size: 11px; color: var(--text-muted);">Ally</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="width: 24px; height: 3px; background: #ef4444; border-radius: 2px;"></div>
-                            <span style="font-size: 11px; color: var(--text-muted);">Enemy</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="width: 24px; height: 3px; background: #3b82f6; border-radius: 2px;"></div>
-                            <span style="font-size: 11px; color: var(--text-muted);">Family</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="width: 24px; height: 3px; background: #ec4899; border-radius: 2px;"></div>
-                            <span style="font-size: 11px; color: var(--text-muted);">Romantic</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="width: 24px; height: 3px; background: #a855f7; border-radius: 2px;"></div>
-                            <span style="font-size: 11px; color: var(--text-muted);">Mentor</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <div style="width: 24px; height: 3px; background: #f97316; border-radius: 2px;"></div>
-                            <span style="font-size: 11px; color: var(--text-muted);">Rival</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Quick Tips -->
-                <div style="background: var(--background-primary); padding: 10px; border-radius: 8px; border: 1px solid var(--background-modifier-border);">
-                    <div style="font-size: 11px; font-weight: 600; color: var(--text-normal); margin-bottom: 6px;">💡 Quick Tips</div>
-                    <div style="font-size: 10px; color: var(--text-muted); line-height: 1.6;">
-                        • Hover nodes to see details<br>
-                        • Click to open entity<br>
-                        • Right-click to pin nodes<br>
-                        • Scroll to zoom in/out<br>
-                        • Drag background to pan
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        this.setParsedHtml(legendPanel, content);
-        this.canvasEl.appendChild(legendPanel);
+
+        const legendPanel = this.canvasEl.createDiv('storyteller-network-legend-panel');
+        // Starts hidden; toggleLegend() animates these
+        legendPanel.setCssStyles({ display: 'none', opacity: '0', transform: 'translateX(-100%)', pointerEvents: 'none' });
+
+        const header = legendPanel.createDiv('storyteller-network-legend-header');
+        header.createDiv({ cls: 'storyteller-network-legend-title', text: 'Legend' });
+        const closeBtn = header.createEl('button', {
+            cls: 'clickable-icon storyteller-network-legend-close',
+            attr: { 'aria-label': 'Hide legend', title: 'Hide legend' }
+        });
+        setIcon(closeBtn, 'x');
+        closeBtn.addEventListener('click', () => this.toggleLegend());
+
+        this.legendBodyEl = legendPanel.createDiv('storyteller-network-legend-body');
         this.legendPanelEl = legendPanel;
-        
+
         // Add transition after DOM is ready to prevent flash
         window.setTimeout(() => {
-            if (this.legendPanelEl) {
-                this.legendPanelEl.setCssStyles({ transition: 'opacity 0.3s ease, transform 0.3s ease' });
-            }
+            this.legendPanelEl?.setCssStyles({ transition: 'opacity 0.3s ease, transform 0.3s ease' });
         }, 0);
-        
-        // Add toggle button click handler
-        const toggleBtn = legendPanel.querySelector('.legend-toggle-btn') as HTMLElement;
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', () => {
-                this.toggleLegend();
-            });
-        }
-        
-        // Create floating show legend button (initially visible)
+
         this.createLegendToggleButton();
     }
-    
-    // Create floating button to show legend when hidden
+
+    /**
+     * Fill the legend from the nodes and edges on screen now. Called after
+     * every refresh, filter, colour mode or theme change, so it only lists
+     * what the graph is showing, with counts. Entries hidden from the legend
+     * stay listed, struck through, so they can be brought back.
+     */
+    private renderLegend(): void {
+        const body = this.legendBodyEl;
+        if (!body || !this.cy) return;
+        body.empty();
+
+        const nodes = this.cy.nodes().map(node => ({
+            id: node.id(),
+            label: (node.data('label') as string) || '',
+            type: node.data('type') as GraphNode['type'],
+            degree: (node.data('degree') as number) || 0,
+            data: (node.data('entityData') || {}) as GraphEntityFields,
+            deceased: node.data('deceased') === true,
+            colorKey: {
+                key: node.data('colorKey') as string,
+                label: node.data('colorLabel') as string,
+                color: node.data('color') as string,
+                order: node.data('colorOrder') as number,
+            },
+        }));
+        const edges = this.cy.edges().map(edge => ({
+            relationshipType: edge.data('relationshipType') as RelationshipType,
+            direction: edge.data('direction') as GraphEdge['direction'],
+            ended: edge.data('ended') === true,
+            implied: edge.data('implied') === true,
+            label: edge.data('label') as string | undefined,
+        }));
+        const legend = buildGraphLegend(nodes, edges, this.display.colorMode);
+
+        // A key that no longer matches anything (new colour mode, filtered out) is forgotten
+        const present = new Set<string>([
+            ...legend.colors, ...legend.shapes, ...legend.relationships, ...legend.lines
+        ].map(entry => entry.key));
+        if (legend.deceased) present.add('deceased');
+        this.hiddenLegendKeys.forEach(key => { if (!present.has(key)) this.hiddenLegendKeys.delete(key); });
+        this.applyLegendHidden();
+
+        if (nodes.length === 0) {
+            body.createDiv({ cls: 'storyteller-network-legend-empty', text: 'Nothing on screen to describe.' });
+            return;
+        }
+
+        this.renderLegendSection(body, legend.colorTitle, legend.colors, 'swatch');
+        if (legend.deceased) {
+            // Grey when colouring by type; otherwise the dead keep their colour, so the swatch is just the dashed rim
+            const color = this.display.colorMode === 'type' ? GRAPH_DECEASED_COLOR : 'transparent';
+            this.renderLegendSection(body, '', [{ key: 'deceased', label: 'Deceased (✝, faded, dashed)', color, count: legend.deceased }], 'swatch');
+        }
+        if (legend.shapes.length) this.renderLegendSection(body, 'Shape: entity type', legend.shapes, 'shape');
+        if (legend.relationships.length) this.renderLegendSection(body, 'Relationships', legend.relationships, 'line');
+        if (legend.lines.length) this.renderLegendSection(body, 'Lines', legend.lines, 'line');
+        if (this.display.sizeByConnections) {
+            body.createDiv({ cls: 'storyteller-network-legend-note', text: 'Bigger nodes have more connections; a gold rim marks a hub (10+).' });
+        }
+
+        const footer = body.createDiv('storyteller-network-legend-footer');
+        if (this.hiddenLegendKeys.size) {
+            const showAll = footer.createEl('button', { cls: 'storyteller-network-legend-showall', text: `Show all (${this.hiddenLegendKeys.size} hidden)` });
+            showAll.addEventListener('click', () => {
+                this.hiddenLegendKeys.clear();
+                this.applyLegendHidden();
+                this.renderLegend();
+            });
+        }
+        footer.createDiv({
+            cls: 'storyteller-network-legend-tip',
+            text: 'Hover an entry to find it, click to hide it. Hover a node for details, click to open, right-click to pin.'
+        });
+    }
+
+    private renderLegendSection(parent: HTMLElement, title: string, entries: GraphLegendEntry[], kind: 'swatch' | 'shape' | 'line'): void {
+        if (!entries.length) return;
+        const section = parent.createDiv('storyteller-network-legend-section');
+        if (title) section.createDiv({ cls: 'storyteller-network-legend-heading', text: title });
+        const list = section.createDiv('storyteller-network-legend-list');
+        entries.forEach(entry => {
+            const hidden = this.hiddenLegendKeys.has(entry.key);
+            const row = list.createEl('button', {
+                cls: 'storyteller-network-legend-row',
+                attr: {
+                    'aria-pressed': hidden ? 'false' : 'true',
+                    title: hidden ? `Show ${entry.label}` : `Hide ${entry.label}`
+                }
+            });
+            row.toggleClass('is-hidden', hidden);
+            const swatch = row.createSpan('storyteller-network-legend-swatch');
+            if (kind === 'line') {
+                swatch.addClass('is-line', `is-${entry.line || 'solid'}`);
+                if (entry.key.startsWith('rel:')) swatch.setCssStyles({ color: entry.color });
+            } else {
+                swatch.addClass(`shape-${entry.shape || 'ellipse'}`);
+                if (kind === 'swatch') swatch.setCssStyles({ backgroundColor: entry.color });
+            }
+            if (entry.key === 'deceased') swatch.addClass('is-deceased');
+            row.createSpan({ cls: 'storyteller-network-legend-label', text: entry.label });
+            row.createSpan({ cls: 'storyteller-network-legend-count', text: String(entry.count) });
+
+            row.addEventListener('mouseenter', () => this.focusLegendKey(entry.key));
+            row.addEventListener('mouseleave', () => this.cy?.elements().removeClass('highlighted dimmed'));
+            row.addEventListener('click', () => {
+                if (this.hiddenLegendKeys.has(entry.key)) this.hiddenLegendKeys.delete(entry.key);
+                else this.hiddenLegendKeys.add(entry.key);
+                this.cy?.elements().removeClass('highlighted dimmed');
+                this.applyLegendHidden();
+                this.renderLegend();
+            });
+        });
+    }
+
+    /** The elements a legend entry stands for. */
+    private elementsForLegendKey(key: string): cytoscape.CollectionReturnValue | null {
+        if (!this.cy) return null;
+        const membership = (edge: EdgeSingular) => edge.data('label') === GROUP_MEMBERSHIP_LABEL;
+        if (key === 'deceased') return this.cy.nodes().filter(node => node.data('deceased') === true);
+        // Entity type: the colour entries when colouring by type, the shape entries otherwise
+        if (key.startsWith('type:')) {
+            const type = key.slice(5);
+            return this.cy.nodes().filter(node => node.data('type') === type);
+        }
+        if (key.startsWith('rel:')) {
+            const kind = key.slice(4);
+            return this.cy.edges().filter(edge => edge.data('relationshipType') === kind && !membership(edge));
+        }
+        if (key.startsWith('line:')) {
+            const line = key.slice(5);
+            return this.cy.edges().filter(edge => {
+                if (line === 'membership') return membership(edge);
+                if (membership(edge)) return false;
+                if (line === 'mutual') return edge.data('direction') === 'mutual';
+                if (line === 'arrow') return edge.data('direction') !== 'mutual';
+                if (line === 'ended') return edge.data('ended') === true;
+                if (line === 'implied') return edge.data('implied') === true;
+                return false;
+            });
+        }
+        return this.cy.nodes().filter(node => node.data('colorKey') === key);
+    }
+
+    /** Dim everything but what a legend entry stands for, and the lines between it. */
+    private focusLegendKey(key: string): void {
+        if (!this.cy) return;
+        const matched = this.elementsForLegendKey(key);
+        if (!matched) return;
+        const focus = matched.union(matched.edges().connectedNodes()).union(matched.nodes().edgesWith(matched.nodes()));
+        this.cy.batch(() => {
+            this.cy!.elements().addClass('dimmed').removeClass('highlighted');
+            focus.removeClass('dimmed').addClass('highlighted');
+        });
+    }
+
+    private applyLegendHidden(): void {
+        if (!this.cy) return;
+        this.cy.batch(() => {
+            this.cy!.elements().removeClass('legend-hidden');
+            this.hiddenLegendKeys.forEach(key => { this.elementsForLegendKey(key)?.addClass('legend-hidden'); });
+        });
+    }
+
+    // Floating button that brings the legend back
     private createLegendToggleButton(): void {
         if (!this.canvasEl) return;
-        
-        const toggleButton = createEl('button');
-        toggleButton.className = 'storyteller-legend-toggle-btn';
-        toggleButton.title = 'Show legend';
-        toggleButton.textContent = 'Map';
-        toggleButton.setCssStyles({ position: 'absolute' });
-        toggleButton.setCssStyles({ top: '16px' });
-        toggleButton.setCssStyles({ left: '16px' });
-        toggleButton.setCssStyles({ width: '40px' });
-        toggleButton.setCssStyles({ height: '40px' });
-        toggleButton.setCssStyles({ borderRadius: '50%' });
-        toggleButton.setCssStyles({ backgroundColor: 'var(--background-secondary)' });
-        toggleButton.setCssStyles({ border: '2px solid var(--background-modifier-border)' });
-        toggleButton.setCssStyles({ cursor: 'pointer' });
-        toggleButton.setCssStyles({ display: 'flex' });
-        toggleButton.setCssStyles({ alignItems: 'center' });
-        toggleButton.setCssStyles({ justifyContent: 'center' });
-        toggleButton.setCssStyles({ fontSize: '18px' });
-        toggleButton.setCssStyles({ zIndex: '998' }); // Below legend panel but above canvas
-        toggleButton.setCssStyles({ boxShadow: '0 4px 12px rgba(0,0,0,0.2)' });
-        toggleButton.setCssStyles({ opacity: '1' });
-        toggleButton.setCssStyles({ pointerEvents: 'auto' });
-        toggleButton.setCssStyles({ transition: 'opacity 0.3s ease, transform 0.2s ease' });
-        
-        toggleButton.addEventListener('mouseenter', () => {
-            if (!this.legendVisible) {
-                toggleButton.setCssStyles({ transform: 'scale(1.1)' });
-            }
+
+        const toggleButton = this.canvasEl.createEl('button', {
+            cls: 'storyteller-legend-toggle-btn',
+            attr: { 'aria-label': 'Show legend', title: 'Show legend' }
         });
-        
-        toggleButton.addEventListener('mouseleave', () => {
-            toggleButton.setCssStyles({ transform: 'scale(1)' });
-        });
-        
-        toggleButton.addEventListener('click', () => {
-            this.toggleLegend();
-        });
-        
-        this.canvasEl.appendChild(toggleButton);
+        setIcon(toggleButton, 'list');
+        toggleButton.addEventListener('click', () => this.toggleLegend());
         this.legendToggleButtonEl = toggleButton;
     }
-    
+
     // Toggle legend visibility
     private toggleLegend(): void {
         this.legendVisible = !this.legendVisible;
+        if (this.display.legendVisible !== this.legendVisible) {
+            this.display = { ...this.display, legendVisible: this.legendVisible };
+            this.saveDisplay();
+        }
         if (this.legendPanelEl) {
             if (this.legendVisible) {
                 this.legendPanelEl.setCssStyles({ display: 'block' });
@@ -1455,10 +1542,11 @@ export class NetworkGraphRenderer {
         }
     }
 
-    // Render empty state message
+    // Render empty state message over the (empty) canvas
     private renderEmptyState(): void {
         if (!this.canvasEl) return;
-        
+
+        this.clearEmptyState();
         const emptyState = this.canvasEl.createDiv('storyteller-network-empty-state');
         this.setParsedHtml(emptyState, `
             <div style="text-align: center; padding: 3rem;">
@@ -1470,6 +1558,10 @@ export class NetworkGraphRenderer {
                 </div>
             </div>
         `);
+    }
+
+    private clearEmptyState(): void {
+        this.canvasEl?.querySelectorAll(':scope > .storyteller-network-empty-state').forEach(el => el.remove());
     }
 
     // Search and highlight nodes
@@ -1519,27 +1611,7 @@ export class NetworkGraphRenderer {
 
     // Toggle edge labels visibility
     toggleEdgeLabels(): void {
-        if (!this.cy) return;
-        
-        this.showAllEdgeLabels = !this.showAllEdgeLabels;
-        
-        if (this.showAllEdgeLabels) {
-            // Show all edge labels
-            this.cy.style()
-                .selector('edge')
-                .style({
-                    'label': 'data(label)'
-                })
-                .update();
-        } else {
-            // Hide edge labels (only show on highlighted)
-            this.cy.style()
-                .selector('edge')
-                .style({
-                    'label': ''
-                })
-                .update();
-        }
+        void this.setDisplay({ showEdgeLabels: !this.display.showEdgeLabels });
     }
 
     // Zoom controls
@@ -1563,9 +1635,31 @@ export class NetworkGraphRenderer {
         this.saveViewportState(); // Save after zoom
     }
 
+    /**
+     * Lower the zoom floor far enough to show every node at once. A circle of a
+     * hundred entities is several thousand pixels across, and Cytoscape's fit
+     * stops at minZoom, so with a fixed floor the edge of the circle could not
+     * be reached. Refits when the layout's own fit was held back by the floor.
+     */
+    private allowZoomToFitAll(): void {
+        if (!this.cy) return;
+        const elements = this.cy.nodes();
+        if (elements.empty()) return;
+        const box = elements.boundingBox();
+        const width = this.cy.width() - 2 * GRAPH_FIT_PADDING;
+        const height = this.cy.height() - 2 * GRAPH_FIT_PADDING;
+        if (width <= 0 || height <= 0 || box.w <= 0 || box.h <= 0) return;
+        const fitZoom = Math.min(width / box.w, height / box.h);
+        if (!Number.isFinite(fitZoom) || fitZoom <= 0) return;
+        const floor = this.cy.minZoom();
+        this.cy.minZoom(Math.min(GRAPH_MIN_ZOOM, fitZoom * 0.8));
+        if (fitZoom < floor && this.cy.zoom() <= floor + 1e-6) this.cy.fit(elements, GRAPH_FIT_PADDING);
+    }
+
     fitToView(): void {
         if (!this.cy) return;
-        this.cy.fit(undefined, 80); // Increased from 50 to match layout padding
+        this.allowZoomToFitAll();
+        this.cy.fit(undefined, GRAPH_FIT_PADDING);
         this.saveViewportState(); // Save after fit
     }
 
@@ -1613,12 +1707,48 @@ export class NetworkGraphRenderer {
     }
 
     // Change layout algorithm
-    changeLayout(layoutName: 'cose' | 'circle' | 'grid' | 'concentric'): void {
-        if (!this.cy) return;
-        
-        this.currentLayout = layoutName;
-        const layout = this.cy.layout(this.getLayoutOptions(layoutName));
-        layout.run();
+    changeLayout(layoutName: GraphLayoutName): void {
+        void this.setDisplay({ layout: layoutName });
+    }
+
+    getDisplay(): GraphDisplayOptions {
+        return { ...this.display };
+    }
+
+    /**
+     * Change display options, save them, and redraw only as much as they need:
+     * a colour or styling change restyles in place, a layout or spacing change
+     * re-runs the layout, and a change to which lines or nodes are drawn
+     * rebuilds the elements.
+     */
+    async setDisplay(patch: Partial<GraphDisplayOptions>): Promise<void> {
+        const previous = this.display;
+        this.display = sanitizeGraphDisplay({ ...previous, ...patch });
+        this.saveDisplay();
+        const changed = (Object.keys(patch) as Array<keyof GraphDisplayOptions>).filter(key => previous[key] !== this.display[key]);
+        if (!changed.length || !this.cy) return;
+
+        if (changed.includes('legendVisible')) {
+            if (this.display.legendVisible) this.showLegend();
+            else this.hideLegend();
+        }
+        if (changed.some(key => DATA_OPTIONS.includes(key))) {
+            await this.refresh();
+            return;
+        }
+        if (changed.includes('colorMode')) this.recolorNodes();
+        if (changed.some(key => key === 'colorMode' || key === 'showEdgeLabels' || key === 'sizeByConnections')) {
+            this.cy.style(this.getCytoscapeStyle() as unknown as cytoscape.StylesheetStyle[]);
+            this.renderLegend();
+        }
+        if (changed.includes('layout') || changed.includes('spacing')) {
+            this.cy.layout(this.getLayoutOptions(this.display.layout)).run();
+        }
+    }
+
+    private saveDisplay(): void {
+        this.plugin.settings.networkGraphDisplay = { ...this.display };
+        void this.plugin.saveSettings();
     }
 
     // Apply filters and refresh graph
@@ -1650,36 +1780,7 @@ export class NetworkGraphRenderer {
 
         const { nodes, edges } = await this.buildGraphData();
 
-        // Calculate node degrees for dynamic sizing
-        const nodeDegrees = new Map<string, number>();
-        nodes.forEach(node => nodeDegrees.set(node.id, 0));
-        edges.forEach(edge => {
-            nodeDegrees.set(edge.source, (nodeDegrees.get(edge.source) || 0) + 1);
-            nodeDegrees.set(edge.target, (nodeDegrees.get(edge.target) || 0) + 1);
-        });
-
-        // Convert to cytoscape format with degree data
-        const elements = [
-            ...nodes.map(node => ({
-                data: {
-                    id: node.id,
-                    label: node.label,
-                    type: node.type,
-                    entityData: node.data,
-                    imageUrl: node.imageUrl,
-                    degree: nodeDegrees.get(node.id) || 0
-                }
-            })),
-            ...edges.map(edge => ({
-                data: {
-                    id: `${edge.source}-${edge.target}-${edge.relationshipType}-${edge.label || ''}`,
-                    source: edge.source,
-                    target: edge.target,
-                    relationshipType: edge.relationshipType,
-                    label: edge.label
-                }
-            }))
-        ];
+        const elements = this.toElements(nodes, edges);
 
         // Store positions of pinned nodes
         const pinnedPositions = new Map<string, { x: number; y: number }>();
@@ -1693,6 +1794,11 @@ export class NetworkGraphRenderer {
         // Update graph
         this.cy.elements().remove();
         this.cy.add(elements);
+        if (nodes.length === 0) {
+            this.renderEmptyState();
+        } else {
+            this.clearEmptyState();
+        }
 
         // Restore pinned nodes
         this.pinnedNodes.forEach(nodeId => {
@@ -1704,8 +1810,12 @@ export class NetworkGraphRenderer {
             }
         });
 
+        // Legend entries the user hid stay hidden, and the legend describes the new contents
+        this.applyLegendHidden();
+        this.renderLegend();
+
         // Run layout with current layout type
-        this.cy.layout(this.getLayoutOptions(this.currentLayout)).run();
+        this.cy.layout(this.getLayoutOptions(this.display.layout)).run();
     }
 
     // Export graph as image
@@ -1714,7 +1824,7 @@ export class NetworkGraphRenderer {
 
         const dataUrl = this.cy.png({
             output: 'blob',
-            bg: getComputedStyle(activeDocument.body).getPropertyValue('--background-primary') || '#ffffff',
+            bg: this.themeColor('background'),
             full: true,
             scale: 2
         });
@@ -1757,7 +1867,16 @@ export class NetworkGraphRenderer {
             this.infoPanelEl = null;
         }
 
+        this.unsubscribeTheme?.();
+        this.unsubscribeTheme = null;
+        if (this.cssChangeRef) {
+            this.plugin.app.workspace.offref(this.cssChangeRef);
+            this.cssChangeRef = null;
+        }
+
         // Clean up legend panel elements
+        this.legendBodyEl = null;
+        this.backdropEl = null;
         if (this.legendPanelEl) {
             this.legendPanelEl.remove();
             this.legendPanelEl = null;

@@ -112,13 +112,19 @@ export class MapHierarchyManager {
             return { valid: false, errors: [`Map not found: ${mapId}`] };
         }
 
-        // Check for circular references
-        const path = await this.getMapPath(mapId);
-        const ids = path.map(m => m.id).filter((id): id is string => id !== undefined);
-        const uniqueIds = new Set(ids);
-
-        if (ids.length !== uniqueIds.size) {
-            errors.push(`Circular reference detected in hierarchy for map: ${map.name}`);
+        // Inspect parent references directly: getMapPath intentionally truncates cycles.
+        const visited = new Set<string>();
+        let current: StoryMap | null = map;
+        while (current) {
+            const key = current.id || current.name;
+            if (visited.has(key)) {
+                errors.push(`Circular reference detected in hierarchy for map: ${map.name}`);
+                break;
+            }
+            visited.add(key);
+            current = current.parentMapId
+                ? await this.mapManager.getMapById(current.parentMapId)
+                : null;
         }
 
         // Validate parent map exists if specified

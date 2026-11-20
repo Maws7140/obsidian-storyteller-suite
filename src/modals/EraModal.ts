@@ -66,6 +66,16 @@ export class EraModal extends ResponsiveModal {
                 })
                 .inputEl.addClass('storyteller-modal-input-large'));
 
+        new Setting(contentEl)
+            .setName('Abbreviation')
+            .setDesc('Optional short label shown on the timeline, such as ACW or BCE')
+            .addText(text => text
+                .setPlaceholder('E.g., "ACW"')
+                .setValue(this.era.abbreviation || '')
+                .onChange(value => {
+                    this.era.abbreviation = value.trim() || undefined;
+                }));
+
         // Start Date
         new Setting(contentEl)
             .setName('Start date')

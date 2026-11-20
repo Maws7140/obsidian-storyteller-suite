@@ -17,6 +17,7 @@ import {
 import { App, editorLivePreviewField, setIcon } from 'obsidian';
 import { parseBranches, parseEncounterTable } from '../utils/BranchParser';
 import { rollEncounterTable } from '../utils/DiceRoller';
+import { outcomeChips, type OutcomeChip } from '../utils/SceneOutcomeSummary';
 import { EncounterTable, SceneBranch } from '../types';
 
 type SupportedBlockLanguage = 'branch' | 'encounter';
@@ -144,7 +145,7 @@ export function renderBranchWidget(container: HTMLElement, branches: SceneBranch
         }
 
         const hasConditions = branch.dice || branch.requiresItem || branch.requiresCharacter
-            || branch.requiresFlag || branch.requiresStatMin != null;
+            || branch.requiresFlag || branch.requiresNoFlag || branch.requiresStatMin != null;
         if (hasConditions) {
             const conditions = card.createDiv('storyteller-branch-conditions');
 
@@ -170,32 +171,22 @@ export function renderBranchWidget(container: HTMLElement, branches: SceneBranch
                 const tag = conditions.createSpan({ cls: 'storyteller-branch-tag is-flag' });
                 tag.textContent = `Flag: ${branch.requiresFlag}`;
             }
-        }
-
-        const hasOutcomes = branch.grantsItem || branch.removesItem || branch.grantsCharacter
-            || branch.removesCharacter || branch.setsFlag || branch.triggersEvent;
-        if (hasOutcomes) {
-            const outcomes = card.createDiv('storyteller-branch-outcomes');
-
-            if (branch.grantsItem) {
-                outcomes.createSpan({ cls: 'storyteller-branch-outcome is-grant', text: `+ ${branch.grantsItem}` });
-            }
-            if (branch.removesItem) {
-                outcomes.createSpan({ cls: 'storyteller-branch-outcome is-remove', text: `- ${branch.removesItem}` });
-            }
-            if (branch.grantsCharacter) {
-                outcomes.createSpan({ cls: 'storyteller-branch-outcome is-grant', text: `+ ${branch.grantsCharacter} joins` });
-            }
-            if (branch.removesCharacter) {
-                outcomes.createSpan({ cls: 'storyteller-branch-outcome is-remove', text: `- ${branch.removesCharacter} leaves` });
-            }
-            if (branch.setsFlag) {
-                outcomes.createSpan({ cls: 'storyteller-branch-outcome is-flag', text: `Flag: ${branch.setsFlag}` });
-            }
-            if (branch.triggersEvent) {
-                outcomes.createSpan({ cls: 'storyteller-branch-outcome is-event', text: `Event: ${branch.triggersEvent}` });
+            if (branch.requiresNoFlag) {
+                const tag = conditions.createSpan({ cls: 'storyteller-branch-tag is-flag' });
+                tag.textContent = `Not: ${branch.requiresNoFlag}`;
             }
         }
+
+        renderOutcomeChips(card, outcomeChips(branch));
+    }
+}
+
+/** Renders effect chips (items, flags, standing, tags) under a choice or encounter row. */
+export function renderOutcomeChips(container: HTMLElement, chips: OutcomeChip[]): void {
+    if (chips.length === 0) return;
+    const outcomes = container.createDiv('storyteller-branch-outcomes');
+    for (const chip of chips) {
+        outcomes.createSpan({ cls: `storyteller-branch-outcome is-${chip.kind}`, text: chip.text });
     }
 }
 
@@ -223,7 +214,8 @@ export function renderEncounterWidget(container: HTMLElement, table: EncounterTa
         const tr = tbody.createEl('tr', { cls: 'storyteller-encounter-row' });
         const rangeStr = row.min === row.max ? String(row.min) : `${row.min}-${row.max}`;
         tr.createEl('td', { cls: 'storyteller-encounter-range', text: rangeStr });
-        tr.createEl('td', { cls: 'storyteller-encounter-label', text: row.label });
+        const labelCell = tr.createEl('td', { cls: 'storyteller-encounter-label', text: row.label });
+        renderOutcomeChips(labelCell, outcomeChips(row));
         tr.createEl('td', { cls: 'storyteller-encounter-target', text: row.target });
     }
 

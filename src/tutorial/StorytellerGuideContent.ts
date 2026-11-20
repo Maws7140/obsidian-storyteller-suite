@@ -1,6 +1,14 @@
+/** A screenshot shown under a guide section. Loaded from the web, so it is skipped quietly offline. */
+export interface StorytellerGuideImage {
+    src: string;
+    alt: string;
+    caption?: string;
+}
+
 export interface StorytellerGuideSection {
     title: string;
     bodyHtml: string;
+    images?: StorytellerGuideImage[];
 }
 
 export interface StorytellerGuideDocument {
@@ -130,54 +138,104 @@ export function getGettingStartedGuide(version: string): StorytellerGuideDocumen
     };
 }
 
+const RELEASE_SCREENSHOTS = 'https://raw.githubusercontent.com/Maws7140/obsidian-storyteller-suite/f1e9d78191cad4dbf4b1a07a1e8f36847532046a/screenshots/2.0';
+
 export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
     return {
         title: `What is new in ${version}`,
         introHtml: `
-            <p>This update ships a video tutorial, a round of timeline repairs, and a tidier Help section.</p>
+            <p><strong>Storyteller Suite ${version}</strong> is the biggest update yet. The timeline is rebuilt from the ground up, you can design your own calendars, maps get a drawing layer, campaigns run from your story's map, and every entity modal can be shaped around the fields you actually use.</p>
+            <p>Your notes are not rewritten when you update.</p>
         `,
         sections: [
             {
-                title: 'New',
+                title: 'Coming from 1.8',
                 bodyHtml: `
                     <ul>
-                        <li><strong>Video tutorial.</strong> A video tutorial for Storyteller Suite is now available under <strong>Settings &rarr; Storyteller Suite &rarr; Help</strong>, right next to the getting started guide.</li>
-                        <li><strong>One Help section for everything.</strong> The tutorial, the guides, contact, and support links now all live together in the Help tab of the plugin settings.</li>
+                        <li><strong>Timeline data moves into notes.</strong> The first time you open the timeline, a dialog offers to move your eras, tracks and branches out of the plugin settings and into your story folders. <code>Storyteller: Undo timeline notes migration</code> puts them back.</li>
+                        <li><strong>Scrolling and zooming.</strong> The mouse wheel now scrolls the timeline and Shift + wheel zooms. Trackpad pinch zooms too.</li>
+                        <li><strong>Map markers.</strong> Entity markers on maps are now Map Ink tokens, in the same places as before.</li>
+                        <li><strong>Settings on phones and tablets.</strong> Storyteller's settings open again on Android and iPad, as a list of sections you tap into.</li>
                     </ul>
                 `
             },
             {
-                title: 'Timeline fixes',
+                title: 'Timeline',
                 bodyHtml: `
                     <ul>
-                        <li><strong>The timeline fills the pane.</strong> The widget no longer hugs its content and leaves the rest of the view empty. It stretches to the full height of the panel.</li>
-                        <li><strong>Edit mode actually saves.</strong> Dragging an event to reschedule it now writes the new date to the note, even when edit mode was toggled on after the timeline opened. Before, the move could look successful and silently never persist.</li>
-                        <li><strong>Gantt dependency arrows stay attached.</strong> Arrows no longer float away from their bars when the panel is taller than its content.</li>
-                        <li><strong>Flashback and flash-forward connectors render.</strong> The dashed connector lines between an event and its frame event now draw correctly and follow the view as you zoom and pan.</li>
-                        <li><strong>Readable event cards.</strong> Event text uses your theme&rsquo;s text color and range bars use themed backgrounds, instead of the near-black-on-dark and pastel-blue defaults that came baked into the timeline library.</li>
+                        <li><strong>A new timeline engine.</strong> Chronology (horizontal or vertical), Gantt and a full-page Calendar view, with drag-to-edit and image export of the whole timeline.</li>
+                        <li><strong>Your own calendars.</strong> Settings → Storyteller Suite → Timeline → <em>Manage calendars</em> lets you design a calendar with its own months, leap years, epochs and holidays.</li>
+                        <li><strong>Themes.</strong> Pick a theme from the toolbar, or <em>Edit theme…</em> to change colours, fonts, sizes, connectors and a background image with a live preview. Share themes as files and bring them in with <em>Import from file…</em>.</li>
+                        <li><strong>Icons.</strong> Give events and scenes an icon, show cover images, or switch on <em>Minimal</em> to draw events as icon nodes.</li>
+                        <li><strong>Today per story.</strong> Each story can have its own "today": <em>Set today for this story…</em> in the zoom menu.</li>
+                        <li><strong>Timelines in your notes.</strong> <code>Storyteller: Insert timeline block</code> embeds a live timeline in any note.</li>
+                        <li><strong>Eras, tracks and branches</strong> belong to their story, branches carry the history they split from, and <em>Detect from event gaps</em> suggests eras for you.</li>
                     </ul>
-                `
+                `,
+                images: [
+                    { src: `${RELEASE_SCREENSHOTS}/timeline-horizontal.png`, alt: 'Horizontal timeline with dated event cards', caption: 'Lay out dated events along a horizontal timeline.' },
+                    { src: `${RELEASE_SCREENSHOTS}/timeline-vertical.png`, alt: 'Vertical timeline with events arranged by month', caption: 'Read through events in a vertical view organised by month.' },
+                    { src: `${RELEASE_SCREENSHOTS}/timeline-gantt.png`, alt: 'Gantt timeline with location lanes and event dependencies', caption: 'Group events by location and follow their dependencies in Gantt view.' },
+                ]
             },
             {
-                title: 'Also fixed',
+                title: 'Writing',
                 bodyHtml: `
                     <ul>
-                        <li>The settings pane has a second safety net against opening blank in Obsidian 1.13+&rsquo;s separate settings window. It now re-renders itself as soon as the window move completes.</li>
-                        <li>The plot hole detector no longer flags characters linked by their id (such as <code>char-mira-vey</code>) as missing when the character file exists.</li>
+                        <li><strong>Scene synopses.</strong> The Writing list shows each scene's synopsis instead of its first line, Board cards show it too, and the search looks inside it.</li>
+                        <li>Scenes that are not in a chapter yet now show up in the list under <em>Unassigned scenes</em>.</li>
                     </ul>
-                `
+                `,
+                images: [
+                    { src: 'https://i.ibb.co/CK23v8B4/851fd3ed9ec5.png', alt: 'Story board writing view', caption: 'Organise scenes on the story board while the Writing dashboard stays in sync.' },
+                ]
             },
             {
-                title: 'Try the beta',
+                title: 'Campaign play',
                 bodyHtml: `
-                    <p>A brand new timeline and a dating system are available in beta. You can try them today with BRAT (Beta Reviewers Auto-update Tool):</p>
-                    <ol>
-                        <li>Install and enable the <strong>BRAT</strong> plugin from the community plugin browser.</li>
-                        <li>In BRAT, choose <strong>Add beta plugin</strong> and enter <code>Maws7140/obsidian-storyteller-suite</code>.</li>
-                        <li>Pick the latest beta release when prompted.</li>
-                    </ol>
-                    <p>Beta builds are still changing, so back up your vault before switching. You can return to the stable release at any time by removing the beta plugin in BRAT and reinstalling from the community plugin browser.</p>
-                `
+                    <ul>
+                        <li><strong>Run sessions from your map.</strong> <code>Storyteller: Open campaign view</code> opens on your story's map, with the party, current scene, combat and session log close at hand.</li>
+                        <li><strong>Player screen.</strong> <code>Storyteller: Open player screen</code> shows your players the map, the party and votes, and hides the places they have not found yet.</li>
+                        <li><strong>Session logs in Partylog.</strong> A quick entry line writes the log for you, with session header, end-of-session and interlude dialogs, and import and export.</li>
+                        <li><strong>Campaign state.</strong> Clocks, threads, party resources, loot, factions and advancement are tracked as you play, and encounters can carry choices and flags.</li>
+                        <li><strong>Campaigns on the timeline.</strong> A campaign can record onto its own track of the timeline, in in-world time.</li>
+                        <li><strong>World Log.</strong> <code>Storyteller: New world log</code> keeps worldbuilding decisions, open questions and tensions in one place.</li>
+                    </ul>
+                `,
+                images: [
+                    { src: 'https://i.ibb.co/Fb3QVNgd/a086488103f6.png', alt: 'Campaign session view', caption: 'Run scenes, track the party, share inventory and keep a live session log in one place.' },
+                    { src: 'https://i.ibb.co/cSB4h426/9a6e271d6622.png', alt: 'Scene graph and campaign tools', caption: 'Move through branching scenes on the scene graph and jump straight into play.' },
+                ]
+            },
+            {
+                title: 'Maps',
+                bodyHtml: `
+                    <ul>
+                        <li><strong>Map Ink.</strong> <em>Draw on map</em> adds stamps, lines, areas, shapes, text and hand-inked brushes, in layers with a legend.</li>
+                        <li><strong>Overlays and export.</strong> GeoJSON and GPX overlays, and PNG export of image maps.</li>
+                        <li><strong>Child maps.</strong> Location markers offer <em>Create child location</em> and <em>Zoom to child map</em>.</li>
+                    </ul>
+                `,
+                images: [
+                    { src: 'https://i.ibb.co/5hcxV2rv/04c0d160200a.png', alt: 'Fantasy world map with entity markers', caption: 'Place characters, locations, events and items straight onto your maps.' },
+                    { src: 'https://i.ibb.co/0yz8jPQ0/2b8aae06203f.png', alt: 'Map hierarchy from world to room', caption: 'Build a map hierarchy from world to city to room, with breadcrumbs to find your way back.' },
+                ]
+            },
+            {
+                title: 'Characters, places and your own fields',
+                bodyHtml: `
+                    <ul>
+                        <li><strong>Your own fields.</strong> Settings → Storyteller Suite → Modals: add typed fields per entity type, and switch off any field or section you do not use.</li>
+                        <li><strong>Tidier modals.</strong> Every entity modal is laid out in collapsible sections.</li>
+                        <li><strong>Bring in notes you already have.</strong> <code>Storyteller: Import existing notes as entities</code> turns them into characters, locations, events and more, without deleting anything.</li>
+                        <li><strong>Templates</strong> can be edited, imported from files, and adjusted before you apply them.</li>
+                        <li><strong>Network graph.</strong> It follows the story's theme, colours by type, group, location, culture or connection count, has a legend that matches the screen, and zooms out to fit any layout.</li>
+                    </ul>
+                `,
+                images: [
+                    { src: `${RELEASE_SCREENSHOTS}/network-graph-by-group.png`, alt: 'Character network graph coloured by group', caption: 'Colour characters by group to see how relationships cross groups.' },
+                    { src: `${RELEASE_SCREENSHOTS}/network-graph-by-connections.png`, alt: 'Character network graph coloured by connection count', caption: 'Colour characters by connection count to spot the most connected people in a story.' },
+                ]
             }
         ]
     };
@@ -216,6 +274,7 @@ export function renderGuideDocument(
 
             const bodyEl = detailsEl.createDiv('storyteller-guide-section-body');
             renderGuideHtml(bodyEl, section.bodyHtml);
+            renderGuideImages(bodyEl, section.images);
             return;
         }
 
@@ -226,7 +285,19 @@ export function renderGuideDocument(
         });
         const bodyEl = sectionEl.createDiv('storyteller-guide-section-body');
         renderGuideHtml(bodyEl, section.bodyHtml);
+        renderGuideImages(bodyEl, section.images);
     });
+}
+
+function renderGuideImages(containerEl: HTMLElement, images: StorytellerGuideImage[] | undefined): void {
+    for (const image of images ?? []) {
+        if (!/^https:\/\//.test(image.src)) continue;
+        const figure = containerEl.createEl('figure', { cls: 'storyteller-guide-figure' });
+        const img = figure.createEl('img', { attr: { src: image.src, alt: image.alt, loading: 'lazy' } });
+        // Offline, or the host is down: drop the figure rather than show a broken image.
+        img.addEventListener('error', () => figure.remove());
+        if (image.caption) figure.createEl('figcaption', { text: image.caption });
+    }
 }
 
 function renderGuideHtml(containerEl: HTMLElement, html: string): void {
@@ -252,7 +323,7 @@ function appendGuideNode(parentEl: HTMLElement, node: Node): void {
     if (!(node.instanceOf(Element))) return;
 
     const tagName = node.tagName.toLowerCase();
-    const allowedTags = new Set(['p', 'strong', 'code', 'ol', 'ul', 'li']);
+    const allowedTags = new Set(['p', 'strong', 'em', 'code', 'ol', 'ul', 'li']);
     if (!allowedTags.has(tagName)) {
         Array.from(node.childNodes).forEach((child) => appendGuideNode(parentEl, child));
         return;

@@ -18,7 +18,7 @@ import type {
     Reference
 } from '../types';
 import { LocationService } from '../services/LocationService';
-import { getTrackedItemOwner, isSameName } from '../utils/ItemOwnership';
+import { getTrackedItemOwner, isSameName, getOwners } from '../utils/ItemOwnership';
 
 // Union type for all loadable entities
 type LoadableEntity = Character | Event | PlotItem | Culture | Economy | MagicSystem | Group | Scene | Reference;
@@ -195,9 +195,10 @@ export class AddEntityToLocationModal extends Modal {
         if (this.entityType !== 'item') return '';
         const item = entity as PlotItem;
         const details: string[] = [];
-        if (item.currentOwner) details.push(`Owner: ${item.currentOwner}`);
+        const owners = getOwners(item);
+        if (owners.length > 0) details.push(`Owner: ${owners.join(', ')}`);
         const trackedOwner = this.itemOwnerByName.get(this.normalizeName(item.name));
-        if (trackedOwner && !isSameName(trackedOwner, item.currentOwner)) {
+        if (trackedOwner && !owners.some(owner => isSameName(trackedOwner, owner))) {
             details.push(`Carried by: ${trackedOwner}`);
         }
         if (item.currentLocation) details.push(`Current location: ${item.currentLocation}`);
@@ -209,8 +210,9 @@ export class AddEntityToLocationModal extends Modal {
         const item = entity as PlotItem;
         const warnings: string[] = [];
         const trackedOwner = this.itemOwnerByName.get(this.normalizeName(item.name));
-        if (item.currentOwner) {
-            warnings.push(`${item.name} is currently owned by ${item.currentOwner}.`);
+        const owners = getOwners(item);
+        if (owners.length > 0) {
+            warnings.push(`${item.name} is currently owned by ${owners.join(', ')}.`);
         } else if (trackedOwner) {
             warnings.push(`${item.name} is currently in ${trackedOwner}'s inventory.`);
         }

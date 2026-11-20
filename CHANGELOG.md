@@ -1,5 +1,135 @@
 # Changelog
 
+## 2.0.0
+
+Storyteller Suite 2.0 rebuilds the timeline from scratch, lets you run campaigns from your story's map, replaces map pins with a drawing layer, and lets every entity modal be shaped to your own fields. Everything since 1.8.19 is listed below, including the work from the two 2.0 betas.
+
+### Upgrading from 1.8
+- Your notes are not rewritten on upgrade. Event, character, location and map notes keep their current frontmatter.
+- Eras, tracks and branches used to live in the plugin settings. The first time you open the timeline, a dialog offers to move them into notes in your story folders and asks which story should adopt any that predate story folders. *Undo timeline notes migration* reverses it.
+- The timeline no longer uses vis-timeline. Plain mouse wheel now scrolls the timeline and Shift + wheel zooms (it was the other way round); trackpad pinch also zooms.
+- Maps drawn with the Maplog marks from the betas open in Map Ink automatically. The old keys are read, not deleted.
+
+### Timeline
+- **New timeline engine.** The timeline is drawn on a canvas of its own, with Chronology (horizontal and vertical), Gantt and Calendar views, calendar-aware axes from centuries down to minutes, drag editing, empty date slots, snapping that follows your calendar, and a full-canvas image export.
+- **Custom calendars.** Each story can have its own dating system with any month lengths, leap rules, epochs, cycles and holidays, built in a calendar designer. Gregorian, 13 Moons and Japanese kō calendars are bundled. Calendars travel as `.storycal.json` files or share codes.
+- **Calendar view.** A full-pane month calendar next to Chronology and Gantt, with a weekday start setting and image export.
+- **Icons and covers.** Pick an icon for any event or scene, show cover images on every view, and switch on *Minimal* to draw events as icon nodes.
+- **Timeline themes.** Choose a theme from the toolbar or build your own in the theme editor with a live preview: colours with opacity, the lane palette, label font, chip and lane sizes, connector style, and a background image. High contrast, Parchment and Quiet are bundled alongside Obsidian native, and every colour is also a `--sts-timeline-*` CSS variable for snippets.
+- **Import themes and calendars from a file.** *Import from file…* in Settings → Timeline, and *Import file…* in *Manage timeline themes*, install a `.storytl.json` or `.storycal.json` without pasting it.
+- **Today per story.** Each story can set its own "today", in its own calendar, for the now marker, *Jump to today* and relative dates.
+- **Timeline blocks.** A fenced `timeline` code block embeds a live timeline in any note, with optional `theme:` and `today:` lines.
+- **Eras, tracks and branches as notes.** They are scoped to their story, can be linked and searched, and a branch carries the history it forked from. *Detect from event gaps* suggests eras from large gaps between events.
+- **Grouped lanes.** Group the timeline by character, location, item, culture or magic system, or show where each character was over time. Conflicts, such as a character in two places at once, get a corner badge.
+- **Cause and effect on events.** Events record their branch, causes and effects, and the session that created them.
+- Two-row toolbar with a *New event* button on every timeline surface, and timeline filters now apply to scenes.
+
+### Campaign play
+- **Run sessions from your map.** The campaign view opens on your story's map, with the party, current scene, combat and session log close at hand.
+- **Player screen.** A second view to show your players the board, the party and votes, with three-state fog of war and drifting clouds over unseen country.
+- **Partylog notation.** A quick entry bar writes the session log in Partylog, with scene numbering, session header, end-of-session and interlude dialogs, and export and import of sessions.
+- **Campaign state.** Clocks, threads and quests, party resources, loot, factions and advancement are tracked and shown during play.
+- **Encounters and choices.** Encounter rolls are part of play, and encounter rows can carry choice outcomes and set flags.
+- **Campaigns on the timeline.** A campaign can record onto its own track or fork of the main timeline, in in-world time.
+- **Read panel and World Log.** A Read panel in the DM sidebar, and Lorelog world logs (*New world log*, *Add build session*) for worldbuilding decisions, open questions and tensions.
+
+### Maps
+- **Map Ink.** Draw on any map with stamps from a symbol library, lines, freehand strokes, areas, shapes, text and hand-inked brushes (including barrier brushes and a water fill), each with its own colour. Select, move, rotate and edit with the keyboard; organise drawings in layers with a legend. Entity tokens replace the teardrop pins and thin out as you zoom. Drawings are included in image export and presets can be saved in settings.
+- GeoJSON and GPX overlays on maps.
+- Export image maps as PNG from the map menu.
+- *Create child location* and *Zoom to child map* on location markers, and a placement grid for laying out child locations.
+- Maps no longer flicker or go blank when a sidebar opens, and switching maps quickly always lands on the last one picked.
+
+### Entities and modals
+- Every entity modal is laid out in collapsible sections.
+- **Defined fields.** Add your own typed fields (text, long text, number, list, and links to other entities) per entity type in Settings, Modals. They are written as top-level frontmatter.
+- Any field or section of any entity modal can be switched off, and a description can be stored as a frontmatter property instead of a body section.
+- Items can have several owners, a creator and a quantity.
+- Folder layout can be set per story.
+- **Scene synopses in the Writing view.** The List view shows a scene's synopsis (on two lines) instead of the first line of its text, falling back to the text when there is no synopsis. Board cards show the synopsis too, and the Writing search matches it.
+
+### Templates and import
+- **Import existing notes as entities.** A wizard turns notes you already have into characters, locations, events and six other types, moving them into the entity folders and keeping every frontmatter key.
+- Templates can be edited, imported from `.json` files, and customised before they are applied, including which entities to create and their file names.
+
+### Network graph
+- The relationship graph follows the R-Map conventions: relationship direction, broken and severed links, groups, and suggested links.
+- The graph uses the story's timeline theme, can colour nodes by type, group, location, culture, status or connections, and has a *Show* menu and a legend that updates with what is on screen.
+
+### Interface
+- Dashboard tabs switch at once and show an error in place if one fails.
+- Settings tabs can be hidden, and the Help tab gathers the guide, contact and support links.
+
+### Removed
+- The vis-timeline and timeline-arrows libraries.
+- The `storyteller-map` code block, which never rendered. Use the Map view or a map embed.
+- The *Replace current story* template option, which did not do what it said.
+
+### Fixed
+- Hundreds of fixes from the beta test and two rounds of bug hunting. The ones you are most likely to have hit:
+  - Map drawings were emptied on save, so marks seemed not to stick.
+  - Timeline edits could be written from a stale copy of the story, and three code paths could write an empty timeline store.
+  - Save and Create buttons, Partylog import and Lorelog actions could run twice on a double click or double tap.
+  - Saving a group note could drop keys and sections the plugin did not know about. Saving now keeps them, along with legacy connection formats.
+  - BCE dates written by dragging could not be read back.
+  - The Gantt view slowed down with many dependencies. It now draws about three times faster on large stories.
+  - Gregorian year labels on the axis repeated or skipped years.
+  - Saving a character with a dated location history (`3018-01-01 – 3018-09-22`) split the start date at its first hyphen and wrote back `3018 – 01-01 – 3018-09-22`, so every event after it was flagged as a conflict. Ranges now keep whole dates, and histories already written the broken way are read correctly and fixed on the next save.
+  - After an update, Storyteller could show dozens of "Event saved with N conflict(s)" notices in a row while it refreshed links between notes in the background. Background saves no longer run the per-event conflict check, and saves that land in a burst share one notice.
+  - The Writing List showed "No chapters found" and nothing else for a story with scenes but no chapters. Those scenes now appear under Unassigned scenes.
+  - Plugin settings opened blank on Android and iPad with Obsidian 1.13 and later. Obsidian added a `renderTab()` step to every settings tab, and a private method of ours with the same name replaced it, so the tab drew nothing; desktop only worked by accident. The method is renamed and settings render on phones, tablets and desktop.
+  - In circle layout a large graph could not be zoomed out far enough to see every node, and Fit to view stopped short, because the zoom floor was fixed at 20%. The floor now drops to whatever shows the whole graph.
+  - A bare year such as `dateTime: 342` stopped the whole timeline from drawing, because Obsidian reads it as a number.
+  - A character recorded as living in a region (the Shire) was flagged as in two places when an event put them somewhere inside it (Bag End). Recorded stays now cover the places within them.
+
+## 2.0.0-beta.2
+
+### Added
+- **Inline timeline blocks**: embed a live timeline inside any note using a fenced `timeline` code block. The block renders inside the note itself with no separate view needed.
+- **Event provenance**: events now carry which story session created them, surfaced in the event detail panel.
+- **Track, era, and branch manager**: dedicated UI for creating and editing eras, tracks, and branches, scoped per-story so they do not bleed across stories.
+- **Branch causality fields**: events can declare which branch they belong to, and cause/effect relationships are recorded directly on the event rather than as separate link notes.
+- **History inheritance for branches**: a branch carries the full history of the timeline it forked from up to its divergence point, and the branch renderer shows exactly where it splits.
+- **Grouped track lanes**: the timeline can group by world-building entity — item, culture, or magic system — or show where each character was at each point in time.
+- **Trackpad pinch-to-zoom**: two-finger pinch zooms the timeline axis on trackpads in addition to the scroll-wheel zoom already available.
+- **Full-canvas export**: exporting the timeline captures the entire plot area, not just the current scroll window.
+- **Fork commands**: the fork a timeline and create a divergence point commands now open the timeline at the new branch immediately so you can see the result straight away.
+- **Gantt short-bar chip fallback**: a Gantt bar too narrow to show its own label renders as a readable chip anchored at the event's start, with the true span shaded inside it so the bar does not mislead about the event duration.
+
+### Fixed
+- Dependency arrows no longer drift horizontally as the user scrolls the timeline.
+- Events are now placed at the exact calendar day they are dated; plot lines stay inside the drawable area and no longer run past the axis edges.
+- Three separate code paths could silently write an empty timeline store to disk; all three are now guarded.
+- Dependency arrows no longer draw backwards through the bar they belong to.
+- The timeline toolbar no longer loses its right-hand controls after certain resize transitions.
+- Switching the active story now reloads all open timeline views, clearing the previous story's track, branch, and filter state so the new story does not appear empty.
+- Era epoch suffix (`CE`) no longer appears on every Gregorian event card and axis label. The suffix is shown only for user-defined calendars where the epoch is not universally understood; pre-epoch Gregorian years read as `BCE` instead of as a negative number.
+- Gantt bars that had no explicit end date rendered as unlabelled nubs at any zoom level wider than a few weeks; the chip fallback above resolves this.
+
+### Changed
+- Timeline migration prompt moved from plugin settings into a first-use dialog so it appears in context the first time the timeline is opened, rather than buried in a settings screen that many users do not visit.
+
+### Beta notes
+- Install through BRAT from the repository's `2.0.0-beta.2` prerelease.
+- This beta does not alter or migrate existing event notes.
+
+---
+
+## 2.0.0-beta.1
+
+### Added
+- Native high-performance Canvas timeline with viewport culling, calendar-native axes, track and entity lanes, eras, Gantt dependencies, narrative connectors, drag editing, and branch comparison for forked timelines.
+- Per-story dating systems with arbitrary month counts, leap rules, day or minute precision, cycle overlays, holidays, and bundled Gregorian, 13 Moons, and Japanese kō examples.
+- Portable `.storycal.json` calendar and `.storytl.json` appearance documents with validation and Unicode-safe share codes for Vault Hub distribution.
+- Timeline themes inherit from the active Obsidian theme by default and can selectively override semantic colors and layout roles.
+
+### Changed
+- Alternate timelines can be compared as visual branches that inherit main-history events through their divergence points.
+- Removed the vis-timeline and timeline-arrows runtime dependencies.
+
+### Beta notes
+- Install through BRAT from the repository's `2.0.0-beta.1` prerelease. This beta does not alter or migrate existing event notes.
+
 ## 1.8.19
 
 ### Added

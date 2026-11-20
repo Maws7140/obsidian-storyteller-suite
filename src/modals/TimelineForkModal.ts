@@ -37,7 +37,7 @@ export class TimelineForkModal extends Modal {
             divergenceDate: '',
             description: '',
             status: 'exploring',
-            forkEvents: [],
+            linkedEvents: [],
             alteredCharacters: [],
             alteredLocations: [],
             color: this.plugin.generateRandomColor(),
@@ -189,10 +189,10 @@ export class TimelineForkModal extends Modal {
                 });
             }
 
-            if (this.fork.forkEvents && this.fork.forkEvents.length > 0) {
+            if (this.fork.linkedEvents && this.fork.linkedEvents.length > 0) {
                 alteredSection.createEl('h4', { text: 'Fork-specific events:' });
                 const eventList = alteredSection.createEl('ul');
-                this.fork.forkEvents.forEach(eventId => {
+                this.fork.linkedEvents.forEach(eventId => {
                     eventList.createEl('li', { text: eventId });
                 });
             }

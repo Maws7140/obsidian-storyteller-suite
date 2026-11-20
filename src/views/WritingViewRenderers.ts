@@ -8,6 +8,7 @@
 import { App, TFile, Notice, setIcon } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
 import { Scene, Chapter } from '../types';
+import { scenePreview } from '../utils/ScenePreview';
 
 export type KanbanGroupBy = 'status' | 'chapter' | 'pov';
 export type WritingPanelMode = 'board' | 'arc' | 'heatmap' | 'holes';
@@ -239,6 +240,12 @@ export class WritingViewRenderers {
         }
         if (sc.emotion) {
             meta.createSpan({ text: sc.emotion, cls: `storyteller-scene-emotion-chip storyteller-emotion-${sc.emotion}` });
+        }
+
+        // Board cards stay compact, so they show a synopsis but not the opening of the prose.
+        const preview = scenePreview(sc, 140);
+        if (preview?.fromSynopsis) {
+            card.createEl('p', { cls: 'storyteller-kanban-card-synopsis', text: preview.text });
         }
 
         if (sc.intensity !== undefined && sc.intensity !== null) {

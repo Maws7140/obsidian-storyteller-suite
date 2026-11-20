@@ -96,6 +96,14 @@ export function extractLedgerEntries(markdown: string): LedgerEntry[] {
     return entries;
 }
 
+/**
+ * True when an entity's balance was derived from its ledger blocks rather than
+ * typed by the user. Such a balance is recomputed on read and never written back.
+ */
+export function isLedgerDerivedBalance(entity: { ledger?: unknown[]; balanceAuto?: boolean }): boolean {
+    return entity.balanceAuto === true && (entity.ledger?.length ?? 0) > 0;
+}
+
 /** Compute a Balance breakdown from an array of LedgerEntry values. */
 export function computeBalance(entries: LedgerEntry[]): Balance {
     const totalCp = entries.reduce((sum, e) => sum + e.cpValue, 0);
