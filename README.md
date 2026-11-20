@@ -69,9 +69,9 @@ Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, run
 
 ### Campaign play
 
-![Campaign play session view](https://i.ibb.co/Fb3QVNgd/a086488103f6.png)
+![Campaign map with party health and resources](screenshots/2.0/campaign-party.png)
 
-*Run scenes, track party state, manage shared inventory, and keep a live session log in one place.*
+*Run scenes from the map while tracking party health, resources, and shared loot.*
 
 ![Scene graph and campaign tools](https://i.ibb.co/cSB4h426/9a6e271d6622.png)
 
