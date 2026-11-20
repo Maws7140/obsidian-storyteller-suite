@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseEventDate, toMillis, toDisplay } from '../../src/utils/DateParsing';
+import { frontmatterDateText, parseEventDate, toMillis, toDisplay } from '../../src/utils/DateParsing';
 
 describe('DateParsing', () => {
   it('parses ISO date', () => {
@@ -241,6 +241,24 @@ describe('DateParsing', () => {
   });
 
   describe('BCE date parsing', () => {
+    it.each([
+      ['335-01-02 BCE', -334, 335, 1, 2, 0, 'day'],
+      ['1-12-31 BC 18:30', 0, 1, 12, 31, 18, 'time'],
+      ['335-01-02T18:30 BCE', -334, 335, 1, 2, 18, 'time'],
+      ['-335-01-02', -335, 336, 1, 2, 0, 'day'],
+    ])('preserves the full Gregorian date in %s', (input, year, eraYear, month, day, hour, precision) => {
+      const parsed = parseEventDate(input, { timezone: 'utc' });
+      expect(parsed.start?.toObject()).toMatchObject({ year, month, day, hour });
+      expect(parsed.originalYear).toBe(eraYear);
+      expect(parsed.precision).toBe(precision);
+    });
+
+    it('rejects an impossible full BCE date instead of guessing a different date', () => {
+      const parsed = parseEventDate('335-02-30 BCE', { timezone: 'utc' });
+      expect(parsed.start).toBeUndefined();
+      expect(parsed.error).toBeDefined();
+    });
+
     it('parses BCE year', () => {
       const r = parseEventDate('500 BCE');
       expect(r.error).toBeUndefined();
@@ -296,6 +314,75 @@ describe('DateParsing', () => {
       // BCE 1 should become year 0
       expect(r.start?.year).toBe(0);
     });
+
+    it('keeps the minus sign on ISO-style negative years', () => {
+      const r = parseEventDate('-3000-01-01', { timezone: 'utc' });
+      expect(r.error).toBeUndefined();
+      expect(r.start?.year).toBe(-3000);
+      expect(r.start?.month).toBe(1);
+      expect(r.start?.day).toBe(1);
+      expect(r.start?.hour).toBe(0);
+      expect(r.isBCE).toBe(true);
+      expect(r.precision).toBe('day');
+    });
+
+    it('places a short negative ISO year at the correct negative year', () => {
+      const r = parseEventDate('-0044-03-15', { timezone: 'utc' });
+      expect(r.start?.year).toBe(-44);
+      expect(r.start?.month).toBe(3);
+      expect(r.start?.day).toBe(15);
+      expect(r.start?.hour).toBe(0);
+    });
+
+    it('treats a negative ISO year as astronomical (-43 is 44 BCE)', () => {
+      const r = parseEventDate('-0043-01-01', { timezone: 'utc' });
+      expect(r.start?.year).toBe(-43);
+      expect(r.originalYear).toBe(44);
+    });
+
+    it('parses negative ISO years with year-only and year-month precision', () => {
+      expect(parseEventDate('-3000', { timezone: 'utc' }).start?.year).toBe(-3000);
+      expect(parseEventDate('-3000', { timezone: 'utc' }).precision).toBe('year');
+      const ym = parseEventDate('-3000-06', { timezone: 'utc' });
+      expect(ym.start?.year).toBe(-3000);
+      expect(ym.start?.month).toBe(6);
+      expect(ym.precision).toBe('month');
+    });
+
+    it('keeps the minus sign on both endpoints of a negative ISO range', () => {
+      const r = parseEventDate('-3000-01-01 to -2990-01-01', { timezone: 'utc' });
+      expect(r.start?.year).toBe(-3000);
+      expect(r.end?.year).toBe(-2990);
+      expect(r.isBCE).toBe(true);
+    });
+
+    it('still places BCE forms at the same negative year as before', () => {
+      // "3000 BCE" maps to year -2999 under the BCE convention (BCE 1 = year 0).
+      expect(parseEventDate('3000 BCE', { timezone: 'utc' }).start?.year).toBe(-2999);
+      expect(parseEventDate('44 BC', { timezone: 'utc' }).start?.year).toBe(-43);
+      expect(parseEventDate('44 BC', { timezone: 'utc' }).originalYear).toBe(44);
+    });
+
+    it('does not let a negative date be read as a positive year', () => {
+      expect(parseEventDate('-3000-01-01', { timezone: 'utc' }).start?.year).not.toBe(3000);
+      expect(parseEventDate('-0044-03-15', { timezone: 'utc' }).start?.year).not.toBe(44);
+    });
+  });
+
+  describe('positive year ranges are unaffected by negative-year handling', () => {
+    it('parses a zero-padded positive range', () => {
+      const r = parseEventDate('0342 to 0367', { timezone: 'utc' });
+      expect(r.start?.year).toBe(342);
+      expect(r.end?.year).toBe(367);
+      expect(r.isBCE).toBeUndefined();
+    });
+
+    it('parses a positive ISO date unchanged', () => {
+      const r = parseEventDate('0342-03-01', { timezone: 'utc' });
+      expect(r.start?.year).toBe(342);
+      expect(r.start?.month).toBe(3);
+      expect(r.start?.day).toBe(1);
+    });
   });
 
   describe('BCE date display', () => {
@@ -345,5 +432,52 @@ describe('DateParsing', () => {
 
       expect(bceMillis).toBeLessThan(ceMillis);
     });
+  });
+});
+
+describe('BCE and negative years with a time of day', () => {
+  it.each(['-44-03-15 10:00', '-0044-03-15 10:00', '-000044-03-15 10:00', '-0044-03-15T10:00'])('keeps the sign, month and day of "%s"', text => {
+    const r = parseEventDate(text, { timezone: 'utc' });
+    expect(r.error).toBeUndefined();
+    expect(r.start?.year).toBe(-44);
+    expect(r.start?.month).toBe(3);
+    expect(r.start?.day).toBe(15);
+    expect(r.start?.hour).toBe(10);
+    expect(r.start?.minute).toBe(0);
+    expect(r.precision).toBe('time');
+    expect(r.isBCE).toBe(true);
+  });
+
+  it('reads seconds on a negative ISO time', () => {
+    const r = parseEventDate('-000043-01-01 10:30:15', { timezone: 'utc' });
+    expect(r.start?.toMillis()).toBe(Date.UTC(-43, 0, 1, 10, 30, 15));
+  });
+
+  it('a midnight negative ISO date is unchanged', () => {
+    const r = parseEventDate('-0044-03-15', { timezone: 'utc' });
+    expect(r.start?.toMillis()).toBe(Date.UTC(-44, 2, 15));
+    expect(r.precision).toBe('day');
+  });
+
+  it('"44 BCE 10:00" is Jan 1 of that year at 10:00, like "44 BCE" is Jan 1', () => {
+    const r = parseEventDate('44 BCE 10:00', { timezone: 'utc' });
+    expect(r.error).toBeUndefined();
+    expect(r.start?.toMillis()).toBe(Date.UTC(-43, 0, 1, 10, 0));
+    expect(r.isBCE).toBe(true);
+    expect(r.originalYear).toBe(44);
+    expect(parseEventDate('44 BCE', { timezone: 'utc' }).start?.toMillis()).toBe(Date.UTC(-43, 0, 1));
+  });
+});
+
+describe('frontmatterDateText', () => {
+  it('turns a bare year that YAML read as a number back into text', () => {
+    expect(frontmatterDateText(2941)).toBe('2941');
+    expect(frontmatterDateText(342)).toBe('342');
+  });
+
+  it('leaves strings and missing values alone', () => {
+    expect(frontmatterDateText('3018-09-22')).toBe('3018-09-22');
+    expect(frontmatterDateText(undefined)).toBeUndefined();
+    expect(frontmatterDateText(Number.NaN)).toBeNaN();
   });
 });

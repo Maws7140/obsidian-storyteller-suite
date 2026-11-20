@@ -25,6 +25,9 @@ export interface ParsedEventDate {
 const APPROX_RE = /(circa|around|about|approx|~|approx\.)/i;
 const BCE_RE = /\b(\d+)\s*(BC|bce|BCE|B\.C\.|B\.C|B\.C\.E\.|b\.c\.|b\.c\.e\.|bc|b\.c\.e)\b/i;
 const CE_RE = /\b(\d+)\s*(CE|ce|A\.D\.|AD|ad|a\.d\.)\b/i;
+const NEG_ISO_RE = /^-(\d{1,6})(?:-(\d{1,2}))?(?:-(\d{1,2}))?(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/;
+const FULL_BCE_RE = /^(\d{1,6})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?\s*(?:BCE?|B\.C\.?(?:E\.?)?)(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/i;
+const BCE_TIME_ONLY_RE = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
 
 function inferPrecisionFromChrono(result: chrono.ParsedResult): ParsedPrecision {
   const start = result.start;
@@ -41,6 +44,15 @@ function inferPrecisionFromLuxon(dt: DateTime): ParsedPrecision {
   if (dt.day !== 1) return 'day';
   if (dt.month !== 1) return 'month';
   return 'year';
+}
+
+/**
+ * A frontmatter date as text. Obsidian reads `dateTime: 342` as the number 342, while
+ * the timeline handles dates as strings, so a bare year would otherwise break it.
+ * Any other value is returned unchanged.
+ */
+export function frontmatterDateText<T>(value: T): T | string {
+  return typeof value === 'number' && Number.isFinite(value) ? String(value) : value;
 }
 
 function coerceDateInput(input: unknown): string | undefined {
@@ -138,7 +150,36 @@ function splitRange(text: string): [string, string] | null {
   const approximate = APPROX_RE.test(text);
   const zone = getLuxonZone(opts.timezone);
 
-  // 0) CE date detection
+  // 0a) Negative ISO years ("-3000-01-01", "-0044-03-15"). Luxon's ISO parser
+  // rejects a leading minus, and chrono silently drops it, which is how a year
+  // of -3000 used to land at 3000 AD. Build the date from parts so the sign
+  // survives. Years are astronomical (matching formatCalendarYear), so -43 is
+  // 44 BCE, and the same BCE flags as the "44 BC" form are set.
+  // Match a full era date before BCE_RE can mistake its day for the year.
+  const fullBce = text.match(FULL_BCE_RE);
+  const dateParts = fullBce ?? text.match(NEG_ISO_RE);
+  if (dateParts) {
+    const inputYear = Number(dateParts[1]);
+    if (fullBce && inputYear === 0) return { error: 'invalid BCE year' };
+    const year = fullBce ? 1 - inputYear : -inputYear;
+    const month = Number(dateParts[2] ?? 1);
+    const day = Number(dateParts[3] ?? 1);
+    if (fullBce?.[4] != null && fullBce[7] != null) return { error: 'invalid BCE date' };
+    const hour = dateParts[4] ?? fullBce?.[7];
+    const dt = DateTime.fromObject({
+      year, month, day,
+      hour: Number(hour ?? 0),
+      minute: Number(dateParts[5] ?? fullBce?.[8] ?? 0),
+      second: Number(dateParts[6] ?? fullBce?.[9] ?? 0),
+    }, { zone });
+    if (dt.isValid) {
+      const precision: ParsedPrecision = hour != null ? 'time' : dateParts[3] != null ? 'day' : dateParts[2] != null ? 'month' : 'year';
+      return { start: dt, precision, approximate, isBCE: true, originalYear: 1 - year };
+    }
+    if (fullBce) return { error: 'invalid BCE date' };
+  }
+
+  // 0b) CE date detection
   const ceMatch = text.match(CE_RE);
 
   if (ceMatch) {
@@ -233,6 +274,20 @@ function splitRange(text: string): [string, string] | null {
             isBCE: true,
             originalYear: year
           };
+        }
+      }
+
+      // "44 BCE 10:00": a bare year has no month or day, so it sits on 1 January like "44 BCE",
+      // and the clock is read onto that day rather than the day of the reference date.
+      const bceTimeOnly = text.replace(BCE_RE, '').trim().match(BCE_TIME_ONLY_RE);
+      if (bceTimeOnly) {
+        const withTime = DateTime.fromObject({
+          year: jsYear, month: 1, day: 1,
+          hour: parseInt(bceTimeOnly[1], 10), minute: parseInt(bceTimeOnly[2], 10),
+          second: bceTimeOnly[3] != null ? parseInt(bceTimeOnly[3], 10) : 0,
+        }, { zone });
+        if (withTime.isValid) {
+          return { start: withTime, precision: 'time', approximate, isBCE: true, originalYear: year };
         }
       }
 
@@ -409,3 +464,20 @@ export function getEventDateForTimeline(event: Event): string | undefined {
 }
 
 
+
+/** Parse a date on the timeline's UTC axis so every timeline consumer agrees on instants. */
+export function parseTimelineDate(input?: unknown, referenceDate?: Date): ParsedEventDate {
+  return parseEventDate(input, { timezone: 'utc', referenceDate });
+}
+
+/**
+ * Read a day typed as a reference "today" (Settings > Custom today). It goes through the same
+ * parser as event dates, so "44 BCE", "-0044-03-15" and six-digit ISO all keep their year.
+ * Returns null when the text cannot be read, so the caller can say so rather than guess.
+ */
+export function parseReferenceDate(input: string): Date | null {
+  const parsed = parseEventDate(input, { timezone: 'utc' });
+  const millis = toMillis(parsed.start);
+  if (parsed.error || millis === undefined || !Number.isFinite(millis)) return null;
+  return new Date(millis);
+}

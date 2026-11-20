@@ -1,0 +1,184 @@
+import { describe, expect, it } from 'vitest';
+import { TFile } from 'obsidian';
+import { TemplateApplicator } from '../../src/templates/TemplateApplicator';
+import type { Template } from '../../src/templates/TemplateTypes';
+
+type SavedNote = { type: string; path: string; id: string };
+
+/**
+ * Minimal plugin double: notes live in memory by path, saves replace the note at that path
+ * (as the real save methods do), and parseFile reads it back.
+ */
+function createFakePlugin(existingNotes: Array<{ type: string; object: Record<string, unknown> & { name: string } }>) {
+  const notes = new Map<string, { file: TFile; object: Record<string, unknown> }>();
+  const saves: SavedNote[] = [];
+  const groups: Array<{ id: string; name: string; storyId: string }> = [];
+  const folderOf = (type: string) => `SS/${type}`;
+  const pathOf = (type: string, name: string) => `${folderOf(type)}/${name}.md`;
+
+  for (const note of existingNotes) {
+    const path = pathOf(note.type, note.object.name);
+    notes.set(path, { file: new TFile(path), object: { ...note.object } });
+  }
+
+  const save = (type: string) => async (entity: { id?: string; name: string }) => {
+    const path = pathOf(type, entity.name);
+    if (!entity.id) entity.id = `generated-${saves.length + 1}`;
+    saves.push({ type, path, id: entity.id });
+    notes.set(path, { file: new TFile(path), object: { ...entity } });
+  };
+
+  const plugin = {
+    settings: { groups },
+    app: { vault: { getAbstractFileByPath: (path: string) => notes.get(path)?.file ?? null } },
+    getEntityFolder: folderOf,
+    saveSettings: async () => {},
+    parseFile: async (file: TFile) => {
+      const stored = notes.get(file.path);
+      return stored ? { ...stored.object } : null;
+    },
+    saveCharacter: save('character'),
+    saveLocation: save('location'),
+    saveEvent: save('event'),
+    savePlotItem: save('item'),
+    saveGroupFull: async () => {},
+    templateManager: { incrementUsageCount: async () => {} },
+  };
+
+  return { plugin, notes, saves, groups };
+}
+
+function createTemplate(entities: Record<string, unknown[]>): Template {
+  const now = new Date().toISOString();
+  return {
+    id: 'village-template',
+    name: 'Village template',
+    description: 'test template',
+    genre: 'fantasy',
+    category: 'single-entity',
+    version: '1.0.0',
+    author: 'User',
+    isBuiltIn: false,
+    isEditable: true,
+    created: now,
+    modified: now,
+    tags: [],
+    entityTypes: Object.keys(entities),
+    entities,
+  } as unknown as Template;
+}
+
+const options = { storyId: 'story-1', mode: 'merge' as const, mergeRelationships: true };
+
+describe('TemplateApplicator reuses existing notes safely', () => {
+  it('applying the same group template twice keeps a single group', async () => {
+    const { plugin, groups } = createFakePlugin([]);
+    const applicator = new TemplateApplicator(plugin as never);
+    const template = createTemplate({ groups: [{ templateId: 'GROUP_1', name: 'Shire Council' }] });
+
+    const first = await applicator.applyTemplate(template, { ...options });
+    const second = await applicator.applyTemplate(template, { ...options });
+
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
+    expect(groups.filter(g => g.name === 'Shire Council')).toHaveLength(1);
+    expect(second.idMap.get('GROUP_1')).toBe(first.idMap.get('GROUP_1'));
+  });
+
+  it('a group with the same name in another story is not reused', async () => {
+    const { plugin, groups } = createFakePlugin([]);
+    groups.push({ id: 'other-story-group', name: 'Shire Council', storyId: 'story-2' });
+    const applicator = new TemplateApplicator(plugin as never);
+
+    const result = await applicator.applyTemplate(
+      createTemplate({ groups: [{ templateId: 'GROUP_1', name: 'Shire Council' }] }),
+      { ...options }
+    );
+
+    expect(result.success).toBe(true);
+    expect(groups).toHaveLength(2);
+    expect(result.idMap.get('GROUP_1')).not.toBe('other-story-group');
+  });
+
+  it('reuses existing characters, locations, events and items with the same name and keeps their ids', async () => {
+    const { plugin, saves } = createFakePlugin([
+      { type: 'character', object: { id: 'char-existing', name: 'Will Whitfoot' } },
+      { type: 'location', object: { id: 'loc-existing', name: 'Bywater' } },
+      { type: 'event', object: { id: 'evt-existing', name: 'Harvest Festival' } },
+      { type: 'item', object: { id: 'item-existing', name: 'Harvest Ledger' } },
+    ]);
+    const applicator = new TemplateApplicator(plugin as never);
+    const template = createTemplate({
+      characters: [{ templateId: 'MAYOR', name: 'Will Whitfoot' }],
+      locations: [{ templateId: 'LOC_1', name: 'Bywater' }],
+      events: [{ templateId: 'EVT_1', name: 'Harvest Festival' }],
+      items: [{ templateId: 'ITEM_1', name: 'Harvest Ledger' }],
+    });
+
+    const result = await applicator.applyTemplate(template, { ...options });
+
+    expect(result.success).toBe(true);
+    expect(result.idMap.get('MAYOR')).toBe('char-existing');
+    expect(result.idMap.get('LOC_1')).toBe('loc-existing');
+    expect(result.idMap.get('EVT_1')).toBe('evt-existing');
+    expect(result.idMap.get('ITEM_1')).toBe('item-existing');
+    expect(saves.length).toBeGreaterThan(0);
+    for (const save of saves) {
+      expect(save.id).toBe(save.path.includes('Will Whitfoot') ? 'char-existing'
+        : save.path.includes('Bywater') ? 'loc-existing'
+        : save.path.includes('Harvest Festival') ? 'evt-existing'
+        : 'item-existing');
+    }
+  });
+
+  it('a second apply of a location template keeps the location id', async () => {
+    const { plugin } = createFakePlugin([]);
+    const applicator = new TemplateApplicator(plugin as never);
+    const template = createTemplate({ locations: [{ templateId: 'LOC_1', name: 'Bywater' }] });
+
+    const first = await applicator.applyTemplate(template, { ...options });
+    const second = await applicator.applyTemplate(template, { ...options });
+
+    expect(second.idMap.get('LOC_1')).toBe(first.idMap.get('LOC_1'));
+  });
+
+  it('does not reuse an existing note when the user chose a different file name', async () => {
+    const { plugin, saves, notes } = createFakePlugin([
+      { type: 'character', object: { id: 'existing-mayor', name: 'Will Whitfoot' } },
+    ]);
+    const applicator = new TemplateApplicator(plugin as never);
+    const template = createTemplate({ characters: [{ templateId: 'VILLAGE_MAYOR', name: 'Will Whitfoot' }] });
+
+    const result = await applicator.applyTemplate(template, {
+      ...options,
+      fieldOverrides: new Map([['VILLAGE_MAYOR', { name: 'Mayor Whitfoot (Shire)' }]]),
+    } as never);
+
+    expect(result.success).toBe(true);
+    expect(result.idMap.get('VILLAGE_MAYOR')).not.toBe('existing-mayor');
+    expect(saves.map(s => s.path)).toEqual(['SS/character/Mayor Whitfoot (Shire).md']);
+    expect(notes.get('SS/character/Will Whitfoot.md')?.object.id).toBe('existing-mayor');
+  });
+
+  it('stops before writing anything when the chosen file name is an existing note', async () => {
+    const { plugin, saves, notes, groups } = createFakePlugin([
+      { type: 'character', object: { id: 'tobias-id', name: 'Tobias Rushock', description: 'Keep me' } },
+    ]);
+    const applicator = new TemplateApplicator(plugin as never);
+    const template = createTemplate({
+      groups: [{ templateId: 'GROUP_1', name: 'Shire Council' }],
+      characters: [{ templateId: 'VILLAGE_MAYOR', name: 'Will Whitfoot' }],
+    });
+
+    const result = await applicator.applyTemplate(template, {
+      ...options,
+      fieldOverrides: new Map([['VILLAGE_MAYOR', { name: 'Tobias Rushock' }]]),
+    } as never);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/Tobias Rushock/);
+    expect(saves).toEqual([]);
+    expect(groups).toEqual([]);
+    expect(notes.get('SS/character/Tobias Rushock.md')?.object).toMatchObject({ id: 'tobias-id', description: 'Keep me' });
+  });
+});

@@ -7,8 +7,11 @@ export type DashboardWritingViewMode = 'list' | 'board' | 'arc' | 'heatmap' | 'h
 export interface DashboardControllerContext {
     app: App;
     plugin: StorytellerSuitePlugin;
+    isCurrentRender(): boolean;
     getCurrentFilter(): string;
     setCurrentFilter(filter: string): void;
+    getItemsPlotCriticalOnly(): boolean;
+    setItemsPlotCriticalOnly(value: boolean): void;
     isSimplifiedMobileDashboard(): boolean;
     renderWritingGoalBanner(container: HTMLElement): void;
     getWritingViewMode(): DashboardWritingViewMode;

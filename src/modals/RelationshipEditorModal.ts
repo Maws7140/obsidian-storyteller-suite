@@ -1,12 +1,14 @@
 // Modal for adding/editing a single typed relationship
 
-import { App, Modal, Setting, Notice } from 'obsidian';
+import { App, DropdownComponent, Modal, Setting, Notice } from 'obsidian';
 import StorytellerSuitePlugin from '../main';
-import { TypedRelationship, RelationshipType } from '../types';
+import { TypedRelationship, RelationshipType, RelationshipDirection } from '../types';
+import { RELATIONSHIP_CATEGORIES, defaultDirectionFor } from '../utils/RelationshipKinds';
 import { CharacterSuggestModal } from './CharacterSuggestModal';
 import { LocationSuggestModal } from './LocationSuggestModal';
 import { EventSuggestModal } from './EventSuggestModal';
 import { PlotItemSuggestModal } from './PlotItemSuggestModal';
+import { EntitySuggestModal } from './EntitySuggestModal';
 import { t } from '../i18n/strings';
 
 export type RelationshipEditorCallback = (relationship: TypedRelationship) => void;
@@ -17,6 +19,8 @@ export class RelationshipEditorModal extends Modal {
     onSubmit: RelationshipEditorCallback;
     isNew: boolean;
     entityType: 'any' | 'character' | 'location' | 'event' | 'item';
+    private directionTouched = false;
+    private directionDropdown: DropdownComponent | null = null;
 
     constructor(
         app: App,
@@ -34,6 +38,8 @@ export class RelationshipEditorModal extends Modal {
             type: 'neutral',
             label: undefined
         };
+        // Existing notes without a stored direction show the direction their kind implies
+        this.relationship.direction = this.relationship.direction ?? defaultDirectionFor(this.relationship.type);
         this.onSubmit = onSubmit;
         this.modalEl.addClass('storyteller-relationship-editor-modal', 'storyteller-modal-scroll');
     }
@@ -56,67 +62,75 @@ export class RelationshipEditorModal extends Modal {
             .addButton(button => button
                 .setButtonText(t('select'))
                 .onClick(async () => {
-                    // Show entity selector based on entityType
+                    // Store the display name as the target — ids leak into
+                    // rendered notes and break display paths that expect names.
+                    const applySelection = (selected: { name: string } | null) => {
+                        if (selected?.name) {
+                            this.relationship.target = selected.name;
+                            targetDesc.setText(selected.name);
+                        }
+                    };
                     if (this.entityType === 'any') {
-                        // Show multi-type selector (simplified - just show character selector for now)
-                        // In a full implementation, you'd have a combined selector
-                        new CharacterSuggestModal(this.app, this.plugin, (selected) => {
-                            if (selected) {
-                                this.relationship.target = selected.id || selected.name;
-                                targetDesc.setText(selected.name);
-                            }
-                        }).open();
+                        new EntitySuggestModal(this.app, this.plugin, applySelection).open();
                     } else if (this.entityType === 'character') {
-                        new CharacterSuggestModal(this.app, this.plugin, (selected) => {
-                            if (selected) {
-                                this.relationship.target = selected.id || selected.name;
-                                targetDesc.setText(selected.name);
-                            }
-                        }).open();
+                        new CharacterSuggestModal(this.app, this.plugin, applySelection).open();
                     } else if (this.entityType === 'location') {
-                        new LocationSuggestModal(this.app, this.plugin, (selected) => {
-                            if (selected) {
-                                this.relationship.target = selected.id || selected.name;
-                                targetDesc.setText(selected.name);
-                            }
-                        }).open();
+                        new LocationSuggestModal(this.app, this.plugin, applySelection).open();
                     } else if (this.entityType === 'event') {
-                        new EventSuggestModal(this.app, this.plugin, (selected) => {
-                            if (selected) {
-                                this.relationship.target = selected.id || selected.name;
-                                targetDesc.setText(selected.name);
-                            }
-                        }).open();
+                        new EventSuggestModal(this.app, this.plugin, applySelection).open();
                     } else if (this.entityType === 'item') {
-                        new PlotItemSuggestModal(this.app, this.plugin, (selected) => {
-                            if (selected) {
-                                this.relationship.target = selected.id || selected.name;
-                                targetDesc.setText(selected.name);
-                            }
-                        }).open();
+                        new PlotItemSuggestModal(this.app, this.plugin, applySelection).open();
                     }
                 }));
 
-        // Relationship type dropdown
+        // Relationship kind, grouped by category
         new Setting(contentEl)
             .setName(t('relationshipType'))
             .setDesc(t('relationshipTypeDesc'))
             .addDropdown(dropdown => {
+                for (const category of RELATIONSHIP_CATEGORIES) {
+                    const group = dropdown.selectEl.createEl('optgroup', { attr: { label: t(category.labelKey) } });
+                    for (const kind of category.kinds) {
+                        group.createEl('option', { value: kind, text: t(kind) });
+                    }
+                }
                 dropdown
-                    .addOption('ally', t('ally'))
-                    .addOption('enemy', t('enemy'))
-                    .addOption('family', t('family'))
-                    .addOption('rival', t('rival'))
-                    .addOption('romantic', t('romantic'))
-                    .addOption('mentor', t('mentor'))
-                    .addOption('acquaintance', t('acquaintance'))
-                    .addOption('neutral', t('neutral'))
-                    .addOption('custom', t('custom'))
                     .setValue(this.relationship.type)
                     .onChange(value => {
                         this.relationship.type = value as RelationshipType;
+                        // Follow the kind's default direction until the user picks one
+                        if (!this.directionTouched) {
+                            this.relationship.direction = defaultDirectionFor(this.relationship.type);
+                            this.syncDirectionDropdown();
+                        }
                     });
             });
+
+        // Direction: one-way arrow or mutual line
+        new Setting(contentEl)
+            .setName(t('relationshipDirection'))
+            .setDesc(t('relationshipDirectionDesc'))
+            .addDropdown(dropdown => {
+                dropdown
+                    .addOption('to', t('directionOneWay'))
+                    .addOption('mutual', t('directionMutual'))
+                    .setValue(this.relationship.direction ?? 'to')
+                    .onChange(value => {
+                        this.directionTouched = true;
+                        this.relationship.direction = value as RelationshipDirection;
+                    });
+                this.directionDropdown = dropdown;
+            });
+
+        // Ended: severed relationships stay on the map as history
+        new Setting(contentEl)
+            .setName(t('relationshipEnded'))
+            .setDesc(t('relationshipEndedDesc'))
+            .addToggle(toggle => toggle
+                .setValue(this.relationship.ended === true)
+                .onChange(value => {
+                    this.relationship.ended = value ? true : undefined;
+                }));
 
         // Optional label
         new Setting(contentEl)
@@ -152,6 +166,10 @@ export class RelationshipEditorModal extends Modal {
     onClose() {
         const { contentEl } = this;
         contentEl.empty();
+    }
+
+    private syncDirectionDropdown(): void {
+        this.directionDropdown?.setValue(this.relationship.direction ?? 'to');
     }
 }
 

@@ -16,15 +16,15 @@ export class TimelineTrackManager {
      * Get all tracks from settings
      */
     async getTracks(): Promise<TimelineTrack[]> {
-        return this.plugin.settings.timelineTracks || [];
+        return this.plugin.getTimelineTracks();
     }
 
     /**
      * Save tracks to settings
      */
     async saveTracks(tracks: TimelineTrack[]): Promise<void> {
-        this.plugin.settings.timelineTracks = tracks;
-        await this.plugin.saveSettings();
+        // Scoped setter: see EraManager.saveEras.
+        await this.plugin.setTimelineTracks(tracks);
     }
 
     /**

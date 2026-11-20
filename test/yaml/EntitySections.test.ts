@@ -21,6 +21,21 @@ describe('EntitySections', () => {
     expect(fm).not.toHaveProperty('extra');
   });
 
+  it('buildFrontmatter never writes runtime flags, even via preserveKeys', () => {
+    // Regression: sync-triggered saves passed _skipSync through preserveKeys,
+    // persisting it into notes and permanently disabling bidirectional sync
+    // for those entities on read-back.
+    const src = {
+      id: '1',
+      name: 'Name',
+      _skipSync: true
+    } as any;
+    const preserveKeys = new Set(Object.keys(src));
+    const fm = buildFrontmatter('character', src, preserveKeys);
+    expect(fm).not.toHaveProperty('_skipSync');
+    expect(fm).toHaveProperty('name', 'Name');
+  });
+
   it('parseSectionsFromMarkdown extracts all ## sections', () => {
     const body = `---\n---\n\n## Description\nText here\n\n## Backstory\nStory`; 
     const sections = parseSectionsFromMarkdown(body);
@@ -54,13 +69,45 @@ describe('EntitySections', () => {
     expect(normalizeEntityType('magic-system')).toBe('magicSystem');
     expect(normalizeEntityType('compendium_entry')).toBe('compendiumEntry');
     expect(normalizeEntityType('campaignSession')).toBe('campaignSession');
+    expect(normalizeEntityType('era')).toBe('timelineEra');
+    expect(normalizeEntityType('branch')).toBe('timelineBranch');
+    expect(normalizeEntityType('fork')).toBe('timelineBranch');
+    expect(normalizeEntityType('timelineFork')).toBe('timelineBranch');
     expect(normalizeEntityType('unknown')).toBeNull();
+  });
+
+  it('keeps timeline era abbreviations in frontmatter', () => {
+    const fm = buildFrontmatter('timelineEra', {
+      id: 'era-1',
+      name: 'American Civil War',
+      abbreviation: 'ACW',
+      startDate: '1861-04-12',
+      endDate: '1865-05-26',
+    });
+    expect(fm).toMatchObject({
+      entityType: 'timelineEra',
+      abbreviation: 'ACW',
+    });
   });
 
   it('treats missing stamps as compatible and mismatched stamps as incompatible', () => {
     expect(isStampedEntityTypeCompatible(undefined, 'book')).toBe(true);
     expect(isStampedEntityTypeCompatible('book', 'book')).toBe(true);
     expect(isStampedEntityTypeCompatible('character', 'book')).toBe(false);
+  });
+
+  it('keeps campaign clocks, threads, and revealed lore mirrors in session frontmatter', () => {
+    const fm = buildFrontmatter('campaignSession', {
+      name: 'Session one',
+      storyId: 'story-1',
+      clocks: [{ id: 'clock-1', name: 'Alarm', current: 2, segments: 4 }],
+      threads: [{ id: 'thread-1', name: 'Find the key', status: 'active' }],
+      revealedCompendiumEntryIds: ['lore-1'],
+      revealedCompendiumEntryNames: ['The old bell'],
+    });
+    expect(fm.clocks).toEqual([{ id: 'clock-1', name: 'Alarm', current: 2, segments: 4 }]);
+    expect(fm.threads).toEqual([{ id: 'thread-1', name: 'Find the key', status: 'active' }]);
+    expect(fm.revealedCompendiumEntryNames).toEqual(['The old bell']);
   });
 
   describe('Empty Field Preservation', () => {
@@ -539,6 +586,41 @@ status: active
         { locationId: 'The Reef', relationship: 'exiled to', timeRange: { start: '1211' } },
         { locationId: 'Glass Harbor', relationship: 'returned before', timeRange: { end: '1215' } }
       ]);
+    });
+
+    it('keeps full dates whole when reading a range back', () => {
+      const parsed = parseLocationHistory([
+        'resident: [[The Shire]] (3018-01-01 – 3018-09-22)',
+        'guest: [[Rivendell]] (3018-10-20 to 3018-12-25)',
+        'hid in: [[Bree]] (3018-09 - 3018-10)',
+        'ruled: [[Angmar]] (-1300 – -1975)',
+        'crossed: [[Anduin]] (1200–1210)'
+      ]);
+      expect(parsed).toEqual([
+        { locationId: 'The Shire', relationship: 'resident', timeRange: { start: '3018-01-01', end: '3018-09-22' } },
+        { locationId: 'Rivendell', relationship: 'guest', timeRange: { start: '3018-10-20', end: '3018-12-25' } },
+        { locationId: 'Bree', relationship: 'hid in', timeRange: { start: '3018-09', end: '3018-10' } },
+        { locationId: 'Angmar', relationship: 'ruled', timeRange: { start: '-1300', end: '-1975' } },
+        { locationId: 'Anduin', relationship: 'crossed', timeRange: { start: '1200', end: '1210' } }
+      ]);
+    });
+
+    it('repairs ranges an older reader split inside the start date', () => {
+      expect(parseLocationHistory([
+        'resident: [[The Shire]] (3018 – 01-01 – 3018-09-22)',
+        'guest: [[Rivendell]] (3018 – 10 – 3018-12)'
+      ])).toEqual([
+        { locationId: 'The Shire', relationship: 'resident', timeRange: { start: '3018-01-01', end: '3018-09-22' } },
+        { locationId: 'Rivendell', relationship: 'guest', timeRange: { start: '3018-10', end: '3018-12' } }
+      ]);
+    });
+
+    it('writes a dated history that reads back unchanged', () => {
+      const history = [{ locationId: 'The Shire', relationship: 'resident', timeRange: { start: '3018-01-01', end: '3018-09-22' } }];
+      const written = buildFrontmatter('character', { id: '1', name: 'Frodo', locationHistory: history } as any).locationHistory as unknown[];
+      expect(written).toEqual(['resident: [[The Shire]] (3018-01-01 – 3018-09-22)']);
+      const again = buildFrontmatter('character', { id: '1', name: 'Frodo', locationHistory: parseLocationHistory(written) } as any).locationHistory;
+      expect(again).toEqual(written);
     });
   });
 

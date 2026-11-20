@@ -4,22 +4,30 @@ Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, run
 
 ## Highlights
 
-### Timeline redesign in beta
+### Timeline
 
-- Reworked timeline modal and persistent panel view
-- Standard timeline and Gantt modes
-- Group by character, location, group, or custom track
-- Dependency arrows, progress overlays, milestone filtering, and event search
-- Timeline tracks, eras, forks, and conflict detection
-- Watch regular notes on the timeline through a property or tag
+- Native timeline engine with Chronology (horizontal or vertical), Gantt, and Calendar views
+- Custom calendars per story, with their own months, leap rules, epochs, and holidays
+- Timeline themes with a live editor, background images, and `--sts-timeline-*` CSS variables
+- Event icons, cover images, and a Minimal icon-node mode
+- Group lanes by character, location, item, culture, magic system, group, or track
+- Eras, tracks, and branches stored as notes, with branches that inherit their history
+- Dependency arrows, conflict detection, a per-story "today", and live `timeline` blocks in any note
 
 ### Campaign play and D&D tools
 
-- Dedicated Campaign view with session notes stored in your story
-- Party tracker with HP controls, active actor selection, and conditions
-- Shared inventory with item ownership and use effects
-- Scene running with branch-aware progression and scene graph support
-- Lore surfacing, session log, and campaign commands in the command palette
+- Run campaign sessions from your story's map, with the party, current scene, combat, and session log close at hand
+- Player screen with fog of war for a second monitor
+- Partylog session logging with a quick entry bar, session headers, interludes, and import/export
+- Clocks, threads, party resources, loot, factions, and advancement tracked during play
+- Encounter rolls, branching scenes, and campaigns recorded on their own timeline track
+- Lorelog world logs for worldbuilding decisions and open questions
+
+### Maps
+
+- Map Ink drawing layer: stamps, lines, areas, shapes, text, and hand-inked brushes in layers with a legend
+- Entity tokens on image and real-world maps, child locations, and child maps
+- GeoJSON and GPX overlays, and PNG export of image maps
 
 ### Compile workflows
 
@@ -33,7 +41,8 @@ Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, run
 - Groups are saved as real notes and populate like the rest of the entity system
 - Relationship properties write note-linkable names instead of opaque IDs where possible
 - Better graph view compatibility and cleaner frontmatter behavior
-- Shared custom-field editing patterns across entity modals
+- Typed custom fields per entity type, and any modal field or section can be switched off
+- Import existing notes as entities
 
 ### Worldbuilding and story structure
 
@@ -44,11 +53,25 @@ Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, run
 
 ## Screenshots
 
+### Timeline
+
+![Horizontal timeline with dated event cards](screenshots/2.0/timeline-horizontal.png)
+
+*Lay out dated events along a horizontal timeline.*
+
+![Vertical timeline with events arranged by month](screenshots/2.0/timeline-vertical.png)
+
+*Read through events in a vertical view organized by month.*
+
+![Gantt timeline with location lanes and event dependencies](screenshots/2.0/timeline-gantt.png)
+
+*Group events by location and follow their dependencies in Gantt view.*
+
 ### Campaign play
 
-![Campaign play session view](https://i.ibb.co/Fb3QVNgd/a086488103f6.png)
+![Campaign map with party health and resources](screenshots/2.0/campaign-party.png)
 
-*Run scenes, track party state, manage shared inventory, and keep a live session log in one place.*
+*Run scenes from the map while tracking party health, resources, and shared loot.*
 
 ![Scene graph and campaign tools](https://i.ibb.co/cSB4h426/9a6e271d6622.png)
 
@@ -60,11 +83,15 @@ Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, run
 
 *Organize scenes visually with the story board while keeping the writing dashboard in sync.*
 
-### Groups and graph-aware worldbuilding
+### Network graph
 
-![Groups and network graph](https://i.ibb.co/qFCQwY2h/073c396b6682.png)
+![Character network graph colored by group](screenshots/2.0/network-graph-by-group.png)
 
-*Groups are first-class notes and connect cleanly into the network graph alongside the rest of your story data.*
+*Color characters by group to see how relationships cross groups.*
+
+![Character network graph colored by connection count](screenshots/2.0/network-graph-by-connections.png)
+
+*Color characters by connection count to spot the most connected people in a story.*
 
 ### Maps
 
@@ -75,6 +102,10 @@ Storyteller Suite is an Obsidian plugin for planning stories, worldbuilding, run
 ![Drill-down map hierarchy](https://i.ibb.co/0yz8jPQ0/2b8aae06203f.png)
 
 *Build a full map hierarchy from world to city to district to room using portal markers and breadcrumbs.*
+
+## Network use
+
+The in-app update highlights load screenshots from GitHub and `i.ibb.co`. Nothing from your vault is sent. Without a connection the screenshots are left out.
 
 ## Feature Breakdown
 
@@ -164,6 +195,29 @@ Images are stored in a user-defined upload folder. The default is `StorytellerSu
 You can also work in One Story Mode or point entity types at custom folders from plugin settings.
 
 Note: in One Story Mode, the dashboard intentionally hides the `New story` button because the vault is operating as a single-story setup.
+
+## Customising the entity modals
+
+The Character and Item modals ship with every field the plugin knows about, which
+is more than most projects want. **Settings → Modals** turns individual fields
+off: cultures, economies, inventory, D&D stats, physical attributes and the rest.
+Hiding a field only stops it being drawn; nothing already saved is deleted, so
+turning one back on brings its value with it.
+
+The same tab sets **default custom fields** per entity type. Name a field there
+and every newly created entity of that type starts with it ready to fill in.
+Existing entities are left alone.
+
+With **Custom fields mode** on its default of `flatten`, a custom field is written
+as an ordinary frontmatter property — a field named `intent` becomes `intent:` on
+the note, editable from Obsidian's Properties panel and queryable from Bases and
+Dataview.
+
+## Templates
+
+Templates can be built in the UI or written as plain markdown notes dropped into
+`StorytellerSuite/Templates/Notes`. See `TEMPLATES_GUIDE.md` for the note format,
+the frontmatter keys, and the bulk variable importer.
 
 ## Translations
 

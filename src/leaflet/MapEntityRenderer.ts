@@ -1,3 +1,5 @@
+import { locationBindingOnMap, containEntityInArea } from './grid/AreaNodeBridge';
+import { detachFromMaps } from '../services/MapMembershipService';
 /**
  * MapEntityRenderer - Renders locations and entities on Leaflet maps
  * Handles location markers, entity markers, popups, and context menus
@@ -6,11 +8,48 @@
 import * as L from 'leaflet';
 import { Menu, Notice, TFile, setIcon } from 'obsidian';
 import type StorytellerSuitePlugin from '../main';
+import type { LeafletRendererOptions } from './types';
 import type { Location, MapBinding, EntityRef, Character, Event, PlotItem, StoryMap, Scene, Culture, Economy, MagicSystem, Reference } from '../types';
 import { LocationService } from '../services/LocationService';
+import { createPlacementOverlay } from './placementOverlay';
+import { buildChildLocationDefaults, findChildLocationMaps, noChildMapMessage } from '../utils/MapChildNavigation';
 import { MapHierarchyManager } from '../utils/MapHierarchyManager';
 import { stripWikiLinkToString } from '../utils/WikiLinks';
+import { locationPinKey } from '../utils/CampaignBoardSelection';
 import { confirmWithModal } from '../modals/ui/ConfirmModal';
+import { tokenHtml, tokenAnchor, tokenIconSize, tokenSizePx } from './ink/tokens';
+import type { TokenSize } from './ink/tokens';
+import { DENSITY_CLASS, densityCssVars, fanOffset, planTokenLayout, tokenPriority } from './ink/tokenLayout';
+import type { TokenAttachedInput, TokenLocationInput } from './ink/tokenLayout';
+
+/** An entity or portal token fanned out around its location. Positions are re-planned on each zoom. */
+interface AttachedToken {
+    marker: L.Marker;
+    kind: 'entity' | 'portal';
+    locationKey: string;
+    /** Set for entities with a location, so they are kept inside the location's area. */
+    locationId?: string;
+    mapRecord?: StoryMap | null;
+}
+
+/** A token placed directly on the map, stacked with others at the same point. */
+interface StackedToken {
+    marker: L.Marker;
+    base: [number, number];
+    offset: [number, number];
+}
+
+/** True for a marker built with tokenHtml (not a custom location icon). */
+function isTokenMarker(marker: L.Marker): boolean {
+    const icon = marker.options.icon;
+    return icon instanceof L.DivIcon && (icon.options.className ?? '').includes('ink-token-marker');
+}
+
+/** True for a token marker whose token shows a portrait image. */
+function isPortraitMarker(marker: L.Marker): boolean {
+    const icon = marker.options.icon;
+    return icon instanceof L.DivIcon && (icon.options.className ?? '').includes('has-image');
+}
 
 interface MapViewWithLoadMap {
     loadMap(mapId: string): Promise<void>;
@@ -72,19 +111,34 @@ export class MapEntityRenderer {
     private locationMarkers: Map<string, L.Marker> = new Map();
     private entityMarkers: Map<string, L.Marker> = new Map();
     private portalMarkers: Map<string, L.Marker> = new Map();
+    private locationRecords = new Map<string, Location>();
+    /** Attached entity and portal tokens, in the order they were rendered. */
+    private attachedTokens: AttachedToken[] = [];
+    private stackedTokens: StackedToken[] = [];
+    /** Attached entity count per location key, used for token priority and the count pill. */
+    private locationEntityCounts = new Map<string, number>();
     private mapId: string;
+    private options: LeafletRendererOptions;
     private isMovingMarker: boolean = false;
 
     private readonly normalizeName = (value: string): string => this.stripWikiLinkValue(value).trim().toLowerCase();
 
-    constructor(map: L.Map, plugin: StorytellerSuitePlugin, mapId: string) {
+    /**
+     * Re-plan token size, collapse and overlap on zoom. Panning cannot change any of it: the
+     * overlap and the fan are measured in screen pixels, so zoomend, viewreset and resize are enough.
+     */
+    private readonly handleTokenZoom = () => this.applyTokenLayout();
+
+    constructor(map: L.Map, plugin: StorytellerSuitePlugin, mapId: string, options: LeafletRendererOptions = {}) {
         this.map = map;
         this.plugin = plugin;
         this.locationService = new LocationService(plugin);
         this.hierarchyManager = new MapHierarchyManager(plugin.app, plugin);
         this.mapId = mapId;
+        this.options = options;
 
         this.initializeLayers();
+        this.map.on('zoomend viewreset resize', this.handleTokenZoom);
     }
 
     /**
@@ -103,13 +157,18 @@ export class MapEntityRenderer {
      * Load and render all locations bound to this map
      */
     async renderLocationsForMap(mapId: string): Promise<void> {
+        const mapRecord = (await this.plugin.listMaps()).find(m => (m.id || m.name) === mapId);
+        const removed = new Set(mapRecord?.removedMapEntities ?? []);
         const locations = await this.plugin.listLocations();
         const locationsLayer = this.markerLayers.get('locations')!;
         locationsLayer.clearLayers();
         this.locationMarkers.clear();
+        this.locationRecords.clear();
+        this.locationEntityCounts.clear();
 
         for (const location of locations) {
-            const binding = location.mapBindings?.find(b => b.mapId === mapId);
+            if (removed.has(`location:${location.id || location.name}`)) continue;
+            const binding = mapRecord ? locationBindingOnMap(location, mapRecord) : location.mapBindings?.find(b => b.mapId === mapId);
             if (!binding) continue;
 
             // Check zoom range if specified
@@ -124,23 +183,27 @@ export class MapEntityRenderer {
             const marker = await this.createLocationMarker(location, binding);
             locationsLayer.addLayer(marker);
             this.locationMarkers.set(location.id || location.name, marker);
+            this.locationRecords.set(location.id || location.name, location);
         }
 
         // Update visibility on zoom change
-        this.map.on('zoomend', () => {
-            void this.updateMarkerVisibility(mapId);
-        });
+        this.map.off('zoomend', this.handleVisibilityZoom);
+        this.map.on('zoomend', this.handleVisibilityZoom);
+        this.applyTokenLayout();
     }
 
     /**
      * Update marker visibility based on zoom level
      */
+    private handleVisibilityZoom = () => { void this.updateMarkerVisibility(this.mapId); };
+
     private async updateMarkerVisibility(mapId: string): Promise<void> {
+        const mapRecord = (await this.plugin.listMaps()).find(m => (m.id || m.name) === mapId);
         const locations = await this.plugin.listLocations();
         const currentZoom = this.map.getZoom();
 
         for (const location of locations) {
-            const binding = location.mapBindings?.find(b => b.mapId === mapId);
+            const binding = mapRecord ? locationBindingOnMap(location, mapRecord) : location.mapBindings?.find(b => b.mapId === mapId);
             if (!binding) continue;
 
             const marker = this.locationMarkers.get(location.id || location.name);
@@ -169,6 +232,7 @@ export class MapEntityRenderer {
         const portalsLayer = this.markerLayers.get('portals')!;
         portalsLayer.clearLayers();
         this.portalMarkers.clear();
+        this.attachedTokens = this.attachedTokens.filter(t => t.kind !== 'portal');
 
         // Get all child maps that can be navigated to
         const portalTargets = await this.hierarchyManager.getPortalTargets(mapId);
@@ -200,15 +264,15 @@ export class MapEntityRenderer {
         }
 
         for (const groupedPortals of portalsByLocation.values()) {
-            const total = groupedPortals.length;
-            for (let index = 0; index < groupedPortals.length; index++) {
-                const { map: childMap, location, binding } = groupedPortals[index];
-                const portalCoordinates = this.getPortalMarkerCoordinates(binding.coordinates, index, total);
-                const marker = this.createPortalMarker(childMap, location, portalCoordinates);
+            for (const { map: childMap, location, binding } of groupedPortals) {
+                // Placed on the location point; applyTokenLayout fans it out for the current zoom.
+                const marker = this.createPortalMarker(childMap, location, binding.coordinates);
                 portalsLayer.addLayer(marker);
                 this.portalMarkers.set(childMap.id || childMap.name, marker);
+                this.attachedTokens.push({ marker, kind: 'portal', locationKey: location.id || location.name });
             }
         }
+        this.applyTokenLayout();
     }
 
     /**
@@ -232,8 +296,8 @@ export class MapEntityRenderer {
             className: 'storyteller-map-popup storyteller-portal-popup'
         });
 
-        // Click handler - navigate to child map
-        marker.on('click', (e) => { void (async () => {
+        // Click handler - navigate to child map (not on read-only embeds)
+        if (!this.options.readOnly) marker.on('click', (e) => { void (async () => {
             // Don't navigate if user is holding modifier key
             if (!e.originalEvent.ctrlKey && !e.originalEvent.metaKey) {
                 // Open child map in MapView
@@ -247,7 +311,7 @@ export class MapEntityRenderer {
         })(); });
 
         // Context menu
-        marker.on('contextmenu', (e) => {
+        if (!this.options.readOnly) marker.on('contextmenu', (e) => {
             const menu = new Menu();
 
             menu.addItem((item) =>
@@ -292,19 +356,6 @@ export class MapEntityRenderer {
         return marker;
     }
 
-    private getPortalMarkerCoordinates(
-        coordinates: [number, number],
-        index: number,
-        total: number
-    ): [number, number] {
-        const radius = total <= 1 ? 28 : 34;
-        const startAngle = total <= 1 ? -Math.PI / 4 : -Math.PI / 2;
-        const angle = startAngle + ((2 * Math.PI) / Math.max(total, 1)) * index;
-        const offsetX = Math.cos(angle) * radius;
-        const offsetY = Math.sin(angle) * radius;
-        return this.offsetCoordinatesByPixels(coordinates, [offsetX, offsetY]);
-    }
-
     private offsetCoordinatesByPixels(
         coordinates: [number, number],
         offset: [number, number]
@@ -321,26 +372,13 @@ export class MapEntityRenderer {
      * Get portal marker icon
      */
     private getPortalMarkerIcon(): L.DivIcon {
-        const iconHtml = `
-            <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                    <radialGradient id="portalGradient" cx="50%" cy="50%" r="50%">
-                        <stop offset="0%" style="stop-color:#a855f7;stop-opacity:0.9" />
-                        <stop offset="50%" style="stop-color:#7c3aed;stop-opacity:0.7" />
-                        <stop offset="100%" style="stop-color:#5b21b6;stop-opacity:0.9" />
-                    </radialGradient>
-                </defs>
-                <circle cx="20" cy="20" r="16" fill="url(#portalGradient)" stroke="#fbbf24" stroke-width="3"/>
-                <path d="M20 8 L20 32 M8 20 L32 20" stroke="#fbbf24" stroke-width="2" opacity="0.7"/>
-            </svg>
-        `;
-
+        const size: TokenSize = 'lg';
         return L.divIcon({
-            html: iconHtml,
-            className: 'storyteller-portal-marker',
-            iconSize: [40, 40],
-            iconAnchor: [20, 40],
-            popupAnchor: [0, -40]
+            html: `<div class="storyteller-marker-wrapper ink-token-wrap">${tokenHtml({ type: 'portal', size })}</div>`,
+            className: 'storyteller-portal-marker ink-token-marker',
+            iconSize: tokenIconSize(size),
+            iconAnchor: tokenAnchor(size),
+            popupAnchor: [0, -18]
         });
     }
 
@@ -367,19 +405,21 @@ export class MapEntityRenderer {
         typeInfo.createSpan({ text: childMap.type || 'image', cls: 'info-value' });
 
         const actions = container.createDiv('popup-actions');
-        const button = actions.createEl('button', { cls: 'popup-btn popup-btn-primary' });
-        setIcon(button, 'arrow-down');
-        button.appendText(' Zoom to Map');
+        if (!this.options.readOnly) {
+            const button = actions.createEl('button', { cls: 'popup-btn popup-btn-primary' });
+            setIcon(button, 'arrow-down');
+            button.appendText(' Zoom to Map');
 
-        // Add click handler to button
-        button.addEventListener('click', () => { void (async () => {
-                const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
-                if (hasLoadMap(mapView?.view)) {
-                    const mapId = childMap.id || childMap.name;
-                    await mapView.view.loadMap(mapId);
-                    new Notice(`Navigated to ${childMap.name}`);
-                }
-            })(); });
+            // Add click handler to button
+            button.addEventListener('click', () => { void (async () => {
+                    const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
+                    if (hasLoadMap(mapView?.view)) {
+                        const mapId = childMap.id || childMap.name;
+                        await mapView.view.loadMap(mapId);
+                        new Notice(`Navigated to ${childMap.name}`);
+                    }
+                })(); });
+        }
 
         return container;
     }
@@ -406,14 +446,9 @@ export class MapEntityRenderer {
         ];
     }
 
+    /** Initial fan offset for an entity token. applyTokenLayout re-plans it for the current zoom. */
     private calculateLocationEntityOffset(index: number, total: number): [number, number] {
-        const radius = total <= 1 ? 26 : 24;
-        const startAngle = total <= 1 ? -Math.PI / 3 : -Math.PI / 2;
-        const angle = startAngle + ((2 * Math.PI) / Math.max(total, 1)) * index;
-        return [
-            Math.cos(angle) * radius,
-            Math.sin(angle) * radius
-        ];
+        return fanOffset(index, total, tokenSizePx('lg'), tokenSizePx('md'));
     }
 
     private stripWikiLinkValue(value: string | null | undefined): string {
@@ -457,6 +492,8 @@ export class MapEntityRenderer {
      * Render entities on the map based on their locations
      */
     async renderEntitiesForMap(mapId: string): Promise<void> {
+        const mapRecord = (await this.plugin.listMaps()).find(m => (m.id || m.name) === mapId);
+        const removed = new Set(mapRecord?.removedMapEntities ?? []);
         const locations = await this.plugin.listLocations();
         const charactersLayer = this.markerLayers.get('characters')!;
         const eventsLayer = this.markerLayers.get('events')!;
@@ -478,13 +515,18 @@ export class MapEntityRenderer {
         scenesLayer.clearLayers();
         referencesLayer.clearLayers();
         this.entityMarkers.clear();
+        this.attachedTokens = this.attachedTokens.filter(t => t.kind !== 'entity');
+        this.stackedTokens = [];
 
         // Group entities by coordinate to detect stacking
         const entityGroups: Map<string, { entityRef: EntityRef; coordinates: [number, number]; location: Location | null }[]> = new Map();
 
+        // Keep the original location-owned nodes and hover cards authoritative.
+        const entitiesWithCoordinates = await this.discoverEntitiesWithMapCoordinates(mapId);
+        const locationOwned = new Set<string>();
         // First, collect entities linked to locations
         for (const location of locations) {
-            const binding = location.mapBindings?.find(b => b.mapId === mapId);
+            const binding = mapRecord ? locationBindingOnMap(location, mapRecord) : location.mapBindings?.find(b => b.mapId === mapId);
             if (!binding) continue;
             const effectiveRefs = await this.getEffectiveLocationEntityRefs(location);
             if (effectiveRefs.length === 0) continue;
@@ -492,6 +534,8 @@ export class MapEntityRenderer {
             const coordKey = `${binding.coordinates[0].toFixed(4)},${binding.coordinates[1].toFixed(4)}`;
             
             for (const entityRef of effectiveRefs) {
+                if (removed.has(`${normalizeMapEntityType(entityRef.entityType)}:${entityRef.entityId}`)) continue;
+                locationOwned.add(`${normalizeMapEntityType(entityRef.entityType)}:${entityRef.entityId}`);
                 entityRef.entityType = normalizeMapEntityType(entityRef.entityType) as EntityRef['entityType'];
                 if (!entityGroups.has(coordKey)) {
                     entityGroups.set(coordKey, []);
@@ -506,8 +550,9 @@ export class MapEntityRenderer {
 
         // Also discover entities placed directly on the map (with mapCoordinates and matching mapId)
         // This includes entities that may not be linked to a location
-        const entitiesWithCoordinates = await this.discoverEntitiesWithMapCoordinates(mapId);
         for (const { entityRef, coordinates } of entitiesWithCoordinates) {
+            if (locationOwned.has(`${normalizeMapEntityType(entityRef.entityType)}:${entityRef.entityId}`)) continue;
+            if (removed.has(`${normalizeMapEntityType(entityRef.entityType)}:${entityRef.entityId}`)) continue;
             entityRef.entityType = normalizeMapEntityType(entityRef.entityType) as EntityRef['entityType'];
             const coordKey = `${coordinates[0].toFixed(4)},${coordinates[1].toFixed(4)}`;
             
@@ -548,6 +593,12 @@ export class MapEntityRenderer {
                 );
                 
                 if (marker) {
+                    if (location?.id && mapRecord) {
+                        const point = marker.getLatLng();
+                        const paddingPoint = this.offsetCoordinatesByPixels([point.lat, point.lng], [24, 24]);
+                        const inset = Math.max(Math.abs(paddingPoint[0] - point.lat), Math.abs(paddingPoint[1] - point.lng));
+                        marker.setLatLng(containEntityInArea(mapRecord, location.id, [point.lat, point.lng], inset));
+                    }
                     switch (normalizeMapEntityType(entityRef.entityType)) {
                         case 'character':
                             charactersLayer.addLayer(marker);
@@ -580,9 +631,21 @@ export class MapEntityRenderer {
                             this.markerLayers.get('custom')?.addLayer(marker);
                     }
                     this.entityMarkers.set(entityRef.entityId, marker);
+                    if (location) {
+                        this.attachedTokens.push({
+                            marker,
+                            kind: 'entity',
+                            locationKey: location.id || location.name,
+                            locationId: location.id || undefined,
+                            mapRecord: location.id && mapRecord ? mapRecord : null,
+                        });
+                    } else if (totalAtLocation > 1) {
+                        this.stackedTokens.push({ marker, base: coordinates, offset });
+                    }
                 }
             }
         }
+        this.applyTokenLayout();
     }
 
     /**
@@ -594,33 +657,32 @@ export class MapEntityRenderer {
         const app = this.plugin.app;
 
         // Query all entity types that might have mapCoordinates
-        const [scenes, cultures, economies, magicSystems, references, groups] = await Promise.all([
+        const [scenes, cultures, economies, magicSystems, references, groups, characters, events, items] = await Promise.all([
             this.plugin.listScenes().catch(() => [] as Scene[]),
             this.plugin.listCultures().catch(() => [] as Culture[]),
             this.plugin.listEconomies().catch(() => [] as Economy[]),
             this.plugin.listMagicSystems().catch(() => [] as MagicSystem[]),
             this.plugin.listReferences().catch(() => [] as Reference[]),
-            Promise.resolve(this.plugin.getGroups())
+            Promise.resolve(this.plugin.getGroups()),
+            this.plugin.listCharacters(), this.plugin.listEvents(), this.plugin.listPlotItems()
         ]);
 
         const allEntities = [
+            ...characters.map(e => ({ entity: e, type: 'character' as const, file: e.filePath })),
+            ...events.map(e => ({ entity: e, type: 'event' as const, file: e.filePath })),
+            ...items.map(e => ({ entity: e, type: 'item' as const, file: e.filePath })),
             ...scenes.map(e => ({ entity: e, type: 'scene' as const, file: e.filePath })),
             ...cultures.map(e => ({ entity: e, type: 'culture' as const, file: e.filePath })),
             ...economies.map(e => ({ entity: e, type: 'economy' as const, file: e.filePath })),
             ...magicSystems.map(e => ({ entity: e, type: 'magicsystem' as const, file: e.filePath })),
             ...references.map(e => ({ entity: e, type: 'reference' as const, file: e.filePath })),
-            ...groups.map(e => ({ entity: e, type: 'group' as const, file: undefined }))
+            ...groups.map(e => ({ entity: e, type: 'group' as const, file: app.vault.getMarkdownFiles().find(f => {
+                const fm = app.metadataCache.getFileCache(f)?.frontmatter;
+                return fm?.['storyteller-type'] === 'group' && fm?.['storyteller-id'] === e.id;
+            })?.path }))
         ];
 
         for (const { entity, type, file } of allEntities) {
-            // For groups, check if they have any entities linked to locations on this map
-            // For other entities, check their frontmatter
-            if (type === 'group') {
-                // Groups don't have file paths, skip direct placement for now
-                // They can still appear via location.entityRefs
-                continue;
-            }
-
             if (!file) continue;
             const fileObj = app.vault.getAbstractFileByPath(file);
             if (!(fileObj instanceof TFile)) continue;
@@ -630,8 +692,7 @@ export class MapEntityRenderer {
             const fm = isRecord(frontmatter) ? frontmatter : {};
 
             // Check if this entity is linked to this map
-            const isLinkedToMap = fm.mapId === mapId ||
-                (Array.isArray(fm.relatedMapIds) && fm.relatedMapIds.some(relatedMapId => relatedMapId === mapId));
+            const isLinkedToMap = fm.mapId === mapId;
 
             if (!isLinkedToMap) continue;
 
@@ -663,23 +724,42 @@ export class MapEntityRenderer {
         binding: MapBinding
     ): Promise<L.Marker> {
         const effectiveRefs = await this.getEffectiveLocationEntityRefs(location);
+        this.locationEntityCounts.set(location.id || location.name, effectiveRefs.length);
         const marker = L.marker(binding.coordinates, {
-            icon: this.getLocationMarkerIcon(binding, effectiveRefs.length),
+            icon: this.getLocationMarkerIcon(binding, effectiveRefs.length, this.pinStateClasses(location)),
             title: location.name
         });
 
-        // Build popup with location info and entities
-        const popupContent = await this.buildLocationPopup(location);
-        marker.bindPopup(popupContent, {
-            maxWidth: 300,
-            className: 'storyteller-map-popup'
-        });
+        const mapRecord = (await this.plugin.listMaps()).find(m => (m.id || m.name) === this.mapId);
+        const area = mapRecord?.placementGrid?.areas.find(a => a.locationId === location.id);
+        const tooltip = document.createElement('div');
+        tooltip.createEl('strong', { text: area?.label || location.name });
+        if (location.locationType || location.type) tooltip.createDiv({ text: location.locationType || location.type });
+        if (area?.cells.length) tooltip.createDiv({ text: `${area.cells.length} area cells` });
+        marker.bindTooltip(tooltip, { direction: 'top', className: 'storyteller-map-tooltip' });
+
+        if (this.options.onLocationSelect) {
+            // Embedded boards select the pin instead of opening the popup.
+            const onLocationSelect = this.options.onLocationSelect;
+            marker.on('click', () => onLocationSelect(location));
+        } else {
+            // Build popup with location info and entities
+            const popupContent = await this.buildLocationPopup(location);
+            if (!this.options.readOnly && (mapRecord?.placementGrid || mapRecord?.image || mapRecord?.backgroundImagePath)) {
+                const editArea = popupContent.createEl('button', { text: 'Edit location area', cls: 'st-edit-location-area' });
+                editArea.onclick = () => { this.map.closePopup(); this.map.fire('storyteller:edit-area', { locationId: location.id || location.name }); };
+            }
+            marker.bindPopup(popupContent, {
+                maxWidth: 300,
+                className: 'storyteller-map-popup'
+            });
+        }
 
         // Click opens the popup (Leaflet default behaviour).
         // Navigation is handled by the "Open Note" button inside the popup.
 
         // Context menu for quick actions
-        marker.on('contextmenu', (e) => {
+        if (!this.options.readOnly) marker.on('contextmenu', (e) => {
             this.showLocationContextMenu(e, location);
         });
 
@@ -767,7 +847,7 @@ export class MapEntityRenderer {
         const imagePath = this.getEntityImagePath(entity, entityRef.entityType);
         const imageUrl = imagePath ? this.getImageUrl(imagePath) : null;
 
-        const icon = this.getEntityMarkerIcon(entityRef.entityType, imageUrl, entity.name, stackInfo);
+        const icon = this.getEntityMarkerIcon(entityRef.entityType, imageUrl, stackInfo);
         const markerCoordinates = stackInfo
             ? this.offsetCoordinatesByPixels(coordinates, stackInfo.offset)
             : coordinates;
@@ -796,7 +876,7 @@ export class MapEntityRenderer {
         // Navigation is handled by the action button inside the popup.
 
         // Context menu for entity marker
-        marker.on('contextmenu', (e) => {
+        if (!this.options.readOnly) marker.on('contextmenu', (e) => {
             if (entity) {
                 this.showEntityContextMenu(e, entity, entityRef, location);
             }
@@ -808,204 +888,173 @@ export class MapEntityRenderer {
     /**
      * Get location marker icon
      */
-    private getLocationMarkerIcon(binding: MapBinding, entityCount: number): L.Icon | L.DivIcon {
+    /** Classes for a location pin under the current highlight: scene location and inspector selection. */
+    private pinStateClasses(location: Location): string[] {
+        const highlight = this.options.pinHighlight;
+        if (!highlight) return [];
+        const key = locationPinKey(location);
+        const classes: string[] = [];
+        if (highlight.currentKey === key) classes.push('is-current');
+        if (highlight.selectedKey === key) classes.push('is-selected');
+        return classes;
+    }
+
+    /** Re-apply highlight classes to pins already on the map, without rebuilding them. */
+    refreshPinHighlight(): void {
+        for (const [key, marker] of this.locationMarkers) {
+            const location = this.locationRecords.get(key);
+            const element = marker.getElement();
+            if (!location || !element) continue;
+            const classes = this.pinStateClasses(location);
+            element.classList.toggle('is-current', classes.includes('is-current'));
+            element.classList.toggle('is-selected', classes.includes('is-selected'));
+        }
+        // Current and selected tokens win the overlap guard, so the layout depends on them too.
+        this.applyTokenLayout();
+    }
+
+    /** The fit zoom: where the image overlay fits the view. Falls back to the minimum zoom for tile maps. */
+    private fitZoom(): number {
+        const overlays: L.ImageOverlay[] = [];
+        this.map.eachLayer(layer => {
+            if (layer instanceof L.ImageOverlay) overlays.push(layer);
+        });
+        if (overlays.length > 0) {
+            const fit = this.map.getBoundsZoom(overlays[0].getBounds(), false);
+            if (Number.isFinite(fit)) return fit;
+        }
+        return this.map.getMinZoom();
+    }
+
+    /**
+     * Re-plan the tokens for the current zoom. The map container gets one density class and the
+     * scale variables. Location tokens get a dot class, attached entities are hidden or moved to
+     * their fan position. Nothing is rebuilt, so click handlers and popups stay as they are.
+     */
+    private applyTokenLayout(): void {
+        const locations: TokenLocationInput[] = [];
+        for (const [key, marker] of this.locationMarkers) {
+            if (!this.map.hasLayer(marker) || !isTokenMarker(marker)) continue;
+            const point = this.map.latLngToLayerPoint(marker.getLatLng());
+            const location = this.locationRecords.get(key);
+            const state = location ? this.pinStateClasses(location) : [];
+            locations.push({
+                key,
+                x: point.x,
+                y: point.y,
+                priority: tokenPriority({
+                    current: state.includes('is-current'),
+                    selected: state.includes('is-selected'),
+                    entityCount: this.locationEntityCounts.get(key) ?? 0,
+                }),
+            });
+        }
+        const attached: TokenAttachedInput[] = this.attachedTokens.map((t, i) => ({
+            key: String(i),
+            locationKey: t.locationKey,
+            kind: t.kind,
+            portrait: isPortraitMarker(t.marker),
+        }));
+        const plan = planTokenLayout(this.map.getZoom(), this.fitZoom(), locations, attached);
+
+        const container = this.map.getContainer();
+        for (const className of Object.values(DENSITY_CLASS)) container.classList.remove(className);
+        container.classList.add(plan.containerClass);
+        for (const [name, value] of Object.entries(plan.cssVars)) container.style.setProperty(name, value);
+
+        for (const [key, marker] of this.locationMarkers) {
+            if (!isTokenMarker(marker)) continue;
+            marker.getElement()?.classList.toggle('ink-token-dot', plan.dotted.has(key));
+        }
+
+        this.attachedTokens.forEach((token, i) => {
+            const id = String(i);
+            token.marker.getElement()?.classList.toggle('ink-token-collapsed', plan.collapsed.has(id));
+            const offset = plan.offsets.get(id);
+            const anchor = this.locationMarkers.get(token.locationKey);
+            if (!offset || !anchor) return;
+            const basePoint = this.map.latLngToLayerPoint(anchor.getLatLng());
+            const target = this.map.layerPointToLatLng(basePoint.add(L.point(offset[0], offset[1])));
+            let latlng: [number, number] = [target.lat, target.lng];
+            if (token.kind === 'entity' && token.locationId && token.mapRecord) {
+                // Keep the entity inside the location area, as the first render does. 24 px of slack.
+                const padding = this.map.layerPointToLatLng(this.map.latLngToLayerPoint(target).add(L.point(24, 24)));
+                const inset = Math.max(Math.abs(padding.lat - target.lat), Math.abs(padding.lng - target.lng));
+                latlng = containEntityInArea(token.mapRecord, token.locationId, latlng, inset);
+            }
+            token.marker.setLatLng(latlng);
+        });
+
+        for (const stacked of this.stackedTokens) {
+            const point = this.map.latLngToLayerPoint(stacked.base).add(L.point(stacked.offset[0], stacked.offset[1]));
+            const target = this.map.layerPointToLatLng(point);
+            stacked.marker.setLatLng([target.lat, target.lng]);
+        }
+    }
+
+    private getLocationMarkerIcon(binding: MapBinding, entityCount: number, stateClasses: string[] = []): L.Icon | L.DivIcon {
         const entityBadge = entityCount > 0 
             ? `<span class="storyteller-entity-count-badge">${entityCount}</span>` 
             : '';
+        const stateSuffix = stateClasses.map(name => ` ${name}`).join('');
 
         if (binding.markerIcon) {
             // Custom icon specified
             return L.divIcon({
                 html: `<div class="storyteller-marker-wrapper">${binding.markerIcon}${entityBadge}</div>`,
-                className: 'storyteller-custom-marker',
+                className: `storyteller-custom-marker${stateSuffix}`,
                 iconSize: [32, 32],
                 iconAnchor: [16, 32]
             });
         }
 
-        // Default location icon
-        const color = '#3b82f6';
-        const iconHtml = `
-            <div class="storyteller-marker-wrapper">
-                <svg width="32" height="32" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="10" r="8" fill="${color}" stroke="#fff" stroke-width="2"/>
-                    <circle cx="12" cy="10" r="3" fill="#fff"/>
-                </svg>
-                ${entityBadge}
-            </div>
-        `;
+        // Default location token: a token centred on the point, with the entity count pill.
+        const size: TokenSize = 'lg';
+        const state = {
+            current: stateClasses.includes('is-current'),
+            selected: stateClasses.includes('is-selected'),
+        };
+        const token = tokenHtml({ type: 'location', size, count: entityCount, minCount: 1, state });
 
         return L.divIcon({
-            html: iconHtml,
-            className: `storyteller-location-marker${entityCount > 0 ? ' has-entities' : ''}`,
-            iconSize: [32, 32],
-            iconAnchor: [16, 32],
-            popupAnchor: [0, -32]
+            html: `<div class="storyteller-marker-wrapper ink-token-wrap">${token}</div>`,
+            className: `storyteller-location-marker ink-token-marker${entityCount > 0 ? ' has-entities' : ''}${stateSuffix}`,
+            iconSize: tokenIconSize(size),
+            iconAnchor: tokenAnchor(size),
+            popupAnchor: [0, -18]
         });
     }
 
     /**
-     * Get entity marker icon - shows entity image as circular avatar if available
+     * Get entity marker icon: a Token in the entity colour, or a portrait token when an image is known.
      * @param entityType Type of entity (character, event, item)
-     * @param imageUrl Optional image URL to display
-     * @param entityName Entity name for fallback initials
+     * @param imageUrl Optional portrait image URL
      * @param stackInfo Optional stacking information for offset positioning
      */
     private getEntityMarkerIcon(
         entityType: string,
         imageUrl?: string | null,
-        entityName?: string,
         stackInfo?: { stackIndex: number; stackTotal: number; offset: [number, number] }
     ): L.DivIcon {
-        // Uniform color scheme for all entity types with distinct hues
-        const colors: Record<string, { bg: string; border: string }> = {
-            character: { bg: '#ef4444', border: '#dc2626' },      // Red
-            event: { bg: '#f59e0b', border: '#d97706' },          // Orange
-            item: { bg: '#10b981', border: '#059669' },           // Green
-            culture: { bg: '#8b5cf6', border: '#7c3aed' },        // Purple
-            economy: { bg: '#eab308', border: '#ca8a04' },        // Yellow
-            magicsystem: { bg: '#06b6d4', border: '#0891b2' },    // Cyan
-            group: { bg: '#3b82f6', border: '#2563eb' },          // Blue
-            scene: { bg: '#ec4899', border: '#db2777' },          // Pink
-            reference: { bg: '#64748b', border: '#475569' }       // Slate
-        };
-
         const normalizedEntityType = normalizeMapEntityType(entityType);
-        const color = colors[normalizedEntityType] || colors.character;
-        
-        // Show stack badge on first marker only when there are multiple
-        const stackBadge = stackInfo && stackInfo.stackIndex === 0 && stackInfo.stackTotal > 1
-            ? `<span class="storyteller-stack-badge">${stackInfo.stackTotal}</span>`
-            : '';
-        
-        // If we have an image, show it as a circular avatar
-        if (imageUrl) {
-            const iconHtml = `
-                <div class="storyteller-entity-avatar" style="
-                    width: 36px;
-                    height: 36px;
-                    border-radius: 50%;
-                    border: 3px solid ${color.border};
-                    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-                    overflow: hidden;
-                    background-color: ${color.bg};
-                    position: relative;
-                ">
-                    <span class="storyteller-entity-avatar-fallback">${this.getInitials(entityName)}</span>
-                    <img src="${imageUrl}" alt="" style="
-                        width: 100%;
-                        height: 100%;
-                        object-fit: cover;
-                    " onerror="this.style.display='none'"/>
-                    ${stackBadge}
-                </div>
-            `;
-
-            return L.divIcon({
-                html: iconHtml,
-                className: `storyteller-entity-marker storyteller-entity-${normalizedEntityType} has-image${stackInfo && stackInfo.stackTotal > 1 ? ' stacked' : ''}`,
-                iconSize: [36, 36],
-                iconAnchor: [18, 36],
-                popupAnchor: [0, -36]
-            });
-        }
-
-        // Uniform SVG icons for all entity types
-        const icons: Record<string, string> = {
-            character: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <circle cx="12" cy="9" r="3.5" fill="#fff"/>
-                    <path d="M12 14c-3.5 0-6 1.5-6 3.5v1h12v-1c0-2-2.5-3.5-6-3.5z" fill="#fff"/>
-                </svg>
-                ${stackBadge}
-            `,
-            event: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <path d="M8 7v10M12 5v14M16 8v8" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-                ${stackBadge}
-            `,
-            item: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <rect x="8" y="6" width="8" height="12" rx="1" fill="none" stroke="#fff" stroke-width="2"/>
-                    <path d="M10 9h4M10 12h4M10 15h2" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-                ${stackBadge}
-            `,
-            culture: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <path d="M8 12h8M10 8l2 4 2-4M10 16l2-4 2 4" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                ${stackBadge}
-            `,
-            economy: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <circle cx="12" cy="12" r="5" fill="none" stroke="#fff" stroke-width="2"/>
-                    <path d="M12 7v10M8 12h8" stroke="#fff" stroke-width="1.5"/>
-                </svg>
-                ${stackBadge}
-            `,
-            magicsystem: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <path d="M12 5l1.5 4.5h4.5l-3.5 2.5 1.5 4.5-3-2-3 2 1.5-4.5-3.5-2.5h4.5z" fill="#fff"/>
-                </svg>
-                ${stackBadge}
-            `,
-            group: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <circle cx="8" cy="10" r="2" fill="#fff"/>
-                    <circle cx="16" cy="10" r="2" fill="#fff"/>
-                    <circle cx="12" cy="13" r="2" fill="#fff"/>
-                    <path d="M8 15c0-1 1-2 2-2h4c1 0 2 1 2 2v2H8z" fill="#fff"/>
-                </svg>
-                ${stackBadge}
-            `,
-            scene: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <path d="M7 10l5-3 5 3v7H7z" fill="#fff"/>
-                    <rect x="10" y="13" width="4" height="4" fill="${color.bg}"/>
-                </svg>
-                ${stackBadge}
-            `,
-            reference: `
-                <svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="11" fill="${color.bg}" stroke="#fff" stroke-width="2"/>
-                    <rect x="8" y="6" width="8" height="12" rx="1" fill="none" stroke="#fff" stroke-width="2"/>
-                    <path d="M10 9h4M10 11h4M10 13h3" stroke="#fff" stroke-width="1" stroke-linecap="round"/>
-                </svg>
-                ${stackBadge}
-            `
-        };
-
-        const iconHtml = icons[normalizedEntityType] || icons.character;
+        const stacked = !!stackInfo && stackInfo.stackTotal > 1;
+        // The stack count shows on the first marker of a stack only.
+        const count = stackInfo && stackInfo.stackIndex === 0 ? stackInfo.stackTotal : undefined;
+        const size: TokenSize = imageUrl ? 'lg' : 'md';
+        const token = tokenHtml({
+            type: normalizedEntityType,
+            size,
+            count,
+            imageUrl: imageUrl || undefined,
+        });
 
         return L.divIcon({
-            html: iconHtml,
-            className: `storyteller-entity-marker storyteller-entity-${normalizedEntityType}${stackInfo && stackInfo.stackTotal > 1 ? ' stacked' : ''}`,
-            iconSize: [28, 28],
-            iconAnchor: [14, 28],
-            popupAnchor: [0, -28]
+            html: `<div class="storyteller-marker-wrapper ink-token-wrap">${token}</div>`,
+            className: `storyteller-entity-marker storyteller-entity-${normalizedEntityType} ink-token-marker${imageUrl ? ' has-image' : ''}${stacked ? ' stacked' : ''}`,
+            iconSize: tokenIconSize(size),
+            iconAnchor: tokenAnchor(size),
+            popupAnchor: [0, -18]
         });
-    }
-
-    /**
-     * Get initials from entity name for fallback display
-     */
-    private getInitials(name?: string): string {
-        if (!name) return '?';
-        const words = name.trim().split(/\s+/);
-        if (words.length === 1) {
-            return words[0].substring(0, 2).toUpperCase();
-        }
-        return (words[0][0] + words[words.length - 1][0]).toUpperCase();
     }
 
     /**
@@ -1140,8 +1189,6 @@ export class MapEntityRenderer {
         // Action buttons
         const actions = container.createDiv('popup-actions');
         const openButton = actions.createEl('button', { cls: 'popup-btn', text: 'Open note' });
-        const addEntityButton = actions.createEl('button', { cls: 'popup-btn', text: 'Add entity' });
-        const editButton = actions.createEl('button', { cls: 'popup-btn', text: 'Edit location' });
 
         // Button handlers
         openButton.addEventListener('click', () => {
@@ -1150,13 +1197,18 @@ export class MapEntityRenderer {
             }
         });
 
-        addEntityButton.addEventListener('click', (event) => {
-            this.showAddEntityTypeMenu(location, event.currentTarget as HTMLElement);
-        });
+        if (!this.options.readOnly) {
+            const addEntityButton = actions.createEl('button', { cls: 'popup-btn', text: 'Add entity' });
+            const editButton = actions.createEl('button', { cls: 'popup-btn', text: 'Edit location' });
 
-        editButton.addEventListener('click', () => {
-            void this.showEditLocationModal(location);
-        });
+            addEntityButton.addEventListener('click', (event) => {
+                this.showAddEntityTypeMenu(location, event.currentTarget as HTMLElement);
+            });
+
+            editButton.addEventListener('click', () => {
+                void this.showEditLocationModal(location);
+            });
+        }
 
         return container;
     }
@@ -1451,6 +1503,16 @@ export class MapEntityRenderer {
      */
     private showLocationContextMenu(e: L.LeafletMouseEvent, location: Location): void {
         const menu = new Menu();
+        if (this.map.getContainer().classList.contains('st-grid-enabled')) menu.addItem(item => item.setTitle('Edit location area').setIcon('grid').onClick(() => {
+            this.map.fire('storyteller:edit-area', { locationId: location.id || location.name });
+        }));
+
+        menu.addItem(item => item.setTitle('Remove from this map').setIcon('trash').onClick(async () => {
+            if (!await confirmWithModal(this.plugin.app, { title: 'Remove location from map?', body: 'Remove its pin and grid territory from this map only. Keep the location note.' })) return;
+            try { await this.locationService.removeMapBinding(location.id || location.name, this.mapId); }
+            catch (error) { new Notice(`Removal failed: ${String(error)}`); }
+        }));
+
 
         menu.addItem(item => {
             item.setTitle('Open location note')
@@ -1472,19 +1534,17 @@ export class MapEntityRenderer {
             item.setTitle('Create child location')
                 .setIcon('map-pin')
                 .onClick(() => {
-                    new Notice('Create child location functionality coming soon');
+                    void this.showCreateChildLocationModal(location);
                 });
         });
 
-        if (location.childLocationIds && location.childLocationIds.length > 0) {
-            menu.addItem(item => {
-                item.setTitle('Zoom to child map')
-                    .setIcon('zoom-in')
-                    .onClick(() => {
-                        new Notice('Zoom to child map functionality coming soon');
-                    });
-            });
-        }
+        menu.addItem(item => {
+            item.setTitle('Zoom to child map')
+                .setIcon('zoom-in')
+                .onClick(() => {
+                    void this.zoomToChildMap(location, e.originalEvent);
+                });
+        });
 
         menu.addSeparator();
 
@@ -1555,18 +1615,25 @@ export class MapEntityRenderer {
         this.isMovingMarker = true;
         new Notice('Click on the map to set the new marker position (esc to cancel).');
 
+        let instruction: HTMLElement | null = null;
+        const endMove = () => {
+            this.map.off('click', onClick);
+            activeDocument.removeEventListener('keydown', onKeyDown);
+            instruction?.remove();
+            instruction = null;
+        };
+        const cancelMove = () => {
+            endMove();
+            this.isMovingMarker = false;
+            new Notice('Marker move cancelled');
+        };
+
         const onKeyDown = (evt: KeyboardEvent) => {
-            if (evt.key === 'Escape') {
-                this.map.off('click', onClick);
-                activeDocument.removeEventListener('keydown', onKeyDown);
-                this.isMovingMarker = false;
-                new Notice('Marker move cancelled');
-            }
+            if (evt.key === 'Escape') cancelMove();
         };
 
         const onClick = (e: L.LeafletMouseEvent) => { void (async () => {
-            this.map.off('click', onClick);
-            activeDocument.removeEventListener('keydown', onKeyDown);
+            endMove();
 
             const newCoords: [number, number] = [e.latlng.lat, e.latlng.lng];
 
@@ -1610,6 +1677,11 @@ export class MapEntityRenderer {
         // Use once-style behaviour but keep explicit off() calls for safety
         this.map.on('click', onClick);
         activeDocument.addEventListener('keydown', onKeyDown);
+        instruction = createPlacementOverlay(this.map.getContainer(), {
+            text: 'Click on the map to set the new marker position',
+            hint: 'Press ESC to cancel',
+            onCancel: cancelMove,
+        });
     }
 
     /**
@@ -1690,79 +1762,11 @@ export class MapEntityRenderer {
 
         menu.addSeparator();
 
-        // Only show remove option for supported entity types
-        if (isSupportedType) {
-            menu.addItem(item => {
-                item.setTitle('Remove from map')
-                    .setIcon('trash-2')
-                    .onClick(async () => {
-                        // Confirmation
-                        const locationName = location?.name || 'this map';
-                        const confirmed = await confirmWithModal(this.plugin.app, {
-                            title: 'Remove from map',
-                            body:
-                                `Remove "${entity.name}" from "${locationName}"?` + '\n\n' +
-                                `This will remove the marker from this map and clear the ${entityRef.entityType}'s location reference.` + '\n\n' +
-                                `The ${entityRef.entityType} itself will not be deleted.`,
-                            confirmText: 'Remove'
-                        });
-
-                        if (confirmed) {
-                            try {
-                                // If entity is at a location, use removeEntityFromMap
-                                if (location && locationId) {
-                                    // Only character, event, and item are supported by removeEntityFromMap
-                                    if (['character', 'event', 'item'].includes(entityRef.entityType)) {
-                                        await this.plugin.removeEntityFromMap(
-                                            entityId,
-                                            entityRef.entityType as 'character' | 'event' | 'item',
-                                            locationId
-                                        );
-                                    } else {
-                                        // For other entity types, remove from location's entityRefs manually
-                                        const locationService = new LocationService(this.plugin);
-                                        const loc = await locationService.getLocation(locationId);
-                                        if (loc && loc.entityRefs) {
-                                            loc.entityRefs = loc.entityRefs.filter(
-                                                ref => !(ref.entityId === entityId && ref.entityType === entityRef.entityType)
-                                            );
-                                            await this.plugin.saveLocation(loc);
-                                        }
-                                    }
-                                } else {
-                                    // Entity is placed directly on map (no location)
-                                    // Clear mapCoordinates and mapId from frontmatter
-                                    if (entity.filePath) {
-                                        const file = this.plugin.app.vault.getAbstractFileByPath(entity.filePath);
-                                        if (file instanceof TFile) {
-                                            await this.plugin.app.fileManager.processFrontMatter(file, (frontmatter) => {
-                                                const frontmatterRecord = frontmatter as unknown as Record<string, unknown>;
-                                                delete frontmatterRecord.mapCoordinates;
-                                                // Only clear mapId if it matches current map
-                                                // relatedMapIds will be handled separately if needed
-                                                const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
-                                                const currentMapId = getMapViewMapId(mapView?.view);
-                                                if (frontmatterRecord.mapId === currentMapId) {
-                                                    delete frontmatterRecord.mapId;
-                                                }
-                                            });
-                                        }
-                                    }
-                                }
-
-                                // Refresh the map to remove the marker
-                                const mapView = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
-                                if (hasRefreshEntities(mapView?.view)) {
-                                    await mapView.view.refreshEntities();
-                                }
-                            } catch (error) {
-                                
-                                new Notice(`Error: ${error}`);
-                            }
-                        }
-                    });
-            });
-        }
+        menu.addItem(item => item.setTitle('Remove from this map').setIcon('trash').onClick(async () => {
+            if (!await confirmWithModal(this.plugin.app, { title: 'Remove map node?', body: 'Remove this representation from this map only. The entity note and story relationships are preserved.' })) return;
+            try { await detachFromMaps(this.plugin, normalizeMapEntityType(entityRef.entityType), entityRef.entityId, entity.name, this.mapId); }
+            catch (error) { new Notice(`Removal failed: ${String(error)}`); }
+        }));
 
         menu.showAtMouseEvent(e.originalEvent);
     }
@@ -1812,6 +1816,67 @@ export class MapEntityRenderer {
         }).open();
     }
 
+    private async showCreateChildLocationModal(parent: Location): Promise<void> {
+        const { LocationModal } = await import('../modals/LocationModal');
+        const modal = new LocationModal(this.plugin.app, this.plugin, null, async (childLocation: Location) => {
+            // Respect a parent the user changed or cleared in the modal.
+            const parentKey = childLocation.parentLocationId;
+            if (parentKey) {
+                await this.locationService.createChildLocation(parentKey, childLocation);
+            } else {
+                await this.plugin.saveLocation(childLocation);
+            }
+            new Notice(`Location "${childLocation.name}" created.`);
+            await this.refreshOpenMapView();
+        });
+        Object.assign(modal.location, buildChildLocationDefaults(parent));
+        modal.open();
+    }
+
+    private async zoomToChildMap(location: Location, evt: MouseEvent): Promise<void> {
+        const locations = await this.plugin.listLocations();
+        const maps = await this.plugin.listMaps();
+        const childMaps = findChildLocationMaps(location, locations, maps);
+
+        if (childMaps.length === 0) {
+            new Notice(noChildMapMessage(location.name));
+            return;
+        }
+        if (childMaps.length === 1) {
+            await this.openMapInView(childMaps[0]);
+            return;
+        }
+
+        const menu = new Menu();
+        for (const childMap of childMaps) {
+            menu.addItem(item => item.setTitle(childMap.name)
+                .setIcon('map')
+                .onClick(() => {
+                    void this.openMapInView(childMap);
+                }));
+        }
+        menu.showAtMouseEvent(evt);
+    }
+
+    /**
+     * Load a map into the open Storyteller map view, or open one if none is visible.
+     */
+    private async openMapInView(map: StoryMap): Promise<void> {
+        const workspace = this.plugin.app.workspace;
+        const mapId = map.id || map.name;
+        const leaf = workspace.getLeavesOfType('storyteller-map-view')[0];
+
+        if (leaf && hasLoadMap(leaf.view)) {
+            await leaf.view.loadMap(mapId);
+            await workspace.revealLeaf(leaf);
+            return;
+        }
+
+        const newLeaf = workspace.getLeaf(true);
+        await newLeaf.setViewState({ type: 'storyteller-map-view', active: true, state: { mapId } });
+        await workspace.revealLeaf(newLeaf);
+    }
+
     private async refreshOpenMapView(): Promise<void> {
         const mapLeaf = this.plugin.app.workspace.getLeavesOfType('storyteller-map-view')[0];
         const view = mapLeaf?.view;
@@ -1824,6 +1889,12 @@ export class MapEntityRenderer {
      * Clean up all markers and layers
      */
     cleanup(): void {
+        this.map.off('zoomend viewreset resize', this.handleTokenZoom);
+        const container = this.map.getContainer();
+        for (const className of Object.values(DENSITY_CLASS)) container.classList.remove(className);
+        for (const name of Object.keys(densityCssVars('z1'))) {
+            container.style.removeProperty(name);
+        }
         for (const layer of this.markerLayers.values()) {
             layer.clearLayers();
             this.map.removeLayer(layer);
@@ -1831,6 +1902,9 @@ export class MapEntityRenderer {
         this.markerLayers.clear();
         this.locationMarkers.clear();
         this.entityMarkers.clear();
+        this.attachedTokens = [];
+        this.stackedTokens = [];
+        this.locationEntityCounts.clear();
     }
 }
 

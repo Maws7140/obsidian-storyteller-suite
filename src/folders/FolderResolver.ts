@@ -1,6 +1,6 @@
 import { normalizePath } from 'obsidian';
 
-export type EntityFolderType = 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'group' | 'compendiumEntry' | 'book' | 'campaignSession';
+export type EntityFolderType = 'character' | 'location' | 'event' | 'item' | 'reference' | 'chapter' | 'scene' | 'map' | 'culture' | 'faction' | 'economy' | 'magicSystem' | 'group' | 'compendiumEntry' | 'book' | 'campaignSession' | 'timelineEra' | 'timelineTrack' | 'timelineBranch';
 
 export interface FolderResolverOptions {
   enableCustomEntityFolders: boolean | undefined;
@@ -21,6 +21,9 @@ export interface FolderResolverOptions {
   compendiumFolderPath?: string | undefined;
   bookFolderPath?: string | undefined;
   sessionsFolderPath?: string | undefined;
+  eraFolderPath?: string | undefined;
+  trackFolderPath?: string | undefined;
+  branchFolderPath?: string | undefined;
   enableOneStoryMode?: boolean | undefined;
   oneStoryBaseFolder?: string | undefined;
 }
@@ -49,6 +52,9 @@ export type StoryFolderOverrides = Pick<
   | 'compendiumFolderPath'
   | 'bookFolderPath'
   | 'sessionsFolderPath'
+  | 'eraFolderPath'
+  | 'trackFolderPath'
+  | 'branchFolderPath'
 >;
 
 export interface StoryMinimal { id: string; name: string; folderOverrides?: StoryFolderOverrides; }
@@ -94,6 +100,9 @@ export class FolderResolver {
       this.path('compendiumFolderPath'),
       this.path('bookFolderPath'),
       this.path('sessionsFolderPath'),
+      this.path('eraFolderPath'),
+      this.path('trackFolderPath'),
+      this.path('branchFolderPath'),
     ];
   }
 
@@ -146,6 +155,9 @@ export class FolderResolver {
       compendiumEntry: 'compendiumFolderPath',
       book:            'bookFolderPath',
       campaignSession: 'sessionsFolderPath',
+      timelineEra:     'eraFolderPath',
+      timelineTrack:   'trackFolderPath',
+      timelineBranch:  'branchFolderPath',
     };
     return keys[type];
   }
@@ -169,6 +181,9 @@ export class FolderResolver {
       compendiumEntry: 'Compendium',
       book:            'Books',
       campaignSession: 'Sessions',
+      timelineEra:     'Eras',
+      timelineTrack:   'Tracks',
+      timelineBranch:  'Branches',
     };
     return leaves[type];
   }
@@ -283,6 +298,9 @@ export class FolderResolver {
       if (type === 'compendiumEntry') return `${prefix}Compendium`;
       if (type === 'book')       return `${prefix}Books`;
       if (type === 'campaignSession') return `${prefix}Sessions`;
+      if (type === 'timelineEra')    return `${prefix}Eras`;
+      if (type === 'timelineTrack')  return `${prefix}Tracks`;
+      if (type === 'timelineBranch') return `${prefix}Branches`;
     }
 
     const story = this.getActiveStory();
@@ -304,6 +322,9 @@ export class FolderResolver {
     if (type === 'compendiumEntry') return `${base}/Compendium`;
     if (type === 'book')       return `${base}/Books`;
     if (type === 'campaignSession') return `${base}/Sessions`;
+    if (type === 'timelineEra')    return `${base}/Eras`;
+    if (type === 'timelineTrack')  return `${base}/Tracks`;
+    if (type === 'timelineBranch') return `${base}/Branches`;
     throw new Error('Unknown entity type');
   }
 
@@ -322,7 +343,8 @@ export class FolderResolver {
   resolveAll(): Record<EntityFolderType, { path?: string; error?: string }> {
     const types: EntityFolderType[] = [
       'character', 'location', 'event', 'item', 'reference', 'chapter', 'scene', 'map',
-      'culture', 'faction', 'economy', 'magicSystem', 'group', 'compendiumEntry', 'book', 'campaignSession'
+      'culture', 'faction', 'economy', 'magicSystem', 'group', 'compendiumEntry', 'book', 'campaignSession',
+      'timelineEra', 'timelineTrack', 'timelineBranch'
     ];
     const out = {} as Record<EntityFolderType, { path?: string; error?: string }>;
     for (const t of types) out[t] = this.tryGetEntityFolder(t);

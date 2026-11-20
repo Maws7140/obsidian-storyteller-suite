@@ -17,6 +17,7 @@ import { Character, Location, Event, PlotItem, GalleryImage, IndentedSceneRef, S
 import { NewStoryModal } from '../modals/NewStoryModal';
 import { GroupModal } from '../modals/GroupModal';
 import { PlatformUtils } from '../utils/PlatformUtils';
+import { getOwners } from '../utils/ItemOwnership';
 import type { DashboardLayoutMode } from '../utils/PlatformUtils';
 import {
     Template,
@@ -42,6 +43,16 @@ import { renderWritingChapterSceneList } from './dashboard/rendering/WritingList
 /** Unique identifier for the dashboard view type in Obsidian's workspace */
 export const VIEW_TYPE_DASHBOARD = "storyteller-dashboard-view";
 
+/** How long a tab may take to draw before it stops blocking the next tab switch. */
+const TAB_RENDER_TIME_LIMIT_MS = 8000;
+const BUFFERED_DASHBOARD_TABS = new Set(['characters', 'locations', 'writing']);
+
+interface DashboardTab {
+    id: string;
+    label: string;
+    renderFn: (container: HTMLElement, isCurrentRender: () => boolean) => Promise<void>;
+}
+
 /**
  * Main dashboard view class providing a tabbed interface for story management
  * This view integrates all storytelling entities (characters, locations, events, gallery)
@@ -62,6 +73,8 @@ export class DashboardView extends ItemView {
     
     /** Current filter text applied to entity lists */
     currentFilter: string = '';
+    /** Items-tab "Plot Critical only" toggle — view-level so dashboard refreshes don't silently reset it */
+    private itemsPlotCriticalOnly = false;
     
     /** File input element reference for gallery image uploads */
     fileInput: HTMLInputElement | null = null;
@@ -70,7 +83,7 @@ export class DashboardView extends ItemView {
     activeTabId: string = 'characters';
 
     /** Tab configuration mapping */
-    tabs: Array<{ id: string; label: string; renderFn: (container: HTMLElement) => Promise<void> }>;
+    tabs: DashboardTab[];
 
     // Responsive tabs UI state
     private tabHeaderRibbonEl: HTMLElement | null = null;
@@ -117,6 +130,14 @@ export class DashboardView extends ItemView {
     private hasRegisteredViewListeners = false;
     /** Shared dashboard refresh scheduler */
     private refreshCoordinator: DashboardRefreshCoordinator;
+    /** Tab renders run one after another through this chain (see enqueueTabRender). */
+    private tabRenderQueue: Promise<void> = Promise.resolve();
+    /** Bumped on every tab switch, so a queued render for an older switch is skipped. */
+    private renderSeq = 0;
+    /** Orders replacements within one tab after an earlier read has timed out. */
+    private renderAttempt = 0;
+    /** Ends the wait on the tab render in progress; set while one runs. */
+    private supersedeRender: (() => void) | null = null;
     /** Shared dashboard mutation helper */
     private mutationRunner: DashboardMutationRunner;
     /** Migrated dashboard tab controllers */
@@ -238,16 +259,16 @@ export class DashboardView extends ItemView {
 
         // Initialize tab configuration
         this.tabs = [
-            { id: 'characters', label: t('characters'), renderFn: (c: HTMLElement) => this.renderCharactersContent(c) },
-            { id: 'locations', label: t('locations'), renderFn: (c: HTMLElement) => this.renderLocationsContent(c) },
+            { id: 'characters', label: t('characters'), renderFn: (c, isCurrent) => this.renderCharactersContent(c, isCurrent) },
+            { id: 'locations', label: t('locations'), renderFn: (c, isCurrent) => this.renderLocationsContent(c, isCurrent) },
             { id: 'events', label: t('timeline'), renderFn: (c: HTMLElement) => this.renderEventsContent(c) },
             { id: 'items', label: t('items'), renderFn: (c: HTMLElement) => this.renderItemsContent(c) },
-            { id: 'maps', label: 'Maps', renderFn: (c: HTMLElement) => this.renderMapsContent(c) },
+            { id: 'maps', label: t('maps'), renderFn: (c: HTMLElement) => this.renderMapsContent(c) },
             { id: 'network', label: t('networkGraph'), renderFn: (c: HTMLElement) => this.renderNetworkContent(c) },
             { id: 'gallery', label: t('gallery'), renderFn: (c: HTMLElement) => this.renderGalleryContent(c) },
             { id: 'groups', label: t('groups'), renderFn: (c: HTMLElement) => this.renderGroupsContent(c) },
             { id: 'references', label: t('references'), renderFn: (c: HTMLElement) => this.renderReferencesContent(c) },
-            { id: 'writing', label: 'Writing', renderFn: (c: HTMLElement) => this.renderWritingContent(c) },
+            { id: 'writing', label: t('writing'), renderFn: (c, isCurrent) => this.renderWritingContent(c, isCurrent) },
             { id: 'compile', label: t('compile'), renderFn: (c: HTMLElement) => this.renderCompileContent(c) },
             { id: 'cultures', label: t('cultures'), renderFn: (c: HTMLElement) => this.renderCulturesContent(c) },
             { id: 'economies', label: t('economies'), renderFn: (c: HTMLElement) => this.renderEconomiesContent(c) },
@@ -256,7 +277,7 @@ export class DashboardView extends ItemView {
             { id: 'books', label: 'Books', renderFn: (c: HTMLElement) => this.renderBooksContent(c) },
             { id: 'campaign', label: 'Campaign', renderFn: (c: HTMLElement) => this.renderCampaignContent(c) },
             { id: 'templates', label: t('templates'), renderFn: (c: HTMLElement) => this.renderTemplatesContent(c) },
-            { id: 'analytics', label: 'Analytics', renderFn: (c: HTMLElement) => this.renderAnalyticsContent(c) },
+            { id: 'analytics', label: t('analytics'), renderFn: (c: HTMLElement) => this.renderAnalyticsContent(c) },
         ];
 
         this.applyTabOrder();
@@ -380,7 +401,8 @@ export class DashboardView extends ItemView {
             return;
         }
         
-        const snapshot = captureDashboardStateSnapshot(this.currentSearchInput);
+        const previousSearch = this.currentSearchInput;
+        const snapshot = captureDashboardStateSnapshot(previousSearch);
         
         const currentTabId = this.activeTabId;
         this.captureTabScrollState(currentTabId);
@@ -389,23 +411,23 @@ export class DashboardView extends ItemView {
         if (activeTab) {
             try {
                 this.isRefreshingActiveTab = true;
-                this._suppressScrollCapture = true;
-                await activeTab.renderFn(this.tabContentContainer);
-                await this.restoreTabScroll(currentTabId);
-                
-                restoreDashboardStateSnapshot(
-                    snapshot,
-                    () => this.currentSearchInput,
-                    (value) => {
-                        this.currentFilter = value;
-                    },
-                    () => !this.isSimplifiedMobileDashboard()
-                );
-            } catch {
-            	// intentional
-                
+                const seq = this.renderSeq;
+                await this.enqueueTabRender(activeTab, seq, async () => {
+                    const searchInput = this.currentSearchInput;
+                    const valueAtCommit = searchInput?.value;
+                    await this.restoreTabScroll(currentTabId);
+                    if (previousSearch === searchInput || (previousSearch && previousSearch.value !== snapshot.searchValue)) return;
+                    restoreDashboardStateSnapshot(
+                        snapshot,
+                        () => seq === this.renderSeq && searchInput === this.currentSearchInput &&
+                            searchInput?.value === valueAtCommit ? searchInput : null,
+                        (value) => {
+                            this.currentFilter = value;
+                        },
+                        () => !this.isSimplifiedMobileDashboard()
+                    );
+                }, true);
             } finally {
-                this._suppressScrollCapture = false;
                 this.isRefreshingActiveTab = false;
                 if (this.pendingActiveTabRefresh) {
                     this.pendingActiveTabRefresh = false;
@@ -413,6 +435,93 @@ export class DashboardView extends ItemView {
                 }
             }
         }
+    }
+
+    /**
+     * Draws tabs one at a time. A tab render empties the shared content area and fills it after
+     * loading, so two renders running together would mix their content. Each render waits for the
+     * one before it, and is skipped when a newer tab switch has been asked for since (`seq`).
+     * A render that fails shows its error in the content area; one that runs past the time limit
+     * stops holding up the queue, so the next click still works.
+     */
+    private enqueueTabRender(
+        tab: DashboardTab,
+        seq: number,
+        after?: () => Promise<void>,
+        refresh = false,
+    ): Promise<void> {
+        const run = async () => {
+            if (seq !== this.renderSeq || tab.id !== this.activeTabId) return;
+            const container = this.tabContentContainer;
+            const buffered = BUFFERED_DASHBOARD_TABS.has(tab.id);
+            const preserveContent = refresh && buffered && container.hasChildNodes();
+            const attempt = ++this.renderAttempt;
+            let elapsed = false;
+            const isCurrentRender = () => seq === this.renderSeq && tab.id === this.activeTabId &&
+                (!elapsed || attempt === this.renderAttempt);
+            const reportError = (error: unknown) => {
+                if (!isCurrentRender()) return;
+                if (preserveContent) {
+                    console.error(`Storyteller Suite: the ${tab.id} tab failed to refresh`, error);
+                } else {
+                    this.showTabRenderError(tab.id, error);
+                }
+            };
+            container.addClass('is-loading');
+            this._suppressScrollCapture = true;
+            let timer: number | null = null;
+            try {
+                const render = tab.renderFn(container, isCurrentRender);
+                const timedOut = new Promise<'timeout'>(resolve => {
+                    timer = window.setTimeout(() => resolve('timeout'), TAB_RENDER_TIME_LIMIT_MS);
+                });
+                // A newer tab switch stops the wait at once, so a slow tab never holds up the next click.
+                const superseded = new Promise<'superseded'>(resolve => { this.supersedeRender = () => resolve('superseded'); });
+                const outcome = await Promise.race([render.then(() => 'done' as const), timedOut, superseded]);
+                this.supersedeRender = null;
+                if (outcome !== 'done') {
+                    elapsed = true;
+                    if (outcome === 'timeout') {
+                        console.warn(`Storyteller Suite: the ${tab.id} tab is taking longer than ${TAB_RENDER_TIME_LIMIT_MS / 1000}s to draw.`);
+                    }
+                    if (buffered) {
+                        // Let a slow read finish if no newer render has taken over the tab.
+                        render.then(() => { if (isCurrentRender()) elapsed = false; }, reportError);
+                    } else {
+                        // A legacy renderer may still have drawn into the shared content area.
+                        render.then(
+                            () => { if (tab.id !== this.activeTabId) this.refreshCoordinator.requestImmediateRefresh({ source: 'manual', detail: 'late-tab-render' }); },
+                            error => this.showTabRenderError(tab.id, error),
+                        );
+                    }
+                    return;
+                }
+                if (after && isCurrentRender()) await after();
+            } catch (error) {
+                reportError(error);
+            } finally {
+                this.supersedeRender = null;
+                if (timer !== null) window.clearTimeout(timer);
+                this._suppressScrollCapture = false;
+                container.removeClass('is-loading');
+            }
+        };
+        const next = this.tabRenderQueue.then(run, run);
+        this.tabRenderQueue = next.catch(() => undefined);
+        return next;
+    }
+
+    /** Shows why a tab could not draw, in place of its content, with a way to try again. */
+    private showTabRenderError(tabId: string, error: unknown): void {
+        console.error(`Storyteller Suite: the ${tabId} tab failed to draw`, error);
+        if (tabId !== this.activeTabId || !this.tabContentContainer) return;
+        const container = this.tabContentContainer;
+        container.empty();
+        const box = container.createDiv('storyteller-dashboard-tab-error');
+        box.createEl('strong', { text: 'This tab could not load.' });
+        box.createEl('p', { text: error instanceof Error ? error.message : String(error) });
+        const retry = box.createEl('button', { text: 'Try again' });
+        retry.addEventListener('click', () => { void this.setActiveTab(tabId); });
     }
 
     requestActiveTabRefresh(detail: string = 'manual-refresh'): void {
@@ -423,13 +532,18 @@ export class DashboardView extends ItemView {
         this.mutationRunner.requestRefresh('immediate', detail);
     }
 
-    private getDashboardControllerContext(): DashboardControllerContext {
+    private getDashboardControllerContext(isCurrentRender: () => boolean = () => true): DashboardControllerContext {
         return {
             app: this.app,
             plugin: this.plugin,
+            isCurrentRender,
             getCurrentFilter: () => this.currentFilter,
             setCurrentFilter: (filter: string) => {
                 this.currentFilter = filter.toLowerCase();
+            },
+            getItemsPlotCriticalOnly: () => this.itemsPlotCriticalOnly,
+            setItemsPlotCriticalOnly: (value: boolean) => {
+                this.itemsPlotCriticalOnly = value;
             },
             isSimplifiedMobileDashboard: () => this.isSimplifiedMobileDashboard(),
             renderWritingGoalBanner: (c: HTMLElement) => this.renderWritingGoalBanner(c),
@@ -482,13 +596,18 @@ export class DashboardView extends ItemView {
         };
     }
 
-    private async renderWithController(tabId: string, container: HTMLElement, fallback: () => Promise<void>): Promise<void> {
+    private async renderWithController(
+        tabId: string,
+        container: HTMLElement,
+        fallback: () => Promise<void>,
+        isCurrentRender?: () => boolean,
+    ): Promise<void> {
         const controller = this.controllerRegistry.get(tabId);
         if (!controller) {
             await fallback();
             return;
         }
-        await controller.render(container, this.getDashboardControllerContext());
+        await controller.render(container, this.getDashboardControllerContext(isCurrentRender));
     }
 
     private async persistChapterFromDashboard(chapter: import('../types').Chapter, successNotice: string, detail: string): Promise<void> {
@@ -748,7 +867,7 @@ export class DashboardView extends ItemView {
     private applyTabOrder(): void {
         const savedOrder = this.plugin.settings.dashboardTabOrder;
         if (!savedOrder || savedOrder.length === 0) return;
-        const reordered: Array<{ id: string; label: string; renderFn: (container: HTMLElement) => Promise<void> }> = [];
+        const reordered: DashboardTab[] = [];
         for (const id of savedOrder) {
             const tab = this.tabs.find(t => t.id === id);
             if (tab) reordered.push(tab);
@@ -959,22 +1078,19 @@ export class DashboardView extends ItemView {
         if (this.tabContentContainer) {
             this.captureTabScrollState(previousTabId);
         }
-        // Update state
+        // Update state, and show the tab as chosen straight away, before its content loads.
         this.activeTabId = tabId;
         this.currentFilter = '';
         this.currentSearchInput = null;
         // Mark tab context for CSS entity card accent colors
         this.tabContentContainer.setAttr('data-tab', tabId);
-        // Render content and restore scroll without capturing intermediate resets
-        this._suppressScrollCapture = true;
-        try {
-            await tab.renderFn(this.tabContentContainer);
-            await this.restoreTabScroll(tabId);
-        } finally {
-            this._suppressScrollCapture = false;
-        }
-        // Update styles
         this.syncActiveTabStyles();
+        if (tabId !== previousTabId && BUFFERED_DASHBOARD_TABS.has(tabId)) {
+            this.tabContentContainer.empty();
+        }
+        const seq = ++this.renderSeq;
+        this.supersedeRender?.();
+        await this.enqueueTabRender(tab, seq, () => this.restoreTabScroll(tabId));
     }
 
     private syncActiveTabStyles() {
@@ -986,7 +1102,14 @@ export class DashboardView extends ItemView {
             h.classList.toggle('active', !!isActive);
             h.setAttribute('aria-selected', isActive ? 'true' : 'false');
             h.setAttribute('tabindex', isActive ? '0' : '-1');
-            h.setCssStyles({ background: isActive ? 'var(--background-modifier-hover)' : 'transparent' });
+            // The .active class paints the accent background. Setting one
+            // inline here beat that rule, so the active tab drew the theme's
+            // hover colour while keeping the class's on-accent text colour,
+            // which is unreadable wherever those two are close. Clear it
+            // outright rather than skipping the write, so tabs styled by an
+            // older build recover on the next sync.
+            h.style.removeProperty('background');
+            h.style.removeProperty('background-color');
             h.setCssStyles({ outline: 'none' });
         });
     }
@@ -1094,7 +1217,7 @@ export class DashboardView extends ItemView {
      * Shows character list with filtering and management controls
      * @param container The container element to render content into
      */
-    async renderCharactersContent(container: HTMLElement) {
+    async renderCharactersContent(container: HTMLElement, isCurrentRender?: () => boolean) {
         await this.renderWithController('characters', container, async () => {
         container.empty();
         this.renderHeaderControls(container, t('characters'), async (filter: string) => {
@@ -1114,7 +1237,7 @@ export class DashboardView extends ItemView {
         });
 
         await this.renderCharactersList(container);
-        });
+        }, isCurrentRender);
     }
 
     /**
@@ -1149,7 +1272,7 @@ export class DashboardView extends ItemView {
      * Shows location list with filtering and management controls
      * @param container The container element to render content into
      */
-    async renderLocationsContent(container: HTMLElement) {
+    async renderLocationsContent(container: HTMLElement, isCurrentRender?: () => boolean) {
         await this.renderWithController('locations', container, async () => {
         container.empty();
         this.renderHeaderControls(container, t('locations'), async (filter: string) => {
@@ -1169,7 +1292,7 @@ export class DashboardView extends ItemView {
         }, t('createLocation'));
 
         await this.renderLocationsList(container);
-        });
+        }, isCurrentRender);
     }
 
     /**
@@ -1267,7 +1390,6 @@ export class DashboardView extends ItemView {
     async renderItemsContent(container: HTMLElement) {
         await this.renderWithController('items', container, async () => {
         container.empty();
-        let showPlotCriticalOnly = false; // State for the filter toggle
 
         const controlsGroup = container.createDiv('storyteller-controls-group');
         new Setting(controlsGroup)
@@ -1276,18 +1398,19 @@ export class DashboardView extends ItemView {
                 .setPlaceholder(t('searchX', 'items'))
                 .onChange(async (value) => {
                     this.currentFilter = value.toLowerCase();
-                    await this.renderItemsList(container, showPlotCriticalOnly);
+                    await this.renderItemsList(container, this.itemsPlotCriticalOnly);
                 }));
 
-        // "Plot Critical Only" Toggle Button
+        // "Plot Critical Only" Toggle Button — state is view-level so a
+        // dashboard refresh mid-session doesn't silently reset the filter
         new Setting(controlsGroup)
             .setName(t('plotCritical'))
             .setDesc(t('filterX', 'bookmarked'))
             .addToggle(toggle => {
-                toggle.setValue(showPlotCriticalOnly)
+                toggle.setValue(this.itemsPlotCriticalOnly)
                     .onChange(async (value) => {
-                        showPlotCriticalOnly = value;
-                        await this.renderItemsList(container, showPlotCriticalOnly);
+                        this.itemsPlotCriticalOnly = value;
+                        await this.renderItemsList(container, value);
                     });
             });
 
@@ -1318,7 +1441,7 @@ export class DashboardView extends ItemView {
                 }
             });
 
-        await this.renderItemsList(container, showPlotCriticalOnly);
+        await this.renderItemsList(container, this.itemsPlotCriticalOnly);
         });
     }
 
@@ -1373,17 +1496,18 @@ export class DashboardView extends ItemView {
             }
 
             const extraInfoEl = infoEl.createDiv('storyteller-list-item-extra');
-            if (item.currentOwner) {
-                extraInfoEl.createSpan({ text: `Owner: ${item.currentOwner}` });
+            const ownerNames = getOwners(item);
+            if (ownerNames.length > 0) {
+                extraInfoEl.createSpan({ text: `Owner: ${ownerNames.join(', ')}` });
             }
              if (item.currentLocation) {
-                if(item.currentOwner) extraInfoEl.appendText(' • ');
+                if (ownerNames.length > 0) extraInfoEl.appendText(' • ');
                 // Resolve location ID to display name
                 const locationName = this.resolveLocationName(item.currentLocation, locations);
                 extraInfoEl.createSpan({ text: `Location: ${locationName}` });
             }
             if (item.economicValue) {
-                if (item.currentOwner || item.currentLocation) extraInfoEl.appendText(' • ');
+                if (ownerNames.length > 0 || item.currentLocation) extraInfoEl.appendText(' • ');
                 extraInfoEl.createSpan({ cls: 'storyteller-item-value-badge', text: item.economicValue });
             }
             const tagCount = (item.magicSystems?.length ?? 0) + (item.linkedCultures?.length ?? 0);
@@ -1391,7 +1515,7 @@ export class DashboardView extends ItemView {
                 const parts: string[] = [];
                 if (item.magicSystems?.length) parts.push(`${item.magicSystems.length} magic`);
                 if (item.linkedCultures?.length) parts.push(`${item.linkedCultures.length} culture${item.linkedCultures.length > 1 ? 's' : ''}`);
-                if (item.currentOwner || item.currentLocation || item.economicValue) extraInfoEl.appendText(' • ');
+                if (ownerNames.length > 0 || item.currentLocation || item.economicValue) extraInfoEl.appendText(' • ');
                 extraInfoEl.createSpan({ cls: 'storyteller-item-tags', text: parts.join(' · ') });
             }
 
@@ -2033,6 +2157,16 @@ export class DashboardView extends ItemView {
             const emptyMsg = listContainer.createEl('p', { text: t('noGroupsFound'), cls: 'storyteller-empty-state' });
             emptyMsg.setCssStyles({ color: 'var(--text-muted)' });
             emptyMsg.setCssStyles({ fontStyle: 'italic' });
+            // Groups exist but are filtered out by story — "No groups found"
+            // alone reads as data loss, so say where they went.
+            const hiddenByStory = this.plugin.settings.groups.length - this.plugin.getGroups().length;
+            if (hiddenByStory > 0) {
+                const hintMsg = listContainer.createEl('p', {
+                    text: `${hiddenByStory} group${hiddenByStory === 1 ? '' : 's'} belong${hiddenByStory === 1 ? 's' : ''} to other stories and ${hiddenByStory === 1 ? 'is' : 'are'} hidden. Switch stories, or fix the group's story id if it should appear here.`,
+                    cls: 'storyteller-empty-state'
+                });
+                hintMsg.setCssStyles({ color: 'var(--text-muted)', fontStyle: 'italic' });
+            }
             return;
         }
         const allCharacters = await this.plugin.listCharacters();
@@ -2431,7 +2565,7 @@ export class DashboardView extends ItemView {
     }
 
     /** Render the Writing tab — includes view mode switcher */
-    async renderWritingContent(container: HTMLElement) {
+    async renderWritingContent(container: HTMLElement, isCurrentRender?: () => boolean) {
         await this.renderWithController('writing', container, async () => {
         container.empty();
         this.renderWritingGoalBanner(container);
@@ -2571,7 +2705,7 @@ export class DashboardView extends ItemView {
         );
 
         await renderActive();
-        });
+        }, isCurrentRender);
     }
 
     async renderChaptersContent(container: HTMLElement) {
@@ -3735,7 +3869,7 @@ export class DashboardView extends ItemView {
                 extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-region-badge', text: location.region });
             }
             if (location.parentLocationId) {
-                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-parent-badge', text: `↑ ${location.parentLocationId}` });
+                extraInfoEl.createSpan({ cls: 'storyteller-meta-badge storyteller-loc-parent-badge', text: `↑ ${this.resolveLocationName(location.parentLocationId, locations)}` });
             }
             if (location.status) {
                 const statusSlug = location.status.toLowerCase().replace(/\s+/g, '-');
@@ -4078,6 +4212,13 @@ export class DashboardView extends ItemView {
         addBtn.createSpan({ text: ' Add Step' });
         addBtn.addEventListener('click', () => this.openCustomStepModal(null, container));
 
+        if (!this.plugin.settings.enableCustomCompileJs) {
+            section.createEl('p', {
+                text: 'Custom step JavaScript is currently disabled — steps will be skipped during compile. Enable it in Settings → Storyteller Suite → Dashboard → Compile.',
+                cls: 'storyteller-compile-custom-disabled-hint'
+            });
+        }
+
         const steps = this.plugin.settings.customCompileSteps ?? [];
         if (steps.length === 0) {
             section.createEl('p', {
@@ -4303,15 +4444,11 @@ export class DashboardView extends ItemView {
 
             const infoEl = itemEl.createDiv('storyteller-list-item-info');
 
-            // Title row: name + status badge
-            const titleRow = infoEl.createDiv('storyteller-economy-card-title-row');
-            titleRow.createEl('strong', { text: economy.name });
+            infoEl.createEl('strong', { text: economy.name });
             if (economy.status) {
-                const statusKey = economy.status.toLowerCase().replace(/\s+/g, '-');
-                titleRow.createEl('span', {
-                    cls: `storyteller-economy-status-badge is-${statusKey}`,
-                    text: economy.status
-                });
+                const badgesEl = infoEl.createDiv('storyteller-list-item-extra');
+                const statusSlug = economy.status.toLowerCase().replace(/\s+/g, '-');
+                badgesEl.createSpan({ cls: `storyteller-meta-badge storyteller-economy-status-badge storyteller-economy-status-${statusSlug}`, text: economy.status });
             }
 
             // Description preview
@@ -5159,10 +5296,11 @@ export class DashboardView extends ItemView {
      * Handle editing a template
      */
     private handleEditTemplate(template: Template, container: HTMLElement): void {
+        // The editor writes into the object it receives; give it a copy so Cancel leaves the cache untouched.
         new TemplateEditorModal(
             this.app,
             this.plugin,
-            template,
+            structuredClone(template),
             (updatedTemplate) => { void (async () => {
                 await this.renderTemplatesContent(container);
             })(); }
@@ -5347,6 +5485,8 @@ export class DashboardView extends ItemView {
     }
 
     async onClose() {
+        ++this.renderSeq;
+        this.supersedeRender?.();
         // Clean up file input if it exists
         this.fileInput?.remove();
         this.fileInput = null;

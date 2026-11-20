@@ -1,5 +1,7 @@
 import type { LatLngExpression, LatLngBoundsExpression, CRS, Layer } from 'leaflet';
 import type { TFile, CachedMetadata } from 'obsidian';
+import type { Location } from '../types';
+import type { InkDoc } from './ink/model';
 
 /**
  * YAML Parameters from code block
@@ -33,6 +35,7 @@ export interface BlockParameters {
     draw?: boolean;          // Enable drawing controls
 
     // Markers
+    persistedMarkers?: import('../types').MapMarker[];
     marker?: string | string[];           // Marker definitions
     markerFile?: string | string[];       // Files to load markers from
     markerTag?: string | string[];        // Tags to filter markers
@@ -42,6 +45,9 @@ export interface BlockParameters {
     geojsonColor?: string;                // GeoJSON default color
     gpx?: string | string[];              // GPX file paths
     gpxColor?: string;                    // GPX default color
+
+    // The Map Ink drawing (migrated from Maplog keys when needed), set by mapToBlockParams
+    ink?: InkDoc;
 
     // Overlays
     overlay?: Array<[string, [number, number], [number, number]]>; // Image overlays
@@ -58,6 +64,28 @@ export interface BlockParameters {
 
     // Additional metadata
     [key: string]: unknown;
+}
+
+/** Location pins to mark with the current-scene and inspector-selection styles. */
+export interface LocationPinHighlight {
+    currentKey: string | null;
+    selectedKey: string | null;
+}
+
+/**
+ * Behaviour switches for an embedded renderer. MapView passes none and keeps full editing.
+ */
+export interface LeafletRendererOptions {
+    /** Hide edit affordances (context menus, pin moves, edit buttons) and portal navigation. */
+    readOnly?: boolean;
+    /** Save and restore pan/zoom under the map id. Defaults to true. */
+    persistViewState?: boolean;
+    /** Clicking a location pin calls this instead of opening its popup. */
+    onLocationSelect?: (location: Location) => void;
+    /** Pins to mark with the current-scene and selected styles. */
+    pinHighlight?: LocationPinHighlight;
+    /** Draw a grid over an image map, spaced in image pixels. */
+    gridSize?: number;
 }
 
 /**

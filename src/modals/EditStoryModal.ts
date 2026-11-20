@@ -26,6 +26,9 @@ const FOLDER_OVERRIDE_FIELDS: Array<{ key: keyof StoryFolderOverrides; label: st
     { key: 'compendiumFolderPath', label: 'Compendium', defaultLeaf: 'Compendium' },
     { key: 'bookFolderPath', label: 'Books', defaultLeaf: 'Books' },
     { key: 'sessionsFolderPath', label: 'Sessions', defaultLeaf: 'Sessions' },
+    { key: 'eraFolderPath', label: 'Eras', defaultLeaf: 'Eras' },
+    { key: 'trackFolderPath', label: 'Tracks', defaultLeaf: 'Tracks' },
+    { key: 'branchFolderPath', label: 'Branches', defaultLeaf: 'Branches' },
 ];
 
 export class EditStoryModal extends Modal {
