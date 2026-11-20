@@ -203,7 +203,11 @@ export function getWhatsNewGuide(version: string): StorytellerGuideDocument {
                     </ul>
                 `,
                 images: [
-                    { src: 'https://i.ibb.co/Fb3QVNgd/a086488103f6.png', alt: 'Campaign session view', caption: 'Run scenes, track the party, share inventory and keep a live session log in one place.' },
+                    {
+                        src: 'https://raw.githubusercontent.com/Maws7140/obsidian-storyteller-suite/757d8fc03c55f7005b9e59ab41ac67bdabeab38a/screenshots/2.0/campaign-party.png',
+                        alt: 'Campaign map with party health and resources',
+                        caption: 'Run scenes from the map while tracking party health, resources and shared loot.',
+                    },
                     { src: 'https://i.ibb.co/cSB4h426/9a6e271d6622.png', alt: 'Scene graph and campaign tools', caption: 'Move through branching scenes on the scene graph and jump straight into play.' },
                 ]
             },
