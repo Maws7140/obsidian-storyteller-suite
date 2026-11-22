@@ -84,6 +84,10 @@ class FakeElement {
 	getAttribute(name: string): string | null { return this.attributes.has(name) ? (this.attributes.get(name) as string) : null; }
 
 	appendChild<T extends FakeElement>(child: T): T {
+		if (child.tagName === '#DOCUMENT-FRAGMENT') {
+			this.html += child.innerHTML;
+			return child;
+		}
 		child.parentNode?.removeChild(child);
 		child.parentNode = this;
 		this.children.push(child);
@@ -222,6 +226,11 @@ function makeHost(presets: Array<{ id: string; name: string; fits: 'path' | 'are
 		confirm: vi.fn(async () => true),
 		showMenu: vi.fn(),
 		icon: vi.fn((el: FakeElement, name: string) => { el.setAttribute('data-icon', name); }),
+		sanitizeSvg(markup: string): DocumentFragment {
+			const fragment = new FakeElement(null, '#document-fragment');
+			fragment.innerHTML = markup;
+			return fragment as unknown as DocumentFragment;
+		},
 		pickLocation: vi.fn(async () => null),
 		openLocation: vi.fn(),
 		load: vi.fn(),

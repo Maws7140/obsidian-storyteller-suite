@@ -33,6 +33,8 @@ export interface InkHost {
 	showMenu(items: InkMenuItem[], event: MouseEvent): void;
 	/** Fill `el` with the Lucide icon called `lucideName`. */
 	icon(el: HTMLElement, lucideName: string): void;
+	/** Sanitize a complete SVG before inserting it into the document. */
+	sanitizeSvg(markup: string): DocumentFragment;
 	/** Let the user pick a Storyteller location. Resolves null when cancelled. */
 	pickLocation(): Promise<{ id: string; name: string } | null>;
 	/** Open a Storyteller location by id. */

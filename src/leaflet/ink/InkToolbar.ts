@@ -336,7 +336,7 @@ export class InkToolbar {
 				title: symbol.name,
 				'data-symbol': symbol.id,
 			});
-			btn.innerHTML = symbolSvg(symbol.id, { size: 20 });
+			btn.appendChild(this.host.sanitizeSvg(symbolSvg(symbol.id, { size: 20 })));
 			btn.addEventListener('click', () => this.store.setCurrentSymbol(symbol.id));
 			this.symbolButtons.push({ id: symbol.id, button: btn });
 			cells.appendChild(btn);
@@ -382,7 +382,7 @@ export class InkToolbar {
 			btn.classList.add('ink-brush-none');
 		} else {
 			const thumb = makeEl(this.doc, 'span', 'ink-brush-thumb');
-			thumb.innerHTML = brushPreviewSvg(id, { width: 56, height: 16, color: 'currentColor' });
+			thumb.appendChild(this.host.sanitizeSvg(brushPreviewSvg(id, { width: 56, height: 16, color: 'currentColor' })));
 			btn.appendChild(thumb);
 		}
 		const text = makeEl(this.doc, 'span', 'ink-brush-name');

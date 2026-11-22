@@ -16,6 +16,7 @@ import type { InkStoreLike, InkToolId } from '../storeTypes';
 import { bounds } from '../geometry';
 import type { Point } from '../geometry';
 import { buildItem, fmt } from '../svgBuild';
+import { sanitizeSvgChildren } from '../svgDom';
 
 /** A tool snaps to an existing vertex within this many container pixels. */
 export const SNAP_RADIUS = 10;
@@ -293,11 +294,10 @@ export class Preview {
 			markup += `<circle cx="${fmt(q.x)}" cy="${fmt(q.y)}" r="${ring}" fill="#ffffff" stroke="#3b82c4" stroke-width="${stroke}"/>`;
 		}
 
-		const doc = this.root.ownerDocument;
-		const range = doc.createRange();
-		range.selectNodeContents(this.root);
-		const fragment = range.createContextualFragment(`<defs>${[...defs.values()].join('')}</defs>${markup}`);
-		this.root.replaceChildren(fragment);
+		this.root.replaceChildren(...sanitizeSvgChildren(
+			this.ctx.host,
+			`<defs>${[...defs.values()].join('')}</defs>${markup}`,
+		));
 
 		const counters = this.root.querySelectorAll('[data-ink-counter]');
 		for (let i = 0; i < counters.length; i++) {

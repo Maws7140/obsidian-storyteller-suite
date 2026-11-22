@@ -7,6 +7,7 @@
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -p tsconfig.json --noEmit && node esbuild.config.mjs production",
 		"lint:obsidian": "eslint --config eslint.obsidian.config.mjs \"src/**/*.ts\"",
+		"lint:obsidian:review": "node scripts/check-obsidian-review.mjs",
 		"test": "vitest run --reporter=default",
 		"test:watch": "vitest",
 		"test:e2e": "cross-env PATH=\"%PATH%;C:\\Program Files\\7-Zip\" wdio run wdio.conf.mjs",

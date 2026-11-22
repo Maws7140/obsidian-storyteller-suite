@@ -2099,13 +2099,15 @@ export class LeafletRenderer extends Component {
     private addInk(): void {
         if (!this.map) return;
         const leaflet = L as unknown as InkLayerLeafletNamespace;
+        const host = this.readOnlyInkHost();
         this.inkLayer = createInkLayer(leaflet, {
+            host,
             readOnly: this.options.readOnly === true,
             onItemClick: id => this.openInkItemLocation(id),
         });
         this.inkLayer.setDoc(this.params.ink ?? defaultInkDoc());
         this.inkLayer.addTo(this.map);
-        this.inkLegend = new InkLegend(this.map.getContainer(), this.readOnlyInkHost(), {});
+        this.inkLegend = new InkLegend(this.map.getContainer(), host, {});
         this.inkLegend.setDoc(this.inkLayer.getDoc());
     }
 

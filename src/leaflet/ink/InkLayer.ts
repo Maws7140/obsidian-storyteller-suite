@@ -6,11 +6,13 @@
  * caller passes the Leaflet namespace:
  *
  *   import * as L from 'leaflet';
- *   const ink = createInkLayer(L, { readOnly: true }).addTo(map);
+ *   const ink = createInkLayer(L, { host, readOnly: true }).addTo(map);
  *
  * Pure TypeScript apart from the DOM calls on the layer's own SVG: no Obsidian imports.
  */
 import { brushDetailFor, buildScene, buildSelection, fmt, itemBounds } from './svgBuild';
+import { sanitizeSvgChildren } from './svgDom';
+import type { InkHost } from './host';
 import type { Projector } from './svgBuild';
 import { defaultInkDoc } from './model';
 import type { InkDoc, InkItem } from './model';
@@ -45,6 +47,7 @@ export interface InkBoundsLike {
 }
 
 export interface InkLayerOptions {
+	host: Pick<InkHost, 'sanitizeSvg'>;
 	/** No selection overlay, and only linked items take pointer input. */
 	readOnly?: boolean;
 	/** Zoom at which reference pixels equal projected pixels. Defaults to 0 for CRS.Simple, else the map's min zoom. */
@@ -130,6 +133,7 @@ class InkSurface {
 	private brushDetail = 1;
 	private handlers: Record<string, (e: never) => void> = {};
 	private readonly prefix: string;
+	private readonly host: Pick<InkHost, 'sanitizeSvg'>;
 	private readonly project: Projector = p => {
 		const q = (this.map as InkMapLike).project([p[0], p[1]], this.refZoom);
 		return { x: q.x, y: q.y };
@@ -142,6 +146,7 @@ class InkSurface {
 		private readonly owner: { onItemClick?: (id: string, event: MouseEvent) => void },
 		options: InkLayerOptions,
 	) {
+		this.host = options.host;
 		this.readOnly = options.readOnly === true;
 		this.explicitRef = typeof options.refZoom === 'number' && Number.isFinite(options.refZoom);
 		this.prefix = `ink${++InkSurface.counter}-`;
@@ -333,20 +338,17 @@ class InkSurface {
 		this.visible = [];
 
 		if (scene.defs !== this.defsMarkup) {
-			this.defsEl.replaceChildren(this.parse(this.defsEl, scene.defs));
+			this.defsEl.replaceChildren(...sanitizeSvgChildren(this.host, scene.defs));
 			this.defsMarkup = scene.defs;
 		}
 
 		const next = new Map<string, { markup: string; node: Element }>();
 		for (const entry of scene.items) {
 			const item = byId.get(entry.id);
-			if (item) this.visible.push(item);
 			const previous = this.nodes.get(entry.id);
-			if (previous && previous.markup === entry.svg) {
-				next.set(entry.id, previous);
-				continue;
-			}
-			const node = this.parse(this.itemsEl, entry.svg).firstElementChild as Element;
+			const node = previous?.markup === entry.svg ? previous.node : sanitizeSvgChildren(this.host, entry.svg)[0];
+			if (!node) continue;
+			if (item) this.visible.push(item);
 			next.set(entry.id, { markup: entry.svg, node });
 		}
 		// Remove nodes for deleted items and the old node of every item that was redrawn.
@@ -355,8 +357,7 @@ class InkSurface {
 		}
 		// Put the nodes in paint order, moving only what is out of place.
 		let cursor: ChildNode | null = this.itemsEl.firstChild;
-		for (const entry of scene.items) {
-			const node = (next.get(entry.id) as { node: Element }).node;
+		for (const { node } of next.values()) {
 			if (node === cursor) {
 				cursor = cursor.nextSibling;
 			} else {
@@ -380,14 +381,7 @@ class InkSurface {
 			this.overlayEl.replaceChildren();
 			return;
 		}
-		this.overlayEl.replaceChildren(this.parse(this.overlayEl, markup));
-	}
-
-	/** Parse markup in the SVG namespace, using the element as the parsing context. */
-	private parse(context: Element, markup: string): DocumentFragment {
-		const range = context.ownerDocument.createRange();
-		range.selectNodeContents(context);
-		return range.createContextualFragment(markup);
+		this.overlayEl.replaceChildren(...sanitizeSvgChildren(this.host, markup));
 	}
 
 	// ---- events -----------------------------------------------------------------
@@ -419,14 +413,14 @@ interface InkLayerInternals {
 	onItemClick?: (id: string, event: MouseEvent) => void;
 }
 
-const classCache = new WeakMap<object, new (options?: InkLayerOptions) => InkLayer>();
+const classCache = new WeakMap<object, new (options: InkLayerOptions) => InkLayer>();
 
-function layerClass(L: InkLeafletNamespace): new (options?: InkLayerOptions) => InkLayer {
+function layerClass(L: InkLeafletNamespace): new (options: InkLayerOptions) => InkLayer {
 	const cached = classCache.get(L);
 	if (cached) return cached;
 	const Ctor = L.Layer.extend({
 		options: { pane: INK_PANE },
-		initialize(this: InkLayerInternals & { options: Record<string, unknown> }, options: InkLayerOptions = {}) {
+		initialize(this: InkLayerInternals & { options: Record<string, unknown> }, options: InkLayerOptions) {
 			this.options = Object.assign({}, this.options, options);
 			this._surface = new InkSurface(L, this, options);
 			if (options.onItemClick) this.onItemClick = options.onItemClick;
@@ -464,15 +458,15 @@ function layerClass(L: InkLeafletNamespace): new (options?: InkLayerOptions) => 
 			this._surface.destroy();
 		},
 	});
-	classCache.set(L, Ctor as unknown as new (options?: InkLayerOptions) => InkLayer);
-	return Ctor as unknown as new (options?: InkLayerOptions) => InkLayer;
+	classCache.set(L, Ctor as unknown as new (options: InkLayerOptions) => InkLayer);
+	return Ctor as unknown as new (options: InkLayerOptions) => InkLayer;
 }
 
 /**
  * Create the Ink layer. Add it to a map with `.addTo(map)`. `L` is the Leaflet
  * namespace, passed in so the core never imports Leaflet.
  */
-export function createInkLayer(L: InkLeafletNamespace, options: InkLayerOptions = {}): InkLayer {
+export function createInkLayer(L: InkLeafletNamespace, options: InkLayerOptions): InkLayer {
 	const Ctor = layerClass(L);
 	return new Ctor(options);
 }

@@ -371,7 +371,7 @@ export class InkLegend {
 	private buildRow(entry: LegendEntry): HTMLElement {
 		const row = makeEl(this.doc, 'li', 'ink-legend-row');
 		const swatch = makeEl(this.doc, 'span', `ink-legend-swatch ink-legend-swatch-${entry.section}`);
-		swatch.innerHTML = entry.swatch;
+		swatch.appendChild(this.host.sanitizeSvg(entry.swatch));
 		const name = makeEl(this.doc, 'span', 'ink-legend-name');
 		name.textContent = entry.name;
 		row.appendChild(swatch);

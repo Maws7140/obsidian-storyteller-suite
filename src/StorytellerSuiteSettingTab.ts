@@ -6,6 +6,7 @@ import {
     Platform,
     TFolder,
     setIcon,
+    requireApiVersion,
     SettingPage,
     TextComponent,
     type SettingDefinitionItem,
@@ -110,26 +111,6 @@ interface ReopenableView {
     onOpen(): Promise<void> | void;
 }
 
-class StorytellerSettingsPage extends SettingPage {
-    constructor(
-        title: string,
-        private readonly renderPage: (containerEl: HTMLElement) => void,
-        private readonly onHidePage: (containerEl: HTMLElement) => void
-    ) {
-        super();
-        this.title = title;
-    }
-
-    display(): void {
-        this.renderPage(this.containerEl);
-    }
-
-    hide(): void {
-        this.onHidePage(this.containerEl);
-        super.hide();
-    }
-}
-
 export class StorytellerSuiteSettingTab extends PluginSettingTab {
     plugin: StorytellerSuitePlugin;
     private activeTab: TabId = 'stories';
@@ -155,37 +136,48 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         // the tab and its declarative definitions are registered correctly.
         // Use Obsidian's window-migration hook so recovery runs in the target
         // window after the move has completed.
-        const removeWindowMigrationListener = this.containerEl.onWindowMigrated(win => {
+        const removeWindowMigrationListener = this.containerEl.onWindowMigrated?.(win => {
             win.setTimeout(() => {
-                if (this.containerEl.isConnected && this.containerEl.childElementCount === 0) {
-                    this.display();
+                if (!this.containerEl.isConnected) return;
+                const wrapper = this.containerEl.querySelector('.sts-settings-wrapper');
+                if (this.containerEl.childElementCount === 0 ||
+                    (wrapper && win.getComputedStyle(wrapper).display !== 'flex')) {
+                    this.renderWithGuard();
                 }
             }, 0);
         });
-        plugin.register(removeWindowMigrationListener);
+        if (removeWindowMigrationListener) plugin.register(removeWindowMigrationListener);
     }
 
     private declarativeContainer: HTMLElement | null = null;
 
     getSettingDefinitions(): SettingDefinitionItem[] {
-        // Desktop keeps the two-column layout (sidebar of sections, settings beside
-        // it): an empty list makes Obsidian call display() instead. Phones and
-        // tablets have no room for the sidebar, so they get Obsidian's native list
-        // of section pages built from the definitions below.
-        if (!Platform.isMobile) return [];
-        return this.TABS.map(tab => ({
-            type: 'page',
-            name: tab.label,
-            page: () => new StorytellerSettingsPage(
-                tab.label,
-                containerEl => this.renderDeclarativePage(tab.id, containerEl),
-                containerEl => {
-                    if (this.declarativeContainer === containerEl) {
-                        this.declarativeContainer = null;
+        if (requireApiVersion('1.13.0') && Platform.isMobile) {
+            const settingsTab = this;
+            return this.TABS.map(tab => ({
+                type: 'page',
+                name: tab.label,
+                page: () => new class extends SettingPage {
+                    constructor() {
+                        super();
+                        this.title = tab.label;
                     }
-                }
-            ),
-        }));
+
+                    display(): void {
+                        settingsTab.renderDeclarativePage(tab.id, this.containerEl);
+                    }
+
+                    hide(): void {
+                        if (settingsTab.declarativeContainer === this.containerEl) {
+                            settingsTab.declarativeContainer = null;
+                        }
+                        super.hide();
+                    }
+                }(),
+            }));
+        }
+        // Desktop and older Obsidian versions use the settings tab's display().
+        return [];
     }
 
     display(): void {
@@ -210,7 +202,7 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
             this.renderDeclarativePage(this.activeTab, this.declarativeContainer);
             return;
         }
-        this.display();
+        this.renderWithGuard();
     }
 
     private renderWithGuard(): void {
@@ -258,27 +250,15 @@ export class StorytellerSuiteSettingTab extends PluginSettingTab {
         const nav     = wrapper.createDiv('sts-settings-nav');
         const content = wrapper.createDiv('sts-settings-content');
 
-        // Obsidian 1.13 opens Settings in a separate window where the plugin's
-        // styles.css is not guaranteed to be injected. Without it the layout
-        // rules below are missing, the flex row collapses, and the pane renders
-        // blank. Apply the essential, non-collapsing layout inline so it holds
-        // regardless of whether the stylesheet reached this window.
-        // These assignments are inline on purpose (see comment above): in Obsidian 1.13's
-        // separate settings window the stylesheet is not guaranteed to apply, so the essential
-        // non-collapsing layout has to be set directly or the pane renders blank.
-        /* eslint-disable obsidianmd/no-static-styles-assignment */
-        containerEl.style.minHeight = '360px';
-        wrapper.style.display = 'flex';
-        wrapper.style.alignItems = 'flex-start';
-        wrapper.style.minHeight = '360px';
-        wrapper.style.width = '100%';
-        nav.style.flexShrink = '0';
-        nav.style.display = 'flex';
-        nav.style.flexDirection = 'column';
-        if (!nav.style.width) nav.style.width = '160px';
-        content.style.flex = '1';
-        content.style.minWidth = '0';
-        /* eslint-enable obsidianmd/no-static-styles-assignment */
+        // Settings can migrate to a window where Obsidian has not attached
+        // the plugin stylesheet. Keep the pane usable in that window.
+        const view = wrapper.ownerDocument.defaultView;
+        if (view?.getComputedStyle(wrapper).display !== 'flex') {
+            containerEl.setCssStyles({ minBlockSize: '360px' });
+            wrapper.setCssStyles({ display: 'flex', alignItems: 'flex-start', minBlockSize: '360px', inlineSize: '100%' });
+            nav.setCssStyles({ display: 'flex', flexDirection: 'column', flexShrink: '0', inlineSize: '160px' });
+            content.setCssStyles({ flex: '1', minInlineSize: '0' });
+        }
 
         const tabBtns: HTMLElement[] = [];
         this.TABS.forEach(tab => {

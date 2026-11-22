@@ -141,6 +141,9 @@ jobs:
       - name: Type check
         run: npx tsc -p tsconfig.json --noEmit
 
+      - name: Check Obsidian review blockers
+        run: npm run lint:obsidian:review
+
       - name: Unit tests
         run: npx vitest run
 

@@ -5,7 +5,7 @@
  * Load and save come from the caller, because each map view owns its own note.
  * This folder is the one part of ink/ that may import obsidian.
  */
-import { App, Menu, Notice, setIcon } from 'obsidian';
+import { App, Menu, Notice, sanitizeHTMLToDom, setIcon } from 'obsidian';
 import type StorytellerSuitePlugin from '../../../main';
 import type { Location } from '../../../types';
 import { LocationSuggestModal } from '../../../modals/LocationSuggestModal';
@@ -66,6 +66,10 @@ export class ObsidianInkHost implements InkHost {
 
 	icon(el: HTMLElement, lucideName: string): void {
 		setIcon(el, lucideName);
+	}
+
+	sanitizeSvg(markup: string): DocumentFragment {
+		return sanitizeHTMLToDom(markup);
 	}
 
 	pickLocation(): Promise<{ id: string; name: string } | null> {

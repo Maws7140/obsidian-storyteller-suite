@@ -337,7 +337,6 @@ export class TimelineThemeEditorModal extends Modal {
             .setLimits(min, max, step)
             .setValue(value)
             // Still needed: before Obsidian 1.13 a slider shows no value without it.
-            // eslint-disable-next-line @typescript-eslint/no-deprecated
             .setDynamicTooltip()
             .onChange(next => { apply(next); this.changed(); }));
     }
@@ -385,7 +384,6 @@ export class TimelineThemeEditorModal extends Modal {
                 .setLimits(0, 100, 5)
                 .setValue(Math.round(current.alpha * 100))
                 // Still needed: before Obsidian 1.13 a slider shows no value without it.
-                // eslint-disable-next-line @typescript-eslint/no-deprecated
                 .setDynamicTooltip()
                 .onChange(value => {
                     if (syncing) return;
@@ -449,7 +447,6 @@ export class TimelineThemeEditorModal extends Modal {
                         .setLimits(0, 100, 5)
                         .setValue(Math.round(current.alpha * 100))
                         // Still needed: before Obsidian 1.13 a slider shows no value without it.
-                        // eslint-disable-next-line @typescript-eslint/no-deprecated
                         .setDynamicTooltip()
                         .onChange(value => {
                             current.alpha = value / 100;

@@ -107,8 +107,7 @@ export class InkEditor {
 			this.layer = opts.layer;
 			this.ownsLayer = false;
 		} else {
-			const layerOptions = typeof this.refZoom === 'number' ? { refZoom: this.refZoom } : {};
-			this.layer = createInkLayer(this.L, layerOptions).addTo(this.map);
+			this.layer = createInkLayer(this.L, { host: this.host, refZoom: this.refZoom }).addTo(this.map);
 			this.ownsLayer = true;
 		}
 		this.layer.setReadOnly(true);

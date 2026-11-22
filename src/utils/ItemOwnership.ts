@@ -21,7 +21,6 @@ export function getOwners(item: Pick<PlotItem, 'owners' | 'currentOwner'>): stri
     // parseFile hoists currentOwner into owners, so this only catches objects
     // built by hand — prebuilt templates, tests, callers holding raw frontmatter.
     // Reading the deprecated field is the entire point of this branch.
-    // eslint-disable-next-line @typescript-eslint/no-deprecated
     const legacy = cleanName(item.currentOwner);
     return legacy ? [legacy] : [];
 }
