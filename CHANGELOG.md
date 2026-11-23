@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.1
+
+- Fix Obsidian community review errors by sanitizing Map Ink SVG rendering and removing forbidden lint suppressions.
+- Restore startup compatibility with older supported Obsidian versions while retaining native mobile settings pages on newer versions.
+- Add Obsidian review preflight checks to CI and the release workflow.
+
 ## 2.0.0
 
 Storyteller Suite 2.0 rebuilds the timeline from scratch, lets you run campaigns from your story's map, replaces map pins with a drawing layer, and lets every entity modal be shaped to your own fields. Everything since 1.8.19 is listed below, including the work from the two 2.0 betas.
